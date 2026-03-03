@@ -25,13 +25,13 @@ def main():
     # In Qt 6 (PySide6), High DPI scaling is enabled by default.
     # No manual attribute setting is required.
 
-    app = QApplication(sys.argv)
-    
-    # Set Metadata for DE Integration (GNOME/KDE)
+    # Set Metadata for DE Integration (GNOME/KDE) MUST be done before QApplication
     # ApplicationName is used for WM_CLASS on some platforms
-    app.setApplicationName("immich-sync")
-    app.setApplicationDisplayName("Immich Auto-Sync")
-    app.setDesktopFileName("immich-sync.desktop")
+    QApplication.setApplicationName("immich-sync")
+    QApplication.setApplicationDisplayName("Immich Auto-Sync")
+    QApplication.setDesktopFileName("immich-sync")
+
+    app = QApplication(sys.argv)
     
     # Run the window
     window = SettingsWindow()
