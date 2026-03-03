@@ -42,6 +42,7 @@
 ## 7. Packaging & Distribution (New)
 - [x] Write a `setup.py` or `pyproject.toml` for standard Python packaging.
 - [x] Create an Arch Linux `PKGBUILD` for submission to the AUR.
+- [x] Create an official standalone custom AppImage for self-contained PySide6 distribution directly from GitHub.
 - [ ] (Optional) Create a Flatpak manifest for universal distro compatibility.
 
 ---
