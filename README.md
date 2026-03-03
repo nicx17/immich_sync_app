@@ -2,6 +2,9 @@
 
 <div align="center">
 
+<img src="src/assets/icon.png" alt="Immich Sync Logo" width="128" />
+<br>
+
 ![Status](https://img.shields.io/badge/Status-beta-FF90C3?style=for-the-badge)
 ![GitHub Release](https://img.shields.io/github/v/release/nicx17/immich_sync_app?include_prereleases&style=for-the-badge&logo=github&color=FF90C3)
 ![Python](https://img.shields.io/badge/Python_3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
