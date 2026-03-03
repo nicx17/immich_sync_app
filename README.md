@@ -4,7 +4,11 @@ A daemon-based synchronization tool for uploading media files from a Linux deskt
 
 This application monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files and automatically uploads them to your Immich instance. It runs as a background service and integrates with the desktop environment.
 
-**Status:** Beta. Supports Immich v1.118+.
+> [!WARNING]
+> **This project is currently under active development and in the ALPHA phase.**
+> Features may frequently change, bugs are to be expected, and data loss or sync issues are possible. Please use with caution and report any issues!
+
+**Status:** Alpha. Supports Immich v1.118+.
 
 ## Features
 
