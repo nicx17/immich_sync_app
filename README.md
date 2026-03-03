@@ -103,5 +103,8 @@ For detailed guides, please refer to:
 ## Contributing
 Pull requests are welcome. Check `roadmap.md` for planned features.
 
+## Acknowledgments
+- Application icon illustration by <a href="https://unsplash.com/@roundicons?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Round Icons</a> on <a href="https://unsplash.com/illustrations/a-white-and-orange-flower-on-a-white-background-IkQ_WrJzZOM?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText">Unsplash</a>.
+
 ## License
 GPLv3 License
