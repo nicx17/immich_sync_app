@@ -1,0 +1,10 @@
+watchdog
+requests
+keyring
+PySide6
+pystray
+Pillow
+pytest
+requests-mock
+
+

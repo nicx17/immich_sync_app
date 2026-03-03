@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# Application Specific
+# Local configuration files (don't commit secrets)
+config.json
+.config/
+logs/
+*.log
+
+# Unit Test / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+*.AppImage
+project_tree*.txt
+dist/
+build/
+*.egg-info/

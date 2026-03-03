@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Immich Auto-Sync
+Comment=Automatically upload photos to Immich
+# Change this path to your execution path
+Exec=/path/to/python3 /path/to/immich-sync/src/main.py
+Icon=immich-sync
+Terminal=false
+Type=Application
+Categories=Utility;Network;
+X-GNOME-Autostart-enabled=true
+StartupNotify=false
+# Matches the window class set in src/settings_main.py
+StartupWMClass=immich-sync.desktop

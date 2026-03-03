@@ -1,0 +1,32 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="immich-sync",
+    version="0.1.0",
+    packages=find_packages(),
+    install_requires=[
+        "watchdog>=4.0.0",
+        "requests>=2.31.0",
+        "keyring>=24.3.0",
+        "pystray>=0.19.5",
+        "Pillow>=10.2.0",
+        "PySide6>=6.6.1",
+    ],
+    entry_points={
+        "console_scripts": [
+            "immich-sync=src.main:main",
+        ],
+    },
+    author="Nick",
+    author_email="nick@example.com",
+    description="A background daemon to auto-sync photos to Immich on Linux",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    url="https://github.com/nick/immich_sync_app",
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "Operating System :: POSIX :: Linux",
+    ],
+    python_requires=">=3.10",
+)

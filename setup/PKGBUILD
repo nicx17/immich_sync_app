@@ -1,0 +1,28 @@
+# Maintainer: Nick <nick@example.com>
+pkgname=immich-sync
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A background daemon to auto-sync photos to Immich on Linux"
+arch=('any')
+url="https://github.com/nick/immich_sync_app"
+license=('MIT')
+depends=('python' 'python-requests' 'python-watchdog' 'python-keyring' 'python-pystray' 'python-pillow' 'pyside6')
+makedepends=('python-setuptools' 'python-build' 'python-installer' 'python-wheel')
+source=("$pkgname-$pkgver.tar.gz") # Assuming source is available or will be
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    python -m build --wheel --no-isolation
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+    python -m installer --destdir="$pkgdir" dist/*.whl
+
+    # Install .desktop file
+    install -Dm644 setup/immich-sync.desktop "$pkgdir/usr/share/applications/immich-sync.desktop"
+    
+    # Install systemd user service (example for user service)
+    install -Dm644 setup/immich-sync.service "$pkgdir/usr/lib/systemd/user/immich-sync.service"
+}
