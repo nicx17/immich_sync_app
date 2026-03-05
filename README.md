@@ -45,7 +45,26 @@ This application monitors local directories (e.g., `~/Pictures`, `~/Videos`) for
 
 ## Installation
 
-### Prerequisites
+### Method 1: AppImage (Recommended)
+
+The easiest way to install Immich Sync is via the standalone AppImage, which includes all dependencies out-of-the-box.
+
+1. Go to the [Releases page](https://github.com/nicx17/immich_sync_app/releases) and download the latest `Immich_Sync-x86_64.AppImage`.
+2. Make it executable:
+   ```bash
+   chmod +x Immich_Sync-*.AppImage
+   ```
+3. Run it, or use the provided integration script to strictly install it to your Application Launcher menu:
+   ```bash
+   # Optional: Download and run the install script from the repo to set up the .desktop file and systemd auto-start
+   ./install-appimage.sh /path/to/downloaded/Immich_Sync-x86_64.AppImage
+   ```
+
+### Method 2: Manual / From Source
+
+If you prefer not to use the AppImage, you can run the app directly from source.
+
+#### Prerequisites
 
 - Python 3.10+
 - `gobject-introspection` (for system tray support)
