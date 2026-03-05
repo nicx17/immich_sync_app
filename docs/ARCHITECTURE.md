@@ -38,32 +38,42 @@ graph TD
 ```
 
 ### 1. Core Daemon (`src/main.py`)
+
 The entry point of the application. It performs environment setup (setting `XDG_CURRENT_DESKTOP="Unity"` to enforce AppIndicators via `pystray`, and forcing X11 backend for GDK (`GDK_BACKEND="x11"`) to avoid Wayland issues with legacy tray icons) and initializes the `Monitor` and `TrayIcon`.
 
 ### 2. File Monitor (`src/monitor.py`)
+
 Uses the `watchdog` library to listen for filesystem events (`IN_CREATE`, `IN_MOVED_TO`).
+
 - **Event Handling**: Filters events to allow only specific media extensions (`.jpg`, `.png`, `.mp4`, etc.).
 - **Debouncing**: Implements a `wait_for_file_completion` check to ensure files are fully written to disk before processing.
 - **Checksum**: Calculates SHA-1 checksums immediately to support Immich's deduplication logic.
 
 ### 3. Queue Manager (`src/queue_manager.py`)
+
 A thread-safe orchestrator for upload tasks.
+
 - **Upload Queue**: A FIFO queue receiving file tasks from the Monitor.
 - **Retry Queue**: Captures failed uploads for later retry (exponential backoff not yet fully implemented).
 - **Worker Pool**: Spawns 10 daemon threads to process uploads in parallel.
 - **Progress Tracking**: updates the `StateManager` with current progress.
 
 ### 4. API Client (`src/api_client.py`)
+
 Encapsulates communication with the Immich Server.
+
 - **Dual-URL Support**: Checks logical connectivity to Internal (LAN) URL first, falling back to External (WAN) URL.
 - **Asset Upload**: Handles `multipart/form-data` uploads.
 - **Album Management**: Checks if a target album exists (based on folder name) and creates it if missing.
 
 ### 5. Settings UI (`src/settings_window.py`)
+
 A standalone `PySide6` (Qt) application that runs firmly in a separate process from the daemon.
+
 - **Reasoning**: Mixing GTK (used by `pystray`/`AppIndicator`) and Qt event loops in the same process causes instability and crashes.
 - **Communication**: Reads status from `~/.cache/immich-sync/status.json` to display the progress bar.
 
 ### 6. Notifications & State
+
 - **Notifications**: Uses `notify-send` via `subprocess` to display native desktop notifications with progress bars.
 - **State Manager**: Serializes the daemon's current activity (queue size, current file) to a JSON file for the UI to consume.

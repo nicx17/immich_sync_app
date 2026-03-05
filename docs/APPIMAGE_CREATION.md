@@ -4,10 +4,10 @@ This document details the process for manually building an AppImage for the Immi
 
 ## Prerequisites
 
-1.  A Linux environment (tested on x86_64).
-2.  `wget` and standard GNU utilities (`cp`, `mkdir`, `chmod`).
-3.  System Python 3 installed.
-4.  `pip` installed (for fetching project dependencies).
+1. A Linux environment (tested on x86_64).
+2. `wget` and standard GNU utilities (`cp`, `mkdir`, `chmod`).
+3. System Python 3 installed.
+4. `pip` installed (for fetching project dependencies).
 
 ---
 
