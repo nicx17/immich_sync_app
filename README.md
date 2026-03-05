@@ -36,7 +36,7 @@ This application monitors local directories (e.g., `~/Pictures`, `~/Videos`) for
 - **File Monitoring**: Uses `inotify` to detect new files.
 - **Concurrent Uploads**: Uses multiple threads (10 workers) to process uploads.
 - **Connectivity**: Automatically switches between **Internal (LAN)** and **External (WAN)** URLs based on availability.
-- **Album Management**: Creates albums on the server based on the local folder name (e.g., `~/Pictures/Vacation 2024` -> Album "Vacation 2024").
+- **Custom Album Mapping**: Select an existing remote Immich album, type a custom album name to create, or let the app automatically create albums based on the local folder name (e.g., `~/Pictures/Vacation 2024` -> Album "Vacation 2024").
 - **One-Way Sync**: Uploads media without modifying local files.
 - **Security**: Stores the API Key in the system keyring (libsecret/KWallet).
 - **Desktop Integration**:

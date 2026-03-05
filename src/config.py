@@ -67,4 +67,12 @@ class Config:
     
     @property
     def watch_paths(self):
-        return self.data.get("watch_paths", [])
+        paths = self.data.get("watch_paths", [])
+        # Normalise to list of dicts if they are just strings (backwards compatibility)
+        normalized = []
+        for p in paths:
+            if isinstance(p, str):
+                normalized.append({"path": p, "album_id": None, "album_name": ""})
+            elif isinstance(p, dict):
+                normalized.append(p)
+        return normalized

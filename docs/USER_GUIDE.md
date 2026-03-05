@@ -42,7 +42,7 @@ If you didn't configure the application on the first run, right-click the tray i
 1. Under **Watch Folders**, click **+ Add Folder**.
 2. Select a local directory (e.g., `~/Pictures`, `~/Videos/Exports`).
 3. The application will monitor these folders recursively (including all sub-folders).
-4. *Smart Albums Feature*: If you drop files into `~/Pictures/Vacation`, the app will automatically create an album in Immich named "Vacation" and add the photos to it!
+4. *Smart Album Selection*: By default, if you drop files into `~/Pictures/Vacation`, the app will automatically create an album in Immich named "Vacation". You can also map specific watch folders directly to existing Immich albums by selecting them from the dropdown menu, or type a custom new album name to be created automatically.
 
 ---
 

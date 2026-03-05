@@ -11,3 +11,8 @@ X-GNOME-Autostart-enabled=true
 StartupNotify=false
 # Matches the window class set in src/settings_main.py
 StartupWMClass=immich-sync.desktop
+Actions=Settings;
+
+[Desktop Action Settings]
+Name=Open Settings
+Exec=/path/to/python3 /path/to/immich-sync/src/main.py --settings

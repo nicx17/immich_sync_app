@@ -162,6 +162,20 @@ class ImmichApiClient:
             logging.error(f"Network Error during upload: {e}")
             return None
 
+    def get_albums(self):
+        """
+        Returns a list of dictionaries with 'id' and 'albumName' 
+        for UI presentation.
+        """
+        if not self.albums_fetched:
+            self._fetch_all_albums()
+            
+        if not self.active_url or not self.albums_fetched:
+             return []
+             
+        # Return directly from cache, recreating the map structure for UI
+        return [{"id": v, "albumName": k} for k, v in self.album_cache.items()]
+
     def _fetch_all_albums(self):
         """
         Fetches all owned albums.

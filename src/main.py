@@ -3,6 +3,8 @@ import sys
 import os
 import logging
 import signal
+import socket
+import subprocess
 
 from log_setup import setup_logging
 setup_logging()
@@ -16,11 +18,40 @@ os.environ["GDK_BACKEND"] = "x11"
 from monitor import Monitor
 from config import Config
 
+def check_single_instance_or_run_settings(args):
+    """
+    Ensures only one daemon runs. If another is already running, it forwards
+    any relevant commands (like opening settings).
+    """
+    lock_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        lock_socket.bind('\0immich-sync-daemon-lock')
+        
+        # If we got the lock, and they specifically ONLY asked for settings,
+        # we can just launch settings_main.py and keep daemon running if we want,
+        # but normally if they ask for settings and daemon isn't running, we just run daemon
+        # and open settings.
+        if args.settings:
+            script_path = os.path.join(os.path.dirname(__file__), "settings_main.py")
+            subprocess.Popen([sys.executable, script_path])
+        return lock_socket
+    except socket.error:
+        logging.info("Immich Auto-Sync daemon is already running.")
+        # If daemon is running and user clicked launcher, open settings.
+        script_path = os.path.join(os.path.dirname(__file__), "settings_main.py")
+        print("Daemon is already running. Opening settings window instead.")
+        proc = subprocess.Popen([sys.executable, script_path])
+        proc.wait() # Block until the settings window closes or forwards its request
+        sys.exit(0)
+
 def main():
     parser = argparse.ArgumentParser(description="Immich Sync - Linux Background Daemon")
     parser.add_argument("path", nargs="?", help="Override watch path (optional)", default=None)
     parser.add_argument("--no-tray", action="store_true", help="Run in terminal mode without system tray")
+    parser.add_argument("--settings", action="store_true", help="Launch settings window directly")
     args = parser.parse_args()
+
+    _lock = check_single_instance_or_run_settings(args)
 
     # Load configuration
     config = Config()

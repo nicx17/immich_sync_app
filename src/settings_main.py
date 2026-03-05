@@ -6,6 +6,7 @@ setup_logging()
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from settings_window import SettingsWindow
 
 def main():
@@ -22,9 +23,44 @@ def main():
 
     app = QApplication(sys.argv)
     
-    # Run the window
+    SERVER_NAME = "immich-sync-settings-ipc-v1"
+    
+    # Try connecting to existing instance
+    socket = QLocalSocket()
+    socket.connectToServer(SERVER_NAME)
+    if socket.waitForConnected(500):
+        logging.info("Settings window is already running. Forwarding request and exiting.")
+        msg = "about" if "--about" in sys.argv else "show"
+        socket.write(msg.encode('utf-8'))
+        socket.waitForBytesWritten()
+        socket.disconnectFromServer()
+        sys.exit(0)
+
+    # We are the single instance, so run the server
+    QLocalServer.removeServer(SERVER_NAME)
+    server = QLocalServer()
+    server.listen(SERVER_NAME)
+
     window = SettingsWindow()
     window.show()
+
+    def handle_new_connection():
+        client = server.nextPendingConnection()
+        if client:
+            client.waitForReadyRead(500)
+            msg = client.readAll().data().decode('utf-8')
+            
+            # Bring window to front
+            window.setWindowState(window.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
+            window.raise_()
+            window.activateWindow()
+            
+            if msg == "about":
+                window.show_about_dialog()
+            
+            client.disconnectFromServer()
+
+    server.newConnection.connect(handle_new_connection)
 
     if "--about" in sys.argv:
         window.show_about_dialog()

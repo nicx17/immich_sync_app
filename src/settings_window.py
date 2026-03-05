@@ -1,7 +1,8 @@
 import sys
 import os
 import logging
-from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
+from PySide6.QtWidgets import (
+    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                                QLabel, QLineEdit, QPushButton, QListWidget, 
                                QListWidgetItem, QMessageBox, QFileDialog, QFormLayout, QProgressBar, QTextEdit, QDialog)
 from PySide6.QtGui import QIcon
@@ -210,7 +211,12 @@ class SettingsWindow(QWidget):
         watch_header.setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff; margin-top: 10px; margin-bottom: 5px;")
         layout.addWidget(watch_header)
         
-        self.path_list = QListWidget()
+        self.path_list = QTableWidget(0, 2)
+        self.path_list.setHorizontalHeaderLabels(["Folder Path", "Target Immich Album"])
+        self.path_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.path_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.path_list.setSelectionBehavior(QTableWidget.SelectRows)
+        self.path_list.setEditTriggers(QTableWidget.NoEditTriggers)
         layout.addWidget(self.path_list)
         
         path_btn_layout = QHBoxLayout()
@@ -257,6 +263,20 @@ class SettingsWindow(QWidget):
             "<p><a href='https://github.com/nicx17/immich_sync_app'>https://github.com/nicx17/immich_sync_app</a></p>")
 
 
+    def _fetch_remote_albums(self):
+        internal = self.config.internal_url
+        external = self.config.external_url
+        api_key = self.config.get_api_key()
+        if api_key and (internal or external):
+            client = ImmichApiClient(internal, external, api_key)
+            # Try to fetch without failing hard
+            try:
+                if client.check_connection():
+                    return client.get_albums()
+            except Exception:
+                pass
+        return []
+
     def _load_values(self):
         self.internal_url_input.setText(self.config.internal_url)
         self.external_url_input.setText(self.config.external_url)
@@ -265,22 +285,63 @@ class SettingsWindow(QWidget):
         if api_key:
             self.api_key_input.setText(api_key)
             
-        self.path_list.clear()
-        for path in self.config.watch_paths:
-            self.path_list.addItem(path)
+        # Try to fetch albums for the dropdown
+        self.remote_albums = self._fetch_remote_albums()
+            
+        self.path_list.setRowCount(0)
+        for p in self.config.watch_paths:
+            if isinstance(p, dict):
+                self._add_path_to_table(p["path"], p.get("album_id"), p.get("album_name"))
+            else:
+                self._add_path_to_table(p, None, None)
+
+    def _add_path_to_table(self, folder, current_album_id=None, current_album_name=None):
+        row = self.path_list.rowCount()
+        self.path_list.insertRow(row)
+        
+        path_item = QTableWidgetItem(folder)
+        self.path_list.setItem(row, 0, path_item)
+        
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.setInsertPolicy(QComboBox.NoInsert)
+        combo.setToolTip("Select an existing album, or type a new album name to create.")
+        
+        combo.addItem("Default (Folder Name)", userData=None)
+        
+        # Populate with remote albums
+        if hasattr(self, 'remote_albums') and self.remote_albums:
+            for album in self.remote_albums:
+                combo.addItem(album['albumName'], userData=album['id'])
+                
+        # Set selection if it exists
+        if current_album_id:
+            idx = combo.findData(current_album_id)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+        elif current_album_name and current_album_name != "Default (Folder Name)":
+            # If there's no ID, but a custom name was typed, show it
+            combo.setCurrentText(current_album_name)
+        
+        self.path_list.setCellWidget(row, 1, combo)
 
     def add_path(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder to Watch")
         if folder:
             # Check if already exists
-            items = [self.path_list.item(i).text() for i in range(self.path_list.count())]
+            items = []
+            for i in range(self.path_list.rowCount()):
+                item = self.path_list.item(i, 0)
+                if item:
+                    items.append(item.text())
+                    
             if folder not in items:
-                self.path_list.addItem(folder)
+                self._add_path_to_table(folder)
 
     def remove_path(self):
         current_row = self.path_list.currentRow()
         if current_row >= 0:
-            self.path_list.takeItem(current_row)
+            self.path_list.removeRow(current_row)
 
     def test_connection(self):
         internal = self.internal_url_input.text().strip()
@@ -332,8 +393,33 @@ class SettingsWindow(QWidget):
         
         # Collect paths
         paths = []
-        for i in range(self.path_list.count()):
-            paths.append(self.path_list.item(i).text())
+        for i in range(self.path_list.rowCount()):
+            path_item = self.path_list.item(i, 0)
+            if not path_item: continue
+            folder = path_item.text()
+            
+            combo = self.path_list.cellWidget(i, 1)
+            if combo:
+                album_name = combo.currentText().strip()
+                # Check if this exact text exists in the list to determine if it's custom
+                idx = combo.findText(album_name)
+                if idx >= 0:
+                    album_id = combo.itemData(idx)
+                else:
+                    album_id = None # Custom text implies a new uncreated album
+                
+                if not album_name:
+                    album_name = "Default (Folder Name)"
+            else:
+                album_name = "Default (Folder Name)"
+                album_id = None
+            
+            paths.append({
+                "path": folder,
+                "album_id": album_id,
+                "album_name": album_name
+            })
+            
         self.config.data["watch_paths"] = paths
         
         logging.info(f"Saving {len(paths)} watch paths: {paths}")

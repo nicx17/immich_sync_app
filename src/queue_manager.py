@@ -171,17 +171,22 @@ class QueueManager:
             logging.info(f"Asset already exists on server: {file_path}")
             return True
 
-        # 2. Determine Album Name
-        # Use parent folder name relative to watch path root would be ideal, 
-        # but for now just immediate parent directory name is simple and effective.
-        parent_dir = os.path.basename(os.path.dirname(file_path))
-        album_name = parent_dir
+        # 2. Determine Album Name and ID
+        config = file_info.get('config', {})
+        album_id = config.get('album_id')
+        album_name = config.get('album_name')
         
-        logging.info(f"Preparing to add '{file_path}' to album '{album_name}'")
+        # Determine fallback name if no explicit config provided
+        if not album_id and (not album_name or album_name == "Default (Folder Name)"):
+            parent_dir = os.path.basename(os.path.dirname(file_path))
+            album_name = parent_dir
+            
+        logging.info(f"Preparing to add '{file_path}' to album '{album_name}' (ID: {album_id})")
         
         try:
-            # 3. Get or Create Album
-            album_id = self.api_client.get_or_create_album(album_name)
+            # 3. Get or Create Album if ID isn't known
+            if not album_id:
+                album_id = self.api_client.get_or_create_album(album_name)
             
             if album_id:
                 # 4. Add to Album

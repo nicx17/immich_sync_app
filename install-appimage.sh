@@ -42,7 +42,7 @@ gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 echo "Creating desktop entry..."
 cat > "$USER_APPS/$APP_NAME.desktop" <<DESKTOP
 [Desktop Entry]
-Name=Immich Sync
+Name=Immich Auto-Sync
 Comment=Automatic background sync for Immich
 Exec=$TARGET_APPIMAGE
 Icon=$APP_NAME
@@ -50,7 +50,12 @@ Terminal=false
 Type=Application
 Categories=Utility;Network;
 StartupNotify=false
-StartupWMClass=immich-sync
+StartupWMClass=immich-sync.desktop
+Actions=Settings;
+
+[Desktop Action Settings]
+Name=Open Settings
+Exec=$TARGET_APPIMAGE --settings
 DESKTOP
 chmod +x "$USER_APPS/$APP_NAME.desktop"
 

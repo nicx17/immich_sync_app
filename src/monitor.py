@@ -20,8 +20,10 @@ class ImmichEventHandler(FileSystemEventHandler):
     Only processes files with allowed extensions and ignores others (like .xmp sidecars).
     """
 
-    def __init__(self, queue_manager):
+    def __init__(self, queue_manager, path_config=None):
         self.queue_manager = queue_manager
+        # Mapping mapping from tracked base path -> config dict (e.g. {'album_id': '...', 'album_name': '...'})
+        self.path_config = path_config or {}
         # Limit concurrent file checks to avoid thread explosion on bulk copy
         self.executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="FileScanner")
     
@@ -39,9 +41,16 @@ class ImmichEventHandler(FileSystemEventHandler):
 
         logging.info(f"New file change detected: {file_path}")
         # Offload checks to a thread pool to avoid blocking the observer or spawning unlimited threads
-        self.executor.submit(self._process_file, file_path)
+        # find corresponding configured path
+        matched_config = None
+        for base_path, conf in self.path_config.items():
+            if file_path.startswith(base_path):
+                matched_config = conf
+                break
+                
+        self.executor.submit(self._process_file, file_path, matched_config)
 
-    def _process_file(self, file_path):
+    def _process_file(self, file_path, path_config=None):
         if self.wait_for_file_completion(file_path):
             checksum = calculate_checksum(file_path)
             if checksum:
@@ -49,7 +58,8 @@ class ImmichEventHandler(FileSystemEventHandler):
                 # Add to upload queue
                 task = {
                     'path': file_path,
-                    'checksum': checksum
+                    'checksum': checksum,
+                    'config': path_config
                 }
                 self.queue_manager.add_to_queue(task)
             else:
@@ -98,9 +108,17 @@ class Monitor:
     def start(self, blocking=True):
         self.queue_manager.start()
 
-        event_handler = ImmichEventHandler(self.queue_manager) # Pass queue manager
+        path_config_map = {}
+        for p in self.paths_to_watch:
+             if isinstance(p, dict):
+                 path_config_map[p["path"]] = p
+             else:
+                 path_config_map[p] = {"path": p}
+
+        event_handler = ImmichEventHandler(self.queue_manager, path_config_map)
         
-        for path in self.paths_to_watch:
+        for p in self.paths_to_watch:
+            path = p["path"] if isinstance(p, dict) else p
             if not os.path.exists(path):
                 logging.error(f"Error: The directory {path} does not exist. Skipping.")
                 continue

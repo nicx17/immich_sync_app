@@ -37,6 +37,11 @@ Type=Application
 Categories=Utility;Network;
 Comment=Automatic background sync for Immich
 Terminal=false
+Actions=Settings;
+
+[Desktop Action Settings]
+Name=Open Settings
+Exec=immich-sync --settings
 EOF
 cp AppDir/com.nickcardoso.immich_sync.desktop AppDir/usr/share/applications/com.nickcardoso.immich_sync.desktop
 

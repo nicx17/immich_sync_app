@@ -64,7 +64,7 @@ Encapsulates communication with the Immich Server.
 
 - **Dual-URL Support**: Checks logical connectivity to Internal (LAN) URL first, falling back to External (WAN) URL.
 - **Asset Upload**: Handles `multipart/form-data` uploads.
-- **Album Management**: Checks if a target album exists (based on folder name) and creates it if missing.
+- **Album Management**: Uploads are mapped to a configured `album_id`, a custom `album_name`, or dynamically matches the immediate parent folder name. The system queries the `ApiClient` to resolve or create the missing album dynamically over REST.
 
 ### 5. Settings UI (`src/settings_window.py`)
 
