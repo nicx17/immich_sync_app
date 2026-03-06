@@ -45,6 +45,7 @@ class ImmichApiClient:
             return True
             
         logging.error("Could not connect to Immich Server.")
+        self.active_url = None
         return False
 
     def _ping(self, url: str) -> bool:
@@ -59,8 +60,16 @@ class ImmichApiClient:
             # Short timeout for the ping
             response = self.session.get(target, timeout=2)
             if response.status_code == 200:
-                logging.debug(f"Ping Success: {target}")
-                return True
+                try:
+                    data = response.json()
+                    if data.get("res", "").lower() == "pong":
+                        logging.debug(f"Ping Success: {target}")
+                        return True
+                except ValueError:
+                    pass
+                
+                logging.warning(f"Ping Failed (Not a valid Immich response): {target}")
+                return False
             else:
                 logging.warning(f"Ping Failed ({response.status_code}): {target}")
                 return False
@@ -160,6 +169,7 @@ class ImmichApiClient:
 
         except requests.RequestException as e:
             logging.error(f"Network Error during upload: {e}")
+            self.active_url = None  # Force re-connection on next try
             return None
 
     def get_albums(self):
@@ -209,6 +219,9 @@ class ImmichApiClient:
                 logging.info(f"Cached {len(self.album_cache)} albums.")
             else:
                 logging.error(f"Failed to fetch albums: {response.status_code} {response.text}")
+        except requests.RequestException as e:
+            logging.error(f"Network error fetching albums: {e}")
+            self.active_url = None
         except Exception as e:
             logging.error(f"Error fetching albums: {e}")
 
@@ -242,6 +255,10 @@ class ImmichApiClient:
             else:
                 logging.error(f"Failed to create album: {response.status_code} {response.text}")
                 return None
+        except requests.RequestException as e:
+            logging.error(f"Network error creating album: {e}")
+            self.active_url = None
+            return None
         except Exception as e:
             logging.error(f"Error creating album: {e}")
             return None
@@ -293,6 +310,10 @@ class ImmichApiClient:
             else:
                 logging.error(f"Failed to add assets to album: {response.status_code} {response.text}")
                 return False
+        except requests.RequestException as e:
+            logging.error(f"Network error adding assets to album: {e}")
+            self.active_url = None
+            return False
         except Exception as e:
             logging.error(f"Error adding assets to album: {e}")
             return False

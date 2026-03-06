@@ -54,15 +54,16 @@ Uses the `watchdog` library to listen for filesystem events (`IN_CREATE`, `IN_MO
 A thread-safe orchestrator for upload tasks.
 
 - **Upload Queue**: A FIFO queue receiving file tasks from the Monitor.
-- **Retry Queue**: Captures failed uploads for later retry (exponential backoff not yet fully implemented).
-- **Worker Pool**: Spawns 10 daemon threads to process uploads in parallel.
+- **Retry Queue**: Captures failed uploads and safely persists them via `~/.cache/immich-sync/retries.json` to guarantee offline restorations across soft reboots.
+- **Worker Pool**: Spawns 10 daemon threads to process uploads in parallel, coupled with a `Retry-Worker` repeating every 60 seconds.
 - **Progress Tracking**: updates the `StateManager` with current progress.
 
 ### 4. API Client (`src/api_client.py`)
 
 Encapsulates communication with the Immich Server.
 
-- **Dual-URL Support**: Checks logical connectivity to Internal (LAN) URL first, falling back to External (WAN) URL.
+- **Dual-URL Support**: Checks logical connectivity to Internal (LAN) URL first, falling back to External (WAN) URL depending on toggle switch states in the local Config. Includes captive portal verification checks.
+- **Failover State Reset**: Automatically clears active TCP URL caches on request timeouts so the LAN vs WAN exploration triggers accurately immediately after connection drops.
 - **Asset Upload**: Handles `multipart/form-data` uploads.
 - **Album Management**: Uploads are mapped to a configured `album_id`, a custom `album_name`, or dynamically matches the immediate parent folder name. The system queries the `ApiClient` to resolve or create the missing album dynamically over REST.
 

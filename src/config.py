@@ -24,7 +24,9 @@ class Config:
              return {
                  "watch_paths": [os.path.join(os.path.expanduser("~"), "Pictures")],
                  "internal_url": "http://immich-server:2283",
-                 "external_url": "https://immich.example.com"
+                 "external_url": "https://immich.example.com",
+                 "internal_url_enabled": True,
+                 "external_url_enabled": True
              }
              
         try:
@@ -57,6 +59,14 @@ class Config:
             logging.error(f"Keyring error: {e}")
             
     # Properties for easy access
+    @property
+    def internal_url_enabled(self):
+        return self.data.get("internal_url_enabled", True)
+        
+    @property
+    def external_url_enabled(self):
+        return self.data.get("external_url_enabled", True)
+        
     @property
     def internal_url(self):
         return self.data.get("internal_url", "")

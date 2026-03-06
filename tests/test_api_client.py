@@ -18,7 +18,7 @@ def client():
 def test_ping_success(client):
     """Test successful ping."""
     with requests_mock.Mocker() as m:
-        m.get("http://lan:2283/api/server/ping", text="pong", status_code=200)
+        m.get("http://lan:2283/api/server/ping", json={"res": "pong"}, status_code=200)
         assert client._ping("http://lan:2283") is True
 
 def test_ping_failure(client):
@@ -30,10 +30,10 @@ def test_ping_failure(client):
 def test_check_connection_lan_preferred(client):
     """Test that LAN is chosen first if available."""
     with requests_mock.Mocker() as m:
-        m.get("http://lan:2283/api/server/ping", text="pong", status_code=200)
+        m.get("http://lan:2283/api/server/ping", json={"res": "pong"}, status_code=200)
         
         # WAN might also work, but shouldn't be called if LAN works
-        m.get("https://wan.example.com/api/server/ping", text="pong", status_code=200)
+        m.get("https://wan.example.com/api/server/ping", json={"res": "pong"}, status_code=200)
         
         client.check_connection()
         assert client.active_url == "http://lan:2283"
@@ -42,7 +42,7 @@ def test_check_connection_wan_fallback(client):
     """Test fallback to WAN if LAN fails."""
     with requests_mock.Mocker() as m:
         m.get("http://lan:2283/api/server/ping", exc=requests.exceptions.ConnectTimeout)
-        m.get("https://wan.example.com/api/server/ping", text="pong", status_code=200)
+        m.get("https://wan.example.com/api/server/ping", json={"res": "pong"}, status_code=200)
         
         client.check_connection()
         assert client.active_url == "https://wan.example.com"
@@ -117,3 +117,72 @@ def test_upload_asset_server_error(client):
             
             result = client.upload_asset("/tmp/error.jpg", "hash")
             assert result is None # Retry needed
+
+def test_upload_asset_no_connection(client):
+    """Test upload fails gracefully when there's no connection available."""
+    # Force no connection state
+    client.active_url = None
+    with patch.object(client, 'check_connection', return_value=False):
+        result = client.upload_asset("/tmp/no_conn.jpg", "hash")
+        assert result is None
+
+def test_upload_asset_stat_error(client):
+    """Test upload fails gracefully when os.stat throws an OSError."""
+    client.active_url = "http://immich:2283"
+    with patch('os.stat', side_effect=OSError("File missing")):
+        result = client.upload_asset("/tmp/missing.jpg", "hash")
+        assert result is None
+
+def test_upload_asset_network_exception(client):
+    """Test handling of a fundamental Network Error (e.g. ConnectionResetError)."""
+    client.active_url = "http://immich:2283"
+    with requests_mock.Mocker() as m:
+        m.post("http://immich:2283/api/assets", exc=requests.exceptions.ConnectionError("Connection Failed"))
+        
+        mock_file_content = io.BytesIO(b"upload fails")
+        with patch('os.stat') as mock_stat, \
+             patch('builtins.open', return_value=mock_file_content), \
+             patch('requests.sessions.get_netrc_auth', return_value=None):
+             
+            mock_stat.return_value.st_ctime = 1672531200
+            mock_stat.return_value.st_mtime = 1672531200
+            
+            result = client.upload_asset("/tmp/net_error.jpg", "hash")
+            assert result is None
+            assert client.active_url is None # Ensure active_url is cleared on network failure
+
+def test_upload_asset_too_large(client):
+    """Test handling of 413 Payload Too Large."""
+    client.active_url = "http://immich:2283"
+    with requests_mock.Mocker() as m:
+        m.post("http://immich:2283/api/assets", status_code=413)
+        mock_file_content = io.BytesIO(b"large data")
+        
+        with patch('os.stat') as mock_stat, patch('builtins.open', return_value=mock_file_content), patch('requests.sessions.get_netrc_auth', return_value=None):
+            mock_stat.return_value.st_ctime = 1672531200
+            mock_stat.return_value.st_mtime = 1672531200
+            result = client.upload_asset("/tmp/huge.jpg", "hash")
+            assert result is None
+
+def test_get_albums_fetches(client):
+    """Test if get_albums triggers a fetch and correctly parses standard albums."""
+    client.active_url = "http://immich:2283"
+    with requests_mock.Mocker() as m:
+        mock_response = [
+            {"id": "album-123", "albumName": "Summer Trip"},
+            {"id": "album-456", "albumName": "Family"}
+        ]
+        m.get("http://immich:2283/api/albums", json=mock_response, status_code=200)
+        
+        albums = client.get_albums()
+        
+        assert len(albums) == 2
+        
+        # Verify internal mapping populated
+        assert client.album_cache["Summer Trip"] == "album-123"
+        assert client.album_cache["Family"] == "album-456"
+        assert client.albums_fetched is True
+        
+        # Check standard dictionary return structure
+        assert {"id": "album-123", "albumName": "Summer Trip"} in albums
+

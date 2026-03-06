@@ -4,12 +4,56 @@ import logging
 from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                                QLabel, QLineEdit, QPushButton, QListWidget, 
-                               QListWidgetItem, QMessageBox, QFileDialog, QFormLayout, QProgressBar, QTextEdit, QDialog)
-from PySide6.QtGui import QIcon
-from PySide6.QtCore import Qt, QTimer
+                               QListWidgetItem, QMessageBox, QFileDialog, QFormLayout, QProgressBar, QTextEdit, QDialog, QCheckBox)
+from PySide6.QtGui import QIcon, QPainter, QColor, QBrush, QPen
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, Property, QRectF
 from config import Config
 from api_client import ImmichApiClient
 from state_manager import StateManager
+
+class SlideSwitch(QCheckBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(50, 26)
+        self.setCursor(Qt.PointingHandCursor)
+        self._position = 3
+        
+        self.animation = QPropertyAnimation(self, b"position")
+        self.animation.setDuration(150)
+        
+        self.stateChanged.connect(self.setup_animation)
+
+    @Property(float)
+    def position(self):
+        return self._position
+
+    @position.setter
+    def position(self, pos):
+        self._position = pos
+        self.update()
+
+    def setup_animation(self, value):
+        self.animation.stop()
+        if value:
+            self.animation.setEndValue(27)
+        else:
+            self.animation.setEndValue(3)
+        self.animation.start()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Draw background
+        bg_color = QColor("#4CAF50") if self.isChecked() else QColor("#555555")
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(Qt.NoPen)
+        painter.drawRoundedRect(0, 0, self.width(), self.height(), 13, 13)
+        
+        # Draw handle
+        painter.setBrush(QBrush(QColor("#FFFFFF")))
+        painter.drawEllipse(QRectF(self._position, 3, 20, 20))
+
 
 class SettingsWindow(QWidget):
     def __init__(self, config_manager=None, monitor=None):
@@ -166,13 +210,27 @@ class SettingsWindow(QWidget):
         conn_layout.setSpacing(15)
         conn_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         
+        # Internal URL Box
+        internal_layout = QHBoxLayout()
+        self.internal_url_enabled = SlideSwitch()
+        self.internal_url_enabled.setChecked(True)
+        self.internal_url_enabled.stateChanged.connect(self._validate_toggles)
         self.internal_url_input = QLineEdit()
         self.internal_url_input.setPlaceholderText("http://192.168.1.10:2283")
-        conn_layout.addRow("Internal URL (LAN):", self.internal_url_input)
+        internal_layout.addWidget(self.internal_url_enabled)
+        internal_layout.addWidget(self.internal_url_input)
+        conn_layout.addRow("Internal URL (LAN):", internal_layout)
         
+        # External URL Box
+        external_layout = QHBoxLayout()
+        self.external_url_enabled = SlideSwitch()
+        self.external_url_enabled.setChecked(True)
+        self.external_url_enabled.stateChanged.connect(self._validate_toggles)
         self.external_url_input = QLineEdit()
         self.external_url_input.setPlaceholderText("https://immich.example.com")
-        conn_layout.addRow("External URL (WAN):", self.external_url_input)
+        external_layout.addWidget(self.external_url_enabled)
+        external_layout.addWidget(self.external_url_input)
+        conn_layout.addRow("External URL (WAN):", external_layout)
         
         self.api_key_input = QLineEdit()
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
@@ -257,15 +315,15 @@ class SettingsWindow(QWidget):
         QMessageBox.about(self, "About Immich Auto-Sync", 
             "<h3>Immich Auto-Sync</h3>"
             "<p>A daemon-based synchronization tool for automatically uploading media files to an Immich server.</p>"
-            "<p>Version: 0.2.0-beta<br/>"
+            "<p>Version: 0.2.0<br/>"
             "License: GPLv3</p>"
             "<p>Icon by Round Icons on Unsplash.</p>"
             "<p><a href='https://github.com/nicx17/immich_sync_app'>https://github.com/nicx17/immich_sync_app</a></p>")
 
 
     def _fetch_remote_albums(self):
-        internal = self.config.internal_url
-        external = self.config.external_url
+        internal = self.config.internal_url if self.config.internal_url_enabled else ""
+        external = self.config.external_url if self.config.external_url_enabled else ""
         api_key = self.config.get_api_key()
         if api_key and (internal or external):
             client = ImmichApiClient(internal, external, api_key)
@@ -277,9 +335,34 @@ class SettingsWindow(QWidget):
                 pass
         return []
 
+    def _validate_toggles(self):
+        if not self.internal_url_enabled.isChecked() and not self.external_url_enabled.isChecked():
+            # If user unchecks the last one, revert it
+            if self.sender() == self.internal_url_enabled:
+                self.internal_url_enabled.setChecked(True)
+            else:
+                self.external_url_enabled.setChecked(True)
+            QMessageBox.warning(self, "Invalid Selection", "At least one URL (Internal or External) must be enabled.")
+            
+        self.internal_url_input.setEnabled(self.internal_url_enabled.isChecked())
+        self.external_url_input.setEnabled(self.external_url_enabled.isChecked())
+
     def _load_values(self):
+        # Temporarily block signals when loading to avoid validation popups
+        self.internal_url_enabled.blockSignals(True)
+        self.external_url_enabled.blockSignals(True)
+        
         self.internal_url_input.setText(self.config.internal_url)
         self.external_url_input.setText(self.config.external_url)
+        
+        self.internal_url_enabled.setChecked(self.config.internal_url_enabled)
+        self.external_url_enabled.setChecked(self.config.external_url_enabled)
+        
+        self.internal_url_input.setEnabled(self.config.internal_url_enabled)
+        self.external_url_input.setEnabled(self.config.external_url_enabled)
+        
+        self.internal_url_enabled.blockSignals(False)
+        self.external_url_enabled.blockSignals(False)
         
         api_key = self.config.get_api_key()
         if api_key:
@@ -344,52 +427,61 @@ class SettingsWindow(QWidget):
             self.path_list.removeRow(current_row)
 
     def test_connection(self):
-        internal = self.internal_url_input.text().strip()
-        external = self.external_url_input.text().strip()
+        internal = self.internal_url_input.text().strip() if self.internal_url_enabled.isChecked() else ""
+        external = self.external_url_input.text().strip() if self.external_url_enabled.isChecked() else ""
         api_key = self.api_key_input.text().strip()
         
         logging.info(f"Testing connectivity to Internal: {internal}, External: {external}")
         
-        # Use transient client for testing
-        client = ImmichApiClient(internal, external, api_key)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.setEnabled(False) # Disable window interactions
         
-        # Test Internal explicitly
-        internal_status = "N/A"
-        internal_ok = False
-        if internal:
-            logging.info(f"Testing Internal URL: {client.internal_url}")
-            internal_ok = client._ping(client.internal_url)
-            internal_status = "OK" if internal_ok else "FAILED"
+        try:
+            # Use transient client for testing
+            client = ImmichApiClient(internal, external, api_key)
             
-        # Test External explicitly
-        external_status = "N/A"
-        external_ok = False
-        if external:
-            logging.info(f"Testing External URL: {client.external_url}")
-            external_ok = client._ping(client.external_url)
-            external_status = "OK" if external_ok else "FAILED"
+            # Test Internal explicitly
+            internal_status = "N/A"
+            internal_ok = False
+            if internal:
+                logging.info(f"Testing Internal URL: {client.internal_url}")
+                internal_ok = client._ping(client.internal_url)
+                internal_status = "OK" if internal_ok else "FAILED"
+                
+            # Test External explicitly
+            external_status = "N/A"
+            external_ok = False
+            if external:
+                logging.info(f"Testing External URL: {client.external_url}")
+                external_ok = client._ping(client.external_url)
+                external_status = "OK" if external_ok else "FAILED"
 
-        # Construct Report
-        report = (
-            f"Internal Connection: {internal_status}\n"
-            f"External Connection: {external_status}\n"
-        )
-        
-        if internal_ok:
-            report += f"\nActive Mode: LAN ({client.internal_url})"
-            QMessageBox.information(self, "Connection Test - Success", report)
-        elif external_ok:
-            report += f"\nActive Mode: WAN ({client.external_url})"
-            QMessageBox.information(self, "Connection Test - Success", report)
-        else:
-            report += "\nCould not connect to Immich at either address."
-            QMessageBox.critical(self, "Connection Test - Failed", report)
+            # Construct Report
+            report = (
+                f"Internal Connection: {internal_status}\n"
+                f"External Connection: {external_status}\n"
+            )
+            
+            if internal_ok:
+                report += f"\nActive Mode: LAN ({client.internal_url})"
+                QMessageBox.information(self, "Connection Test - Success", report)
+            elif external_ok:
+                report += f"\nActive Mode: WAN ({client.external_url})"
+                QMessageBox.information(self, "Connection Test - Success", report)
+            else:
+                report += "\nCould not connect to Immich at either address."
+                QMessageBox.critical(self, "Connection Test - Failed", report)
+        finally:
+            self.setEnabled(True)
+            QApplication.restoreOverrideCursor()
 
     def save_settings(self):
         logging.info("Saving settings...")
         # Update config object locally
         self.config.data["internal_url"] = self.internal_url_input.text().strip()
         self.config.data["external_url"] = self.external_url_input.text().strip()
+        self.config.data["internal_url_enabled"] = self.internal_url_enabled.isChecked()
+        self.config.data["external_url_enabled"] = self.external_url_enabled.isChecked()
         
         # Collect paths
         paths = []

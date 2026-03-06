@@ -27,17 +27,21 @@ The configuration is stored in a JSON file located at:
         "/home/user/DCIM" 
     ],
     "internal_url": "http://192.168.1.10:2283",
-    "external_url": "https://immich.example.com"
+    "external_url": "https://immich.example.com",
+    "internal_url_enabled": true,
+    "external_url_enabled": true
 }
 ```
 
-### Parameter Details
+### Properties
 
 | Key | Description | Example |
 | :--- | :--- | :--- |
 | `watch_paths` | A list of local directories to monitor recursively. | `["/home/user/Screenshots"]` |
 | `internal_url` | The LAN IP/Hostname of your Immich instance. Used when local connectivity is detected. | `http://192.168.1.10:2283` |
 | `external_url` | The WAN/Public URL (reverse proxy). Used when away from home. | `https://photos.mydomain.com` |
+| `internal_url_enabled` | Toggle allowing the Daemon to attempt LAN connectivity. | `true` |
+| `external_url_enabled` | Toggle allowing the Daemon to attempt WAN connectivity. | `true` |
 
 ## API Key Security
 

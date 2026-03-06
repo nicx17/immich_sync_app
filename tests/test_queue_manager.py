@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 from queue_manager import QueueManager
 
 @pytest.fixture
-def queue_manager():
+def queue_manager(tmp_path):
     """
     Fixture providing a QueueManager with mocked dependencies.
     Prevents real file I/O or API calls.
@@ -28,6 +28,8 @@ def queue_manager():
         config_instance.external_url = "https://external"
         
         qm = QueueManager()
+        # Mock the path to prevent contaminating real local system
+        qm.retry_storage_file = str(tmp_path / "mock_retries.json")
         # Ensure we don't actually spawn threads in __init__ (it doesn't, but start() does)
         return qm
 
@@ -111,3 +113,29 @@ def test_handle_duplicate_asset(queue_manager):
     # Should NOT try to add duplicate to album if we don't have an ID?
     # Current implementation: if "DUPLICATE", returns True immediately without add_to_album
     queue_manager.api_client.add_assets_to_album.assert_not_called()
+
+def test_retry_queue_restoration_to_upload(queue_manager):
+    """Test that queued images fail, move to retry, and upon restoration upload successfully."""
+    import json
+    
+    # Pre-populate a fake retry file to simulate cold-boot persistence
+    task1 = {'path': '/tmp/failed_previous_session.jpg', 'checksum': 'abc'}
+    with open(queue_manager.retry_storage_file, 'w') as f:
+         json.dump([task1], f)
+
+    # Allow mock to process it "successfully" this time when it gets to upload queue
+    queue_manager.api_client.upload_asset.return_value = "asset-restored"
+    
+    # Calling start() will trigger _load_retries() internally putting it into active retry_queue,
+    # and then the retry background-worker thread immediately pulls them and puts them in upload_queue
+    queue_manager.start()
+    
+    time.sleep(0.5)
+    
+    queue_manager.stop()
+    
+    # It should have successfully uploaded, and both queues should now be empty
+    assert queue_manager.retry_queue.empty()
+    assert queue_manager.upload_queue.empty()
+    assert queue_manager.processed_session == 1
+    queue_manager.api_client.upload_asset.assert_called_with('/tmp/failed_previous_session.jpg', 'abc')

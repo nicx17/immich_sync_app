@@ -35,7 +35,8 @@ This application monitors local directories (e.g., `~/Pictures`, `~/Videos`) for
 
 - **File Monitoring**: Uses `inotify` to detect new files.
 - **Concurrent Uploads**: Uses multiple threads (10 workers) to process uploads.
-- **Connectivity**: Automatically switches between **Internal (LAN)** and **External (WAN)** URLs based on availability.
+- **Offline Reliability**: Uploads that drop mid-flight or queue without a connection are serialized to a local cache. They safely wait out offline statuses (or a total computer reboot) and resume pushing via background workers seamlessly dynamically updating progress meters.
+- **Connectivity**: Automatically switches between **Internal (LAN)** and **External (WAN)** URLs based on availability with Captive Portal verification logic. You can selectively disable/enable these endpoints through UI toggles.
 - **Custom Album Mapping**: Select an existing remote Immich album, type a custom album name to create, or let the app automatically create albums based on the local folder name (e.g., `~/Pictures/Vacation 2024` -> Album "Vacation 2024").
 - **One-Way Sync**: Uploads media without modifying local files.
 - **Security**: Stores the API Key in the system keyring (libsecret/KWallet).
@@ -128,8 +129,8 @@ python src/main.py
 
 The first run will open the **Settings Window** (or right-click the tray icon and select "Settings").
 
-1. **Internal URL**: LAN address (e.g., `http://192.168.1.50:2283`).
-2. **External URL**: WAN/Public address (e.g., `https://photos.example.com`).
+1. **Internal URL**: LAN address (e.g., `http://192.168.1.50:2283`). This can be toggled on/off.
+2. **External URL**: WAN/Public address (e.g., `https://photos.example.com`). This can be toggled on/off.
 3. **API Key**: Generate in Immich Web UI (Account Settings > API Keys).
 4. **Watch Paths**: Add local folders to sync.
 

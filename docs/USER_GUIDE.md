@@ -26,8 +26,8 @@ If you didn't configure the application on the first run, right-click the tray i
 
 ### Connectivity & Server Details
 
-1. **Internal URL (LAN)**: Enter the local IP address of your Immich server if it sits on the same network as your desktop (e.g., `http://192.168.1.10:2283`). This allows for high-speed local transfers when you are at home.
-2. **External URL (WAN)**: Enter the public address of your server if you expose it to the internet (e.g., `https://immich.yourdomain.com`). The application will fall back to this address if you take your laptop on the road.
+1. **Internal URL (LAN)**: Enter the local IP address of your Immich server if it sits on the same network as your desktop (e.g., `http://192.168.1.10:2283`). This allows for high-speed local transfers when you are at home. You can toggle this connection mode on or off.
+2. **External URL (WAN)**: Enter the public address of your server if you expose it to the internet (e.g., `https://immich.yourdomain.com`). The application will fall back to this address if you take your laptop on the road. You can toggle this connection mode on or off using the sliding switch. Must have at least one URL toggled on.
 3. **API Key**:
     * Open your Immich Web Interface in a browser.
     * Go to **Account Settings** (profile icon in the top right) -> **API Keys**.
@@ -35,7 +35,7 @@ If you didn't configure the application on the first run, right-click the tray i
     * Copy the long string of text and paste it into the application's API Key field.
     * *Note: This key is never stored in plain text. It is saved in your system's secure keyring.*
 
-**Test Connection**: Click this button to verify that the app can successfully reach your server and to see which URL (Internal or External) it is currently using.
+**Test Connection**: Click this button to verify that the app can successfully reach your server. The test uses a wait cursor to prevent UI stalling during network exploration, explicitly verifying the valid `{"res": "pong"}` JSON payload to guarantee you are speaking to the true Immich server rather than a captive router portal. The popup will tell you exactly which toggle (Internal vs External) it successfully locked onto.
 
 ### Choosing Folders to Watch
 

@@ -5,14 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0-beta] - 2026-03-04
+## [Unreleased]
 
 ### Added
+- **Animated UI Toggles**: Added custom beautiful `SlideSwitch` CSS animations to the Settings Window allowing users to visually toggle Internal (LAN) vs External (WAN) URL behaviors on and off.
+- Config now persists `internal_url_enabled` and `external_url_enabled` booleans.
+- Expanded testing coverage for `api_client` and `config` including advanced error-state simulation and file-system failure catching.
+
+### Fixed
+- **Captive Portal Bug Fix**: The API Ping routing logic now strictly requires a `{"res": "pong"}` JSON payload resolution to avoid falsely pinging local cafe Wi-Fi captive portals and breaking sync loops.
+- **Failover Cache Reset Bug Fix**: Fixed an issue where a timeout connection to the Internal URL loop would not flush the active API endpoint causing the logic to effectively loop blindly instead of bouncing sequentially to the External URL.
+- Fixed critical App UI freezing (App Not Responding) during testing connection pings syncing via a synchronous socket process - now visually wraps tests via Qt override wait cursors.
+- **Queue Offline Resolution Fix**: Fixed a data-loss bug that permanently flushed queued failed uploads if the user closed the window. Implemented `~/.cache/immich-sync/retries.json` to seamlessly save pending cache limits, accompanied by an explicit background locking worker loop restoring files successfully.
+
+## [0.2.0] - 2026-03-06
+
+### Added
+
 
 - AppImage distribution! A new fully packaged AppImage version of `immich-sync` is now available, bundling `PySide6` and all Python dependencies into a single, highly portable executable.
 - Introduced `AI_CONTEXT.md` to help agentic tools understand the application's unique multi-threaded API architecture, system constraints, and X11/Wayland workarounds.
 
 ### Fixed
+
 
 - Fixed critical Qt 6 Wayland connection error where the DBus portal rejected window launching (`Could not register app ID`). Application metadata is now strictly set before Qt engine initialization.
 - Fixed a metadata warning regarding the `.desktop` suffix in Qt's `setDesktopFileName` handler.
@@ -21,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Promoted project status from Alpha to Beta (`v0.2.0-beta`).
+- Promoted project status from Alpha to properly release `v0.2.0` (removed beta tags completely from code structure and internal About tags).
+- Modified API `_ping` function tests from testing generic text formats to raw JSON validation checks.
 - Added robust direct-file editing scripts to fully automate AppImage extraction, generation, and packaging (`build_test_appimage.sh`).
 - Updated PySide6 dependencies and application system documentation (`ARCHITECTURE.md` and `DEVELOPMENT.md`).
 

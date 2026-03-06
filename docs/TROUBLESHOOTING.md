@@ -32,6 +32,12 @@ If you are running on a server without a desktop session (e.g., via SSH only), `
 
 ## Logs & Diagnostics
 
+### Clearing the Upload Queue (Local Cache)
+If the application gets permanently stuck constantly trying to upload a corrupt or broken file on every start causing a queue blockage, you can manually delete the retry cache offline:
+```bash
+rm -f ~/.cache/immich-sync/retries.json
+```
+
 ### Viewing Logs (Systemd)
 If running as a service:
 ```bash

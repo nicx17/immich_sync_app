@@ -64,3 +64,14 @@
 - [ ] Build a Flathub-ready Flatpak manifest using GNOME Builder with strict `xdg-desktop-portal` filesystem constraints (`--filesystem=xdg-pictures`).
 - [ ] **Memory Optimization (GTK):** Merge the standalone PySide6 UI subprocess and daemon into a unified `Gtk.Application` loop to reduce the memory footprint by utilizing GNOME's pre-loaded shared system libraries (~50MB projected savings).
 - [ ] **Memory Optimization (GTK):** Merge the standalone UI subprocess and daemon into a unified `Gtk.Application` to drastically reduce the memory footprint by utilizing GNOME's pre-loaded shared system libraries instead of detached Qt bindings.
+
+
+## 9. fix Bugs
+
+- [x] **Bug fix:auto switch url to external when internal not available**
+- [x] **on preffered local network check** If not on the home network always use external url
+- [x] **handle ping to internal gracefully.. diagnose appnot responding behaviour** 
+- [x] **do not try to upload to local instacne unless its verified that it exists or reachable by using ping**
+
+- [ ] **investigate que behaviour**  missed images to be reuploaded once app running again
+- [ ] **Analyse api key permissions**

@@ -3,6 +3,7 @@ import queue
 import threading
 import time
 import logging
+import json
 from typing import Dict, Any, Optional
 from config import Config
 from api_client import ImmichApiClient
@@ -41,13 +42,77 @@ class QueueManager:
         
         self.worker_threads = []
         self.num_workers = 10 
+        self.retry_storage_file = os.path.expanduser("~/.cache/immich-sync/retries.json")
+        self.retry_lock = threading.Lock()
         
+    def _save_retries(self):
+        with self.retry_lock:
+            try:
+                items = list(self.retry_queue.queue)
+                tmp_file = self.retry_storage_file + f".{threading.get_ident()}.tmp"
+                os.makedirs(os.path.dirname(self.retry_storage_file), exist_ok=True)
+                with open(tmp_file, 'w') as f:
+                    json.dump(items, f)
+                os.rename(tmp_file, self.retry_storage_file)
+            except Exception as e:
+                logging.error(f"Failed to save retries: {e}")
+            
+    def _load_retries(self):
+        try:
+            if os.path.exists(self.retry_storage_file):
+                with open(self.retry_storage_file, 'r') as f:
+                    retries = json.load(f)
+                
+                for item in retries:
+                    self.retry_queue.put(item)
+                    
+                if retries:
+                    logging.info(f"Loaded {len(retries)} items into retry queue from previous session.")
+        except Exception as e:
+            logging.error(f"Failed to load retries: {e}")
+
+    def _process_retries(self):
+        """Periodically check the retry_queue and move items to upload_queue."""
+        # Process immediately on cold-boot
+        while not self.stop_event.is_set():
+            queue_size = self.retry_queue.qsize()
+            if queue_size > 0:
+                logging.info(f"Re-queuing {queue_size} failed uploads for retry...")
+                items_to_retry = []
+                while not self.retry_queue.empty():
+                    try:
+                        item = self.retry_queue.get_nowait()
+                        items_to_retry.append(item)
+                        self.retry_queue.task_done()
+                    except queue.Empty:
+                        break
+                        
+                # Update disk to reflect empty retry_queue
+                self._save_retries()
+                
+                # Push back into upload queue
+                for item in items_to_retry:
+                    self.add_to_queue(item)
+            
+            # Wait 60 seconds before checking again (or break if stopping)
+            if self.stop_event.wait(timeout=60):
+                break
+
     def start(self):
         logging.info(f"Starting Queue Manager with {self.num_workers} parallel workers...")
+        
+        # Load any persisted retries before starting threads
+        self._load_retries()
+        
         for i in range(self.num_workers):
             t = threading.Thread(target=self._process_queue, name=f"Worker-{i+1}", daemon=True)
             self.worker_threads.append(t)
             t.start()
+            
+        # Start the retry periodic worker
+        retry_thread = threading.Thread(target=self._process_retries, name="Retry-Worker", daemon=True)
+        self.worker_threads.append(retry_thread)
+        retry_thread.start()
         
     def stop(self):
         logging.info("Stopping Queue Manager...")
@@ -127,6 +192,7 @@ class QueueManager:
                     logging.warning(f"Upload FAILED: {file_info['path']} ({duration:.2f}s). Re-queuing.")
                     self.retry_queue.put(file_info)
                     logging.info(f"Retry Queue Size: {self.retry_queue.qsize()}")
+                    self._save_retries()
                 
                 self.upload_queue.task_done()
                 
