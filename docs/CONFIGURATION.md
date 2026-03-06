@@ -45,6 +45,15 @@ The configuration is stored in a JSON file located at:
 
 ## API Key Security
 
+### Required API Key Permissions
+
+When generating an API Key in the Immich Web UI (Account Settings > API Keys), you can restrict its permissions for better security. `immich-sync` requires the following minimum permissions:
+
+- **Asset**: `Read` (to check for duplicates), `Create` (to upload new media)
+- **Album**: `Read` (to list existing albums), `Create` (to create new albums), `Update` (to add uploaded media to albums)
+
+### Keyring Storage
+
 To prevent storing API keys in plain text, `immich-sync` uses the desktop's native keyring service (Libsecret on GNOME, KWallet on KDE).
 
 - **Service Name**: `immich-sync`

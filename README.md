@@ -17,11 +17,10 @@ A daemon-based synchronization tool for uploading media files from a Linux deskt
 
 This application monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files and automatically uploads them to your Immich instance. It runs as a background service and integrates with the desktop environment.
 
-> [!WARNING]
-> **This project is currently under active development and in the ALPHA phase.**
-> Features may frequently change, bugs are to be expected, and data loss or sync issues are possible. Please use with caution and report any issues!
+> [!NOTE]
+> **This project is in BETA.** Core features are stable and tested. Please report any issues or edge cases you encounter.
 
-**Status:** Alpha. Supports Immich v1.118+.
+**Status:** Beta. Supports Immich v1.118+.
 
 ## Screenshots
 
@@ -131,7 +130,7 @@ The first run will open the **Settings Window** (or right-click the tray icon an
 
 1. **Internal URL**: LAN address (e.g., `http://192.168.1.50:2283`). This can be toggled on/off.
 2. **External URL**: WAN/Public address (e.g., `https://photos.example.com`). This can be toggled on/off.
-3. **API Key**: Generate in Immich Web UI (Account Settings > API Keys).
+3. **API Key**: Generate in Immich Web UI (Account Settings > API Keys). Needs **Asset** (Read/Create) and **Album** (Read/Create/Update) permissions.
 4. **Watch Paths**: Add local folders to sync.
 
 ### 3. Automatic Start (Systemd)

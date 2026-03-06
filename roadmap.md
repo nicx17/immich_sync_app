@@ -73,5 +73,5 @@
 - [x] **handle ping to internal gracefully.. diagnose appnot responding behaviour** 
 - [x] **do not try to upload to local instacne unless its verified that it exists or reachable by using ping**
 
-- [ ] **investigate que behaviour**  missed images to be reuploaded once app running again
-- [ ] **Analyse api key permissions**
+- [x] **investigate que behaviour**  missed images to be reuploaded once app running again
+- [x] **Analyse api key permissions**
