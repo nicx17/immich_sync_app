@@ -16,25 +16,44 @@ def setup_logging():
 
     log_file = os.path.join(CONFIG_DIR, "app.log")
     
-    # Configure root logger
+    # Determine level
+    level = logging.DEBUG if os.environ.get("IMMICH_SYNC_DEBUG") == "1" else logging.INFO
+    
+    # Configure root logger with better format
+    log_format = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    date_format = '%Y-%m-%d %H:%M:%S'
+    
+    handlers = [logging.StreamHandler(sys.stdout)]
+    
+    # Only attach file handler if we want logs to disk
+    if os.environ.get("IMMICH_SYNC_NO_LOG_FILE") != "1":
+        try:
+            handlers.append(logging.handlers.RotatingFileHandler(
+                log_file, maxBytes=5*1024*1024, backupCount=2, encoding='utf-8'
+            ))
+        except Exception as e:
+            # Fallback if permissions or something fails
+            print(f"Warning: Could not setup file logging: {e}", file=sys.stderr)
+
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(process)d - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.handlers.RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=2, encoding='utf-8'),
-            logging.StreamHandler(sys.stdout)
-        ],
+        level=level,
+        format=log_format,
+        datefmt=date_format,
+        handlers=handlers,
         force=True
     )
     
-    # Optional: Lower noise from urllib3/requests
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    # Optional: Lower noise from common third-party libraries unless in strict debug mode
+    if level != logging.DEBUG:
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("watchdog").setLevel(logging.WARNING)
+        logging.getLogger("PIL").setLevel(logging.WARNING)
     
     # Capture unhandled exceptions
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
-        logging.getLogger("ExceptionHook").critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+        logging.getLogger("immich-sync.Core").critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
         
     sys.excepthook = handle_exception

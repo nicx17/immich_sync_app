@@ -139,3 +139,9 @@ def test_retry_queue_restoration_to_upload(queue_manager):
     assert queue_manager.upload_queue.empty()
     assert queue_manager.processed_session == 1
     queue_manager.api_client.upload_asset.assert_called_with('/tmp/failed_previous_session.jpg', 'abc')
+
+def test_stop_queues(queue_manager):
+    queue_manager.start()
+    queue_manager.stop()
+    assert queue_manager.stop_event.is_set()
+

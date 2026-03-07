@@ -186,3 +186,51 @@ def test_get_albums_fetches(client):
         # Check standard dictionary return structure
         assert {"id": "album-123", "albumName": "Summer Trip"} in albums
 
+
+def test_fetch_all_albums_success(client):
+    client.active_url = "http://immich:2283"
+    with requests_mock.Mocker() as m:
+        m.get("http://immich:2283/api/albums", json=[
+            {"id": "a1", "albumName": "Test Album"},
+            {"id": "a2", "albumName": "Summer"}
+        ], status_code=200)
+        
+        albums = client.get_albums()
+        assert len(albums) == 2
+        assert client.album_cache["Test Album"] == "a1"
+        assert client.album_cache["Summer"] == "a2"
+
+def test_create_album_success(client):
+    client.active_url = "http://immich:2283"
+    with requests_mock.Mocker() as m:
+        m.post("http://immich:2283/api/albums", json={"id": "new1", "albumName": "New Album"}, status_code=201)
+        
+        album_id = client.create_album("New Album")
+        assert album_id == "new1"
+        assert client.album_cache["New Album"] == "new1"
+
+def test_add_to_album_success(client):
+    client.active_url = "http://immich:2283"
+    with requests_mock.Mocker() as m:
+        m.put("http://immich:2283/api/albums/a1/assets", json=[{"id": "img1", "success": True}], status_code=200)
+        
+        res = client.add_assets_to_album("a1", ["img1"])
+        assert res is True
+        
+def test_get_or_create_album_existing(client):
+    client.active_url = "http://immich:2283"
+    client.albums_fetched = True
+    client.album_cache = {"Existing": "a_exist"}
+    
+    assert client.get_or_create_album("Existing") == "a_exist"
+
+def test_get_or_create_album_new(client):
+    client.active_url = "http://immich:2283"
+    client.albums_fetched = True
+    client.album_cache = {}
+    
+    with requests_mock.Mocker() as m:
+        m.post("http://immich:2283/api/albums", json={"id": "new_created", "albumName": "AutoNew"}, status_code=201)
+        
+        assert client.get_or_create_album("AutoNew") == "new_created"
+
