@@ -15,6 +15,7 @@ class TrayIcon:
         logging.info("Initializing TrayIcon...")
         self.monitor = monitor
         self.icon = None
+        self._exiting_cleanly = False
         
         # Create the icon
         logging.info("Creating icon image...")
@@ -79,8 +80,10 @@ class TrayIcon:
                 self.icon.run()
              except Exception as e:
                 logging.error(f"Error in tray icon run loop: {e}", exc_info=True)
+                raise RuntimeError(f"Tray icon failed to run: {e}")
         else:
             logging.error("Icon instance is None!")
+            raise RuntimeError("Tray icon instance is None, failed to initialize.")
 
     def stop(self):
         logging.info("Stopping System Tray Icon...")
@@ -90,6 +93,7 @@ class TrayIcon:
             self.monitor.stop()
 
     def quit_app(self, icon, item):
+        self._exiting_cleanly = True
         self.stop()
         # Clean exit
         sys.exit(0)

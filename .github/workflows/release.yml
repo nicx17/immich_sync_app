@@ -19,13 +19,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           
       - name: Install System Dependencies
         run: |
           # FUSE is needed to extract/run the AppImageTool on ubuntu runners
+          # We also pre-install build tools like libcairo since PyGObject will be installed natively
           sudo apt-get update
-          sudo apt-get install -y fuse file gir1.2-appindicator3-0.1 libgirepository1.0-dev libcairo2-dev python3-dbus || true
+          sudo apt-get install -y fuse file gir1.2-appindicator3-0.1 libgirepository1.0-dev libcairo2-dev pkg-config python3-dev || true
           
       - name: Run Build Script
         run: |

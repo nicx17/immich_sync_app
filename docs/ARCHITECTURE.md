@@ -65,7 +65,7 @@ Encapsulates communication with the Immich Server.
 - **Dual-URL Support**: Checks logical connectivity to Internal (LAN) URL first, falling back to External (WAN) URL depending on toggle switch states in the local Config. Includes captive portal verification checks.
 - **Failover State Reset**: Automatically clears active TCP URL caches on request timeouts so the LAN vs WAN exploration triggers accurately immediately after connection drops.
 - **Asset Upload**: Handles `multipart/form-data` uploads.
-- **Album Management**: Uploads are mapped to a configured `album_id`, a custom `album_name`, or dynamically matches the immediate parent folder name. The system queries the `ApiClient` to resolve or create the missing album dynamically over REST.
+- **Album Management**: Uploads are mapped to a configured `album_id`, a custom `album_name`, or dynamically matches the immediate parent folder name. The system queries the `ApiClient` to resolve or create the missing album dynamically over REST. Features robust internal routing with `threading.Lock()` to prevent race conditions from generating duplicate album records under simultaneous heavy worker loads.
 
 ### 5. Settings UI (`src/settings_window.py`)
 

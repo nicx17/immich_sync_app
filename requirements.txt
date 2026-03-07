@@ -6,5 +6,5 @@ pystray
 Pillow
 pytest
 requests-mock
-
+PyGObject
 

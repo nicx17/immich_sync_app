@@ -4,13 +4,14 @@ This guide covers common issues encountered while using `immich-sync`.
 
 ## Common Issues
 
-### 1. System Tray Icon Not Appearing
-If the icon is missing:
-- **Wayland (GNOME/KDE):** Ensure `libappindicator-gtk3` (sometimes `libappindicator3-1`) is installed. The app attempts to force the AppIndicator backend, but some environments (Sway, Hyprland) require `status_notifier_item` support.
+### 1. System Tray Icon Not Appearing or App Crashes on Start
+If the icon is missing or fails to initialize:
+- **Wayland (GNOME/KDE) & Ubuntu 24+:** Modern desktop environments deprecate or heavily restrict legacy system trays. The app will automatically catch `pystray` initialization failures and gracefully fall back to **headless daemon mode**. 
+- **Auto-Fallback Behavior:** If the tray fails, the daemon continues running in the background normally. If you launch the app directly from your desktop menu while the tray is disabled, it will intelligently open the Settings Window instead so you can still manage the application.
 - **Environment Variables:** If running manually or via Systemd, ensure `XDG_CURRENT_DESKTOP` and `DISPLAY` are set correctly.
 
-**Workaround (Headless Mode):**
-Run the daemon without the tray icon:
+**Manual Workaround (Headless Mode):**
+If you wish to force the app to skip trying to load the tray altogether:
 ```bash
 python src/main.py --no-tray
 ```

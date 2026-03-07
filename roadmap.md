@@ -76,6 +76,9 @@
 - [x] **investigate que behaviour**  missed images to be reuploaded once app running again
 - [x] **Analyse api key permissions**
 - [x] bug uploads video files befor they have been completely written in the folder being watched.. eg screencapture video screencasts 
+- [x] when a new folder is added to be watched and the trarget folder on the remote dosent exist. and multiple files are added to the local folder ... each worker handling each image ends up creating a seperate folder on the immich instance
+
+-[x] tray icon on ubuntu dosent work so allow app to run without that feature.. clicking appicon in menu should not invoke icon tray unless tray icon works on that os config.. settings window should open as usual and background
 
 ## 10. complete folder sync
 - [ ] **complete folder sync** sync folder added to remote or vice versa.. toggles for config.. sncy remote changes to local and sync local changes to remote

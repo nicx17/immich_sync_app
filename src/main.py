@@ -89,22 +89,43 @@ def main():
     else:
         # Run in Daemon Mode (pystray only)
         # The GUI (Settings) is launched as a subprocess
-        from tray_icon import TrayIcon
-
+        
         # Start Monitor in non-blocking mode (background threads)
         logging.info("Starting file monitor in background thread...")
         monitor.start(blocking=False)
         
-        # Initialize Tray
-        logging.info("Initializing system tray icon...")
-        tray = TrayIcon(monitor)
-        
-        # Run Tray (Blocking Main Thread)
-        # Pystray uses GTK/AppIndicator binding which prefers being main loop
-        logging.info("Entering main loop (Tray)...")
-        tray.run()
-
-
+        try:
+            from tray_icon import TrayIcon
+            
+            # Initialize Tray
+            logging.info("Initializing system tray icon...")
+            tray = TrayIcon(monitor)
+            
+            # Run Tray (Blocking Main Thread)
+            # Pystray uses GTK/AppIndicator binding which prefers being main loop
+            logging.info("Entering main loop (Tray)...")
+            tray.run()
+            
+            if not tray._exiting_cleanly:
+                raise RuntimeError("Tray icon exited unexpectedly (failed to attach or crashed).")
+                
+        except Exception as e:
+            logging.error(f"Failed to initialize system tray icon: {e}")
+            logging.info("Tray icon feature disabled due to OS configuration or error.")
+            logging.info("Running daemon in background (headless config).")
+            
+            # Since the tray failed to load, open the settings window if this was a direct launch 
+            # so the user knows the app started (unless they explicitly passed --settings, though that's handled above).
+            script_path = os.path.join(os.path.dirname(__file__), "settings_main.py")
+            subprocess.Popen([sys.executable, script_path])
+            
+            try:
+                import time
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                logging.info("Shutting down daemon...")
+                monitor.stop()
 
 if __name__ == "__main__":
     main()

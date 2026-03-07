@@ -11,6 +11,8 @@ Welcome to Immich Auto-Sync for Linux! This guide provides detailed instructions
 Once the application is running, a blue "Immich" icon will appear in your system tray (usually at the top right on GNOME/KDE, or bottom right on other desktop environments).
 *If you are using GNOME and don't see system tray icons, ensure you have the "AppIndicator and KStatusNotifierItem Support" extension enabled.*
 
+**Note for Ubuntu 24+ / Wayland Users:** On newer desktop environments that strictly disable legacy system trays, `immich-sync` will automatically detect this and run purely in the background (headless daemon mode). You can still open the **Settings** menu at any time by simply clicking the "Immich Auto-Sync" launcher from your system App Grid / Application Menu.
+
 Clicking on the tray icon reveals a menu with two primary options:
 
 * **Settings**: Opens the configuration and status window.

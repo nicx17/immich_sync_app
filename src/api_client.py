@@ -6,6 +6,7 @@ import time
 import os
 from typing import Optional, Dict
 from datetime import datetime, timezone
+import threading
 
 class ImmichApiClient:
 
@@ -16,6 +17,7 @@ class ImmichApiClient:
         self.active_url: Optional[str] = None
         self.album_cache: Dict[str, str] = {}  # Cache name->id
         self.albums_fetched = False
+        self._album_lock = threading.Lock()
         
         # Configure a robust session with connection pooling
         self.session = requests.Session()
@@ -266,21 +268,23 @@ class ImmichApiClient:
     def get_or_create_album(self, album_name):
         """
         Returns album ID for the given name, creating it if necessary.
+        Uses a lock to prevent race conditions during concurrent bulk uploads.
         """
-        # Ensure we have the cache populated at least once
-        if not self.albums_fetched:
-            self._fetch_all_albums()
-            
-        # Check cache
-        if album_name in self.album_cache:
-            logging.debug(f"Album found in cache: {album_name}")
-            return self.album_cache[album_name]
-            
-        # If not found, try to create
-        # (Alternatively, we could re-fetch to be sure, but let's assume cache is mostly up to date)
-        # We might re-fetch if creation returns 409 (Conflict)? But album names aren't unique in Immich.
-        # Immich allows duplicate album names. We just create a new one if we don't know it.
-        return self.create_album(album_name)
+        with self._album_lock:
+            # Ensure we have the cache populated at least once
+            if not self.albums_fetched:
+                self._fetch_all_albums()
+                
+            # Check cache
+            if album_name in self.album_cache:
+                logging.debug(f"Album found in cache: {album_name}")
+                return self.album_cache[album_name]
+                
+            # If not found, try to create
+            # (Alternatively, we could re-fetch to be sure, but let's assume cache is mostly up to date)
+            # We might re-fetch if creation returns 409 (Conflict)? But album names aren't unique in Immich.
+            # Immich allows duplicate album names. We just create a new one if we don't know it.
+            return self.create_album(album_name)
 
     def add_assets_to_album(self, album_id, asset_ids):
         """
