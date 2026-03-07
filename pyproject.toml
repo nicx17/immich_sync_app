@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "immich-sync"
-version = "1.0.1"
+version = "1.0.2"
 description = "A background daemon to auto-sync photos to Immich on Linux"
 readme = "README.md"
 authors = [
