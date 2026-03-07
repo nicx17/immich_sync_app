@@ -37,9 +37,6 @@ class Config:
         except json.JSONDecodeError as e:
             logging.error(f"Failed to load config (JSON error): {e}")
             return {}
-        except json.JSONDecodeError:
-            logging.error("Config file is corrupt. Using defaults.")
-            return {}
 
     def save(self):
         with open(CONFIG_FILE, 'w') as f:

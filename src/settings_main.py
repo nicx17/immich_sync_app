@@ -48,7 +48,7 @@ def main():
         client = server.nextPendingConnection()
         if client:
             client.waitForReadyRead(500)
-            msg = client.readAll().data().decode('utf-8')
+            msg = bytes(client.readAll().data()).decode('utf-8')
             
             # Bring window to front
             window.setWindowState(window.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)

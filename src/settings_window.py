@@ -15,7 +15,7 @@ class SlideSwitch(QCheckBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(50, 26)
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._position = 3
         
         self.animation = QPropertyAnimation(self, b"position")
@@ -24,11 +24,11 @@ class SlideSwitch(QCheckBox):
         self.stateChanged.connect(self.setup_animation)
 
     @Property(float)
-    def position(self):
+    def position(self): # type: ignore
         return self._position
 
     @position.setter
-    def position(self, pos):
+    def position(self, pos): # type: ignore
         self._position = pos
         self.update()
 
@@ -42,12 +42,12 @@ class SlideSwitch(QCheckBox):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # Draw background
         bg_color = QColor("#4CAF50") if self.isChecked() else QColor("#555555")
         painter.setBrush(QBrush(bg_color))
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(0, 0, self.width(), self.height(), 13, 13)
         
         # Draw handle
@@ -271,10 +271,10 @@ class SettingsWindow(QWidget):
         
         self.path_list = QTableWidget(0, 2)
         self.path_list.setHorizontalHeaderLabels(["Folder Path", "Target Immich Album"])
-        self.path_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.path_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.path_list.setSelectionBehavior(QTableWidget.SelectRows)
-        self.path_list.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.path_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.path_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.path_list.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.path_list.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.path_list)
         
         path_btn_layout = QHBoxLayout()
@@ -387,7 +387,7 @@ class SettingsWindow(QWidget):
         
         combo = QComboBox()
         combo.setEditable(True)
-        combo.setInsertPolicy(QComboBox.NoInsert)
+        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         combo.setToolTip("Select an existing album, or type a new album name to create.")
         
         combo.addItem("Default (Folder Name)", userData=None)
@@ -433,7 +433,7 @@ class SettingsWindow(QWidget):
         
         logging.info(f"Testing connectivity to Internal: {internal}, External: {external}")
         
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.setEnabled(False) # Disable window interactions
         
         try:
@@ -490,8 +490,8 @@ class SettingsWindow(QWidget):
             if not path_item: continue
             folder = path_item.text()
             
-            combo = self.path_list.cellWidget(i, 1)
-            if combo:
+            combo = self.path_list.cellWidget(i, 1) # type: ignore 
+            if isinstance(combo, QComboBox):
                 album_name = combo.currentText().strip()
                 # Check if this exact text exists in the list to determine if it's custom
                 idx = combo.findText(album_name)

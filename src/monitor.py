@@ -44,7 +44,7 @@ class ImmichEventHandler(FileSystemEventHandler):
         # find corresponding configured path
         matched_config = None
         for base_path, conf in self.path_config.items():
-            if os.path.commonpath([base_path, file_path]) == base_path:
+            if os.path.commonpath([str(base_path), str(file_path)]) == str(base_path):
                 matched_config = conf
                 break
                 
@@ -66,7 +66,7 @@ class ImmichEventHandler(FileSystemEventHandler):
         
         matched_config = None
         for base_path, conf in self.path_config.items():
-            if os.path.commonpath([base_path, file_path]) == base_path:
+            if os.path.commonpath([str(base_path), str(file_path)]) == str(base_path):
                 matched_config = conf
                 break
                 
