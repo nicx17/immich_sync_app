@@ -3,6 +3,7 @@ import queue
 import threading
 import time
 import logging
+logger = logging.getLogger(__name__)
 import json
 from typing import Dict, Any, Optional
 from config import Config
@@ -32,7 +33,7 @@ class QueueManager:
         api_key = self.config.get_api_key()
         
         if not api_key:
-            logging.warning("No API Key found in keyring. Uploads may fail.")
+            logger.warning("No API Key found in keyring. Uploads may fail.")
             
         self.api_client = ImmichApiClient(
             self.config.internal_url,
@@ -42,7 +43,7 @@ class QueueManager:
         
         self.worker_threads = []
         self.num_workers = 10 
-        self.retry_storage_file = os.path.expanduser("~/.cache/immich-sync/retries.json")
+        self.retry_storage_file = os.path.expanduser("~/.cache/mimick/retries.json")
         self.retry_lock = threading.Lock()
         
     def _save_retries(self):
@@ -55,7 +56,7 @@ class QueueManager:
                     json.dump(items, f)
                 os.rename(tmp_file, self.retry_storage_file)
             except Exception as e:
-                logging.error(f"Failed to save retries: {e}")
+                logger.error(f"Failed to save retries: {e}")
             
     def _load_retries(self):
         try:
@@ -67,9 +68,9 @@ class QueueManager:
                     self.retry_queue.put(item)
                     
                 if retries:
-                    logging.info(f"Loaded {len(retries)} items into retry queue from previous session.")
+                    logger.info(f"Loaded {len(retries)} items into retry queue from previous session.")
         except Exception as e:
-            logging.error(f"Failed to load retries: {e}")
+            logger.error(f"Failed to load retries: {e}")
 
     def _process_retries(self):
         """Periodically check the retry_queue and move items to upload_queue."""
@@ -77,7 +78,7 @@ class QueueManager:
         while not self.stop_event.is_set():
             queue_size = self.retry_queue.qsize()
             if queue_size > 0:
-                logging.info(f"Re-queuing {queue_size} failed uploads for retry...")
+                logger.info(f"Re-queuing {queue_size} failed uploads for retry...")
                 items_to_retry = []
                 while not self.retry_queue.empty():
                     try:
@@ -99,7 +100,7 @@ class QueueManager:
                 break
 
     def start(self):
-        logging.info(f"Starting Queue Manager with {self.num_workers} parallel workers...")
+        logger.info(f"Starting Queue Manager with {self.num_workers} parallel workers...")
         
         # Load any persisted retries before starting threads
         self._load_retries()
@@ -115,7 +116,7 @@ class QueueManager:
         retry_thread.start()
         
     def stop(self):
-        logging.info("Stopping Queue Manager...")
+        logger.info("Stopping Queue Manager...")
         self.stop_event.set()
         for t in self.worker_threads:
             t.join(timeout=2)
@@ -155,7 +156,7 @@ class QueueManager:
         self.upload_queue.put(file_info)
         self._update_stats(queued=1)
         self._publish_state(status="uploading")
-        logging.info(f"Queued: {file_info['path']}")
+        logger.info(f"Queued: {file_info['path']}")
 
     def _process_queue(self):
         while not self.stop_event.is_set():
@@ -169,7 +170,7 @@ class QueueManager:
                     self.active_workers_count += 1
                 worker_active = True
                 
-                logging.debug(f"Pop from Queue: {file_info['path']}")
+                logger.debug(f"Pop from Queue: {file_info['path']}")
                 
                 # Notify Start item (Silently update state for UI, suppress desktop notification spam)
                 current_state = self._publish_state(status="uploading", current_file=file_info['path'])
@@ -180,18 +181,18 @@ class QueueManager:
                 try:
                     success = self._handle_upload(file_info)
                 except Exception as e:
-                    logging.exception(f"Unexpected error in upload handler for {file_info.get('path')}: {e}")
+                    logger.exception(f"Unexpected error in upload handler for {file_info.get('path')}: {e}")
                     success = False
                 
                 duration = time.time() - t_start
                 
                 if success:
-                    logging.info(f"Upload SUCCESS: {file_info['path']} ({duration:.2f}s)")
+                    logger.info(f"Upload SUCCESS: {file_info['path']} ({duration:.2f}s)")
                     self._update_stats(processed=1)
                 else:
-                    logging.warning(f"Upload FAILED: {file_info['path']} ({duration:.2f}s). Re-queuing.")
+                    logger.warning(f"Upload FAILED: {file_info['path']} ({duration:.2f}s). Re-queuing.")
                     self.retry_queue.put(file_info)
-                    logging.info(f"Retry Queue Size: {self.retry_queue.qsize()}")
+                    logger.info(f"Retry Queue Size: {self.retry_queue.qsize()}")
                     self._save_retries()
                 
                 self.upload_queue.task_done()
@@ -213,7 +214,7 @@ class QueueManager:
                 continue
             except Exception as e:
                 # Catch-all strictly for the outer loop to keep the thread alive
-                logging.error(f"Error processing queue item: {e}")
+                logger.error(f"Error processing queue item: {e}")
                 if worker_active:
                     with self.stats_lock:
                         if self.active_workers_count > 0:
@@ -234,7 +235,7 @@ class QueueManager:
             return False
 
         if asset_id == "DUPLICATE":
-            logging.info(f"Asset already exists on server: {file_path}")
+            logger.info(f"Asset already exists on server: {file_path}")
             return True
 
         # 2. Determine Album Name and ID
@@ -247,7 +248,7 @@ class QueueManager:
             parent_dir = os.path.basename(os.path.dirname(file_path))
             album_name = parent_dir
             
-        logging.info(f"Preparing to add '{file_path}' to album '{album_name}' (ID: {album_id})")
+        logger.info(f"Preparing to add '{file_path}' to album '{album_name}' (ID: {album_id})")
         
         try:
             # 3. Get or Create Album if ID isn't known
@@ -258,8 +259,8 @@ class QueueManager:
                 # 4. Add to Album
                 self.api_client.add_assets_to_album(album_id, [asset_id])
             else:
-                logging.warning(f"Could not get/create album '{album_name}'")
+                logger.warning(f"Could not get/create album '{album_name}'")
         except Exception as e:
-            logging.error(f"Error during album assignment: {e}")
+            logger.error(f"Error during album assignment: {e}")
         
         return True

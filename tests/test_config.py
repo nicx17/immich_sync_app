@@ -80,7 +80,7 @@ def test_get_api_key(mock_keyring):
         key = config.get_api_key()
         
         assert key == "secret-key-123"
-        mock_get.assert_called_with("immich-sync", "api_key")
+        mock_get.assert_called_with("mimick", "api_key")
 
 def test_get_api_key_exception(mock_keyring):
     """Test getting API key when keyring throws an exception."""
@@ -99,7 +99,7 @@ def test_set_api_key(mock_keyring):
         config = Config()
         config.set_api_key("new-secret")
         
-        mock_set.assert_called_with("immich-sync", "api_key", "new-secret")
+        mock_set.assert_called_with("mimick", "api_key", "new-secret")
 
 def test_set_api_key_exception(mock_keyring):
     """Test saving API key when keyring throws an exception."""

@@ -12,7 +12,7 @@ from state_manager import StateManager
 @pytest.fixture
 def temp_state_manager(tmp_path):
     # Mock expanduser inside the class initialization to place state_file in tmp_path
-    with patch('os.path.expanduser', return_value=os.path.join(tmp_path, ".cache/immich-sync/status.json")):
+    with patch('os.path.expanduser', return_value=os.path.join(tmp_path, ".cache/mimick/status.json")):
         manager = StateManager()
         yield manager
 

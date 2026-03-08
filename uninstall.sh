@@ -1,9 +1,9 @@
 #!/bin/bash
-# uninstall.sh - Remove Immich Sync integration
+# uninstall.sh - Remove Mimick integration
 
-APP_NAME="immich-sync"
-ICON_NAME="immich-sync"
-DESKTOP_FILE="immich-sync.desktop"
+APP_NAME="mimick"
+ICON_NAME="mimick"
+DESKTOP_FILE="mimick.desktop"
 
 # Directories
 USER_APPS="$HOME/.local/share/applications"

@@ -1,6 +1,6 @@
-# Immich Auto-Sync User Guide
+# Mimick User Guide
 
-Welcome to Immich Auto-Sync for Linux! This guide provides detailed instructions on how to use the application to automatically back up your local photo and video directories to your Immich server.
+Welcome to Mimick for Linux! This guide provides detailed instructions on how to use the application to automatically back up your local photo and video directories to your Immich server.
 
 ---
 
@@ -11,7 +11,7 @@ Welcome to Immich Auto-Sync for Linux! This guide provides detailed instructions
 Once the application is running, a blue "Immich" icon will appear in your system tray (usually at the top right on GNOME/KDE, or bottom right on other desktop environments).
 *If you are using GNOME and don't see system tray icons, ensure you have the "AppIndicator and KStatusNotifierItem Support" extension enabled.*
 
-**Note for Ubuntu 24+ / Wayland Users:** On newer desktop environments that strictly disable legacy system trays, `immich-sync` will automatically detect this and run purely in the background (headless daemon mode). You can still open the **Settings** menu at any time by simply clicking the "Immich Auto-Sync" launcher from your system App Grid / Application Menu.
+**Note for Ubuntu 24+ / Wayland Users:** On newer desktop environments that strictly disable legacy system trays, `mimick` will automatically detect this and run purely in the background (headless daemon mode). You can still open the **Settings** menu at any time by simply clicking the "Mimick" launcher from your system App Grid / Application Menu.
 
 Clicking on the tray icon reveals a menu with two primary options:
 
@@ -52,7 +52,7 @@ If you didn't configure the application on the first run, right-click the tray i
 
 ### Automatic Detection
 
-Once configured, the application runs silently in the background. When you add a new photo to one of your watched folders, `immich-sync` detects it instantly via Linux filesystem events (`inotify`).
+Once configured, the application runs silently in the background. When you add a new photo to one of your watched folders, `mimick` detects it instantly via Linux filesystem events (`inotify`).
 
 * It waits a moment to ensure the file has finished downloading or rendering.
 * It calculates a checksum of the photo.
@@ -78,7 +78,7 @@ As files are uploaded, you may see a native desktop notification appear on your 
 No. This is strictly a "One-Way Sync" (Backup mode). It reads your local files and uploads them. It will *never* delete a file on your local machine, and it will *never* download files deleted from the Immich web interface back to your computer.
 
 **Q: Are sidecar files supported?**
-Currently, `immich-sync` intentionally ignores metadata sidecar files (like `.xmp`). Immich has limited backend support for sidecars uploaded via the standard API without bulk CLI tools, so we filter them to prevent clutter.
+Currently, `mimick` intentionally ignores metadata sidecar files (like `.xmp`). Immich has limited backend support for sidecars uploaded via the standard API without bulk CLI tools, so we filter them to prevent clutter.
 
 **Q: What happens if my server is offline?**
 The application will detect the connection failure. Right now, it relies on connection retries. Advanced offline queuing is currently on the development roadmap.

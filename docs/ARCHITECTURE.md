@@ -1,6 +1,6 @@
 # Architecture Overview
 
-This document describes the high-level architecture of `immich-sync`, a Linux desktop daemon for syncing media to Immich.
+This document describes the high-level architecture of `mimick`, a Linux desktop daemon for syncing media to Immich.
 
 ## System Components
 
@@ -54,7 +54,7 @@ Uses the `watchdog` library to listen for filesystem events (`IN_CREATE`, `IN_MO
 A thread-safe orchestrator for upload tasks.
 
 - **Upload Queue**: A FIFO queue receiving file tasks from the Monitor.
-- **Retry Queue**: Captures failed uploads and safely persists them via `~/.cache/immich-sync/retries.json` to guarantee offline restorations across soft reboots.
+- **Retry Queue**: Captures failed uploads and safely persists them via `~/.cache/mimick/retries.json` to guarantee offline restorations across soft reboots.
 - **Worker Pool**: Spawns 10 daemon threads to process uploads in parallel, coupled with a `Retry-Worker` repeating every 60 seconds.
 - **Progress Tracking**: updates the `StateManager` with current progress.
 
@@ -72,7 +72,7 @@ Encapsulates communication with the Immich Server.
 A standalone `PySide6` (Qt) application that runs firmly in a separate process from the daemon.
 
 - **Reasoning**: Mixing GTK (used by `pystray`/`AppIndicator`) and Qt event loops in the same process causes instability and crashes.
-- **Communication**: Reads status from `~/.cache/immich-sync/status.json` to display the progress bar.
+- **Communication**: Reads status from `~/.cache/mimick/status.json` to display the progress bar.
 
 ### 6. Notifications & State
 

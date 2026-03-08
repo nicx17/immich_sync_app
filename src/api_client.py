@@ -2,6 +2,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import logging
+logger = logging.getLogger(__name__)
 import time
 import os
 from typing import Optional, Dict
@@ -32,21 +33,21 @@ class ImmichApiClient:
         Determines which URL to use (Internal vs External).
         Checks Internal first.
         """
-        logging.info("Checking connectivity...")
+        logger.info("Checking connectivity...")
         
         # Try Internal First
         if self._ping(self.internal_url):
             self.active_url = self.internal_url
-            logging.info(f"Connected via LAN: {self.active_url}")
+            logger.info(f"Connected via LAN: {self.active_url}")
             return True
             
         # Try External
         if self._ping(self.external_url):
             self.active_url = self.external_url
-            logging.info(f"Connected via WAN: {self.active_url}")
+            logger.info(f"Connected via WAN: {self.active_url}")
             return True
             
-        logging.error("Could not connect to Immich Server.")
+        logger.error("Could not connect to Immich Server.")
         self.active_url = None
         return False
 
@@ -57,7 +58,7 @@ class ImmichApiClient:
         if not url: return False
         
         target = f"{url}/api/server/ping"
-        logging.debug(f"Pinging: {target}")
+        logger.debug(f"Pinging: {target}")
         try:
             # Short timeout for the ping
             response = self.session.get(target, timeout=2)
@@ -65,18 +66,18 @@ class ImmichApiClient:
                 try:
                     data = response.json()
                     if data.get("res", "").lower() == "pong":
-                        logging.debug(f"Ping Success: {target}")
+                        logger.debug(f"Ping Success: {target}")
                         return True
                 except ValueError:
                     pass
                 
-                logging.warning(f"Ping Failed (Not a valid Immich response): {target}")
+                logger.warning(f"Ping Failed (Not a valid Immich response): {target}")
                 return False
             else:
-                logging.warning(f"Ping Failed ({response.status_code}): {target}")
+                logger.warning(f"Ping Failed ({response.status_code}): {target}")
                 return False
         except requests.RequestException as e:
-            logging.warning(f"Ping Error ({e}): {target}")
+            logger.warning(f"Ping Error ({e}): {target}")
             return False
 
     def check_asset_exists(self, checksum: str) -> bool:
@@ -93,7 +94,7 @@ class ImmichApiClient:
         Returns: Asset ID (String) if successful, None if Failed/Retry
         """
         if not self.active_url and not self.check_connection():
-            logging.error("No active connection to upload.")
+            logger.error("No active connection to upload.")
             return None
 
         # Updated endpoint to match modern Immich API (v1.118+)
@@ -112,7 +113,7 @@ class ImmichApiClient:
             created_at = datetime.fromtimestamp(file_stats.st_ctime, timezone.utc).isoformat()
             modified_at = datetime.fromtimestamp(file_stats.st_mtime, timezone.utc).isoformat()
         except OSError:
-            logging.error(f"Could not read stats for {file_path}")
+            logger.error(f"Could not read stats for {file_path}")
             return None
             
         device_asset_id = f"python-sync-{checksum}" # Unique ID
@@ -127,9 +128,9 @@ class ImmichApiClient:
         }
         
         try:
-            logging.info(f"Start Upload: {file_path} ({file_stats.st_size} bytes)")
-            logging.debug(f"Upload Endpoint: {url}")
-            logging.debug(f"Metadata: AssetID={device_asset_id}, Created={created_at}")
+            logger.info(f"Start Upload: {file_path} ({file_stats.st_size} bytes)")
+            logger.debug(f"Upload Endpoint: {url}")
+            logger.debug(f"Metadata: AssetID={device_asset_id}, Created={created_at}")
 
             with open(file_path, "rb") as f:
                 # Use a specific mime-type if possible, but octet-stream is safe fallback
@@ -139,15 +140,15 @@ class ImmichApiClient:
                 
                 response = self.session.post(url, headers=headers, data=data, files=files, timeout=30)
             
-            logging.info(f"Upload Completed: Status {response.status_code}")
+            logger.info(f"Upload Completed: Status {response.status_code}")
 
             if response.status_code in [200, 201]:
                 res_json = response.json()
                 asset_id = res_json.get("id")
-                logging.info(f"Upload Success: {file_path} (ID: {asset_id})")
+                logger.info(f"Upload Success: {file_path} (ID: {asset_id})")
                 return asset_id
             elif response.status_code == 409:
-                logging.info(f"Upload Skipped (Already Exists): {file_path}")
+                logger.info(f"Upload Skipped (Already Exists): {file_path}")
                 # For 409, we might get the ID in response depending on version, 
                 # but often it just says 'Duplicate'. 
                 # Ideally we fetch it if we want to add to album, but let's check response
@@ -160,17 +161,17 @@ class ImmichApiClient:
                     pass
                 return "DUPLICATE" # Special marker if we can't get ID
             elif response.status_code in [413]:
-                logging.error(f"Upload Failed (Too Large): {file_path}")
+                logger.error(f"Upload Failed (Too Large): {file_path}")
                 return None
             elif response.status_code in [502, 504]:
-                logging.warning(f"Server Error {response.status_code}: Retrying later...")
+                logger.warning(f"Server Error {response.status_code}: Retrying later...")
                 return None
             else:
-                logging.error(f"Upload Failed {response.status_code}: {response.text}")
+                logger.error(f"Upload Failed {response.status_code}: {response.text}")
                 return None
 
         except requests.RequestException as e:
-            logging.error(f"Network Error during upload: {e}")
+            logger.error(f"Network Error during upload: {e}")
             self.active_url = None  # Force re-connection on next try
             return None
 
@@ -193,7 +194,7 @@ class ImmichApiClient:
         Fetches all owned albums.
         """
         if not self.active_url: 
-             logging.warning("Cannot fetch albums: No active URL.")
+             logger.warning("Cannot fetch albums: No active URL.")
              return
         
         # NOTE: /api/albums usually returns all user albums.
@@ -209,7 +210,7 @@ class ImmichApiClient:
         }
         
         try:
-            logging.info("Fetching existing albums list...")
+            logger.info("Fetching existing albums list...")
             response = self.session.get(url, headers=headers, timeout=10)
             
             if response.status_code == 200:
@@ -218,14 +219,14 @@ class ImmichApiClient:
                 # If multiple albums show same name, last one wins (acceptable limitation)
                 self.album_cache = {a['albumName']: a['id'] for a in albums}
                 self.albums_fetched = True
-                logging.info(f"Cached {len(self.album_cache)} albums.")
+                logger.info(f"Cached {len(self.album_cache)} albums.")
             else:
-                logging.error(f"Failed to fetch albums: {response.status_code} {response.text}")
+                logger.error(f"Failed to fetch albums: {response.status_code} {response.text}")
         except requests.RequestException as e:
-            logging.error(f"Network error fetching albums: {e}")
+            logger.error(f"Network error fetching albums: {e}")
             self.active_url = None
         except Exception as e:
-            logging.error(f"Error fetching albums: {e}")
+            logger.error(f"Error fetching albums: {e}")
 
     def create_album(self, album_name):
         """
@@ -242,27 +243,27 @@ class ImmichApiClient:
         
         data = {
             "albumName": album_name, 
-            "description": "Created by Immich Auto-Sync"
+            "description": "Created by Mimick"
         }
         
         try:
-            logging.info(f"Creating new album: '{album_name}'")
+            logger.info(f"Creating new album: '{album_name}'")
             response = self.session.post(url, headers=headers, json=data, timeout=10)
             if response.status_code in [200, 201]:
                 res_json = response.json()
                 album_id = res_json['id']
                 self.album_cache[album_name] = album_id # Update cache
-                logging.info(f"Album created: {album_name} ({album_id})")
+                logger.info(f"Album created: {album_name} ({album_id})")
                 return album_id
             else:
-                logging.error(f"Failed to create album: {response.status_code} {response.text}")
+                logger.error(f"Failed to create album: {response.status_code} {response.text}")
                 return None
         except requests.RequestException as e:
-            logging.error(f"Network error creating album: {e}")
+            logger.error(f"Network error creating album: {e}")
             self.active_url = None
             return None
         except Exception as e:
-            logging.error(f"Error creating album: {e}")
+            logger.error(f"Error creating album: {e}")
             return None
 
     def get_or_create_album(self, album_name):
@@ -277,7 +278,7 @@ class ImmichApiClient:
                 
             # Check cache
             if album_name in self.album_cache:
-                logging.debug(f"Album found in cache: {album_name}")
+                logger.debug(f"Album found in cache: {album_name}")
                 return self.album_cache[album_name]
                 
             # If not found, try to create
@@ -291,7 +292,7 @@ class ImmichApiClient:
         Adds a list of asset IDs to an album.
         """
         if not self.active_url or not album_id or not asset_ids: 
-             logging.warning("Skipping add_assets_to_album: Missing ID or Assets.")
+             logger.warning("Skipping add_assets_to_album: Missing ID or Assets.")
              return False
         
         url = f"{self.active_url}/api/albums/{album_id}/assets"
@@ -304,21 +305,21 @@ class ImmichApiClient:
         data = {"ids": asset_ids}
         
         try:
-            logging.info(f"Adding assets {asset_ids} to album {album_id}...")
+            logger.info(f"Adding assets {asset_ids} to album {album_id}...")
             response = self.session.put(url, headers=headers, json=data, timeout=10)
             
             # Response is a list of results
             if response.status_code in [200, 201]:
-                logging.info(f"Successfully added assets to album.")
+                logger.info(f"Successfully added assets to album.")
                 return True
             else:
-                logging.error(f"Failed to add assets to album: {response.status_code} {response.text}")
+                logger.error(f"Failed to add assets to album: {response.status_code} {response.text}")
                 return False
         except requests.RequestException as e:
-            logging.error(f"Network error adding assets to album: {e}")
+            logger.error(f"Network error adding assets to album: {e}")
             self.active_url = None
             return False
         except Exception as e:
-            logging.error(f"Error adding assets to album: {e}")
+            logger.error(f"Error adding assets to album: {e}")
             return False
 

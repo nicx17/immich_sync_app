@@ -1,6 +1,6 @@
-# Contributing to Immich Auto-Sync
+# Contributing to Mimick
 
-First off, thank you for considering contributing to Immich Auto-Sync for Linux! It's people like you that make open-source software great.
+First off, thank you for considering contributing to Mimick for Linux! It's people like you that make open-source software great.
 
 ## Code of Conduct
 By participating in this project, you agree to abide by common open-source standards of respect and collaboration. Be welcoming, be kind, and keep feedback constructive.

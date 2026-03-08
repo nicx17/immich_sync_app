@@ -1,5 +1,5 @@
 [Unit]
-Description=Immich Auto-Sync Background Service
+Description=Mimick Background Service
 After=network.target network-online.target graphical-session.target
 Wants=network-online.target
 
@@ -9,7 +9,7 @@ Type=simple
 Environment=DISPLAY=:0
 # Adjust the ExecStart to point to your python environment and src/main.py
 # Example: ExecStart=/usr/bin/python3 /home/user/app/src/main.py --no-tray
-ExecStart=%h/.local/bin/immich-sync --no-tray
+ExecStart=%h/.local/bin/mimick --no-tray
 Restart=on-failure
 RestartSec=5s
 

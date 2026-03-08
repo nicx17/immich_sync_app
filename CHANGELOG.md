@@ -35,14 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Captive Portal Bug Fix**: The API Ping routing logic now strictly requires a `{"res": "pong"}` JSON payload resolution to avoid falsely pinging local cafe Wi-Fi captive portals and breaking sync loops.
 - **Failover Cache Reset Bug Fix**: Fixed an issue where a timeout connection to the Internal URL loop would not flush the active API endpoint causing the logic to effectively loop blindly instead of bouncing sequentially to the External URL.
 - Fixed critical App UI freezing (App Not Responding) during testing connection pings syncing via a synchronous socket process - now visually wraps tests via Qt override wait cursors.
-- **Queue Offline Resolution Fix**: Fixed a data-loss bug that permanently flushed queued failed uploads if the user closed the window. Implemented `~/.cache/immich-sync/retries.json` to seamlessly save pending cache limits, accompanied by an explicit background locking worker loop restoring files successfully.
+- **Queue Offline Resolution Fix**: Fixed a data-loss bug that permanently flushed queued failed uploads if the user closed the window. Implemented `~/.cache/mimick/retries.json` to seamlessly save pending cache limits, accompanied by an explicit background locking worker loop restoring files successfully.
 
 ## [0.2.0] - 2026-03-06
 
 ### Added
 
 
-- AppImage distribution! A new fully packaged AppImage version of `immich-sync` is now available, bundling `PySide6` and all Python dependencies into a single, highly portable executable.
+- AppImage distribution! A new fully packaged AppImage version of `mimick` is now available, bundling `PySide6` and all Python dependencies into a single, highly portable executable.
 - Introduced `AI_CONTEXT.md` to help agentic tools understand the application's unique multi-threaded API architecture, system constraints, and X11/Wayland workarounds.
 
 ### Fixed

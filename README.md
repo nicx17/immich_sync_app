@@ -1,14 +1,14 @@
-# Immich Auto-Sync for Linux
+# Mimick for Linux
 
 <div align="center">
 
-<img src="src/assets/icon.png" width="128" alt="Immich Sync Logo">
+<img src="src/assets/icon.png" width="128" alt="Mimick Logo">
 
 ![Status](https://img.shields.io/badge/Status-beta-FF90C3?style=for-the-badge)
-![GitHub Release](https://img.shields.io/github/v/release/nicx17/immich_sync_app?include_prereleases&style=for-the-badge&logo=github&color=FF90C3)
+![GitHub Release](https://img.shields.io/github/v/release/nicx17/mimick_app?include_prereleases&style=for-the-badge&logo=github&color=FF90C3)
 ![Python](https://img.shields.io/badge/Python_3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
-![PySide6](https://img.shields.io/badge/PySide6-41CD52?style=for-the-badge&logo=qt&logoColor=white)
+![GTK4](https://img.shields.io/badge/GTK4-7DF12B?style=for-the-badge&logo=gtk&logoColor=white)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0)
 
 </div>
@@ -47,20 +47,20 @@ This application monitors local directories (e.g., `~/Pictures`, `~/Videos`) for
 
 ### Method 1: AppImage (Recommended)
 
-The easiest way to install Immich Sync is via the standalone AppImage, which includes all dependencies out-of-the-box.
+The easiest way to install Mimick is via the standalone AppImage, which includes all dependencies out-of-the-box.
 
-1. Go to the [Releases page](https://github.com/nicx17/immich_sync_app/releases) and download the latest `Immich_Sync-x86_64.AppImage`.
+1. Go to the [Releases page](https://github.com/nicx17/immich_sync_app/releases) and download the latest `Mimick-x86_64.AppImage`.
 2. Make it executable:
 
    ```bash
-   chmod +x Immich_Sync-*.AppImage
+   chmod +x Mimick-*.AppImage
    ```
 
 3. Run it, or use the provided integration script to strictly install it to your Application Launcher menu:
 
    ```bash
    # Optional: Download and run the install script from the repo to set up the .desktop file and systemd auto-start
-   ./install-appimage.sh /path/to/downloaded/Immich_Sync-x86_64.AppImage
+   ./install-appimage.sh /path/to/downloaded/Mimick-x86_64.AppImage
    ```
 
 ### Method 2: Manual / From Source
@@ -76,19 +76,19 @@ If you prefer not to use the AppImage, you can run the app directly from source.
 **Ubuntu/Debian:**
 
 ```bash
-sudo apt install python3-pip python3-venv libgirepository1.0-dev libcairo2-dev gir1.2-gtk-3.0 gir1.2-appindicator3-0.1
+sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 libgirepository1.0-dev gcc libcairo2-dev pkg-config python3-dev gir1.2-gtk-3.0 gir1.2-appindicator3-0.1
 ```
 
 **Fedora:**
 
 ```bash
-sudo dnf install python3-pip python3-gobject gtk3 libappindicator-gtk3
+sudo dnf install python3-gobject gtk4 libadwaita libappindicator-gtk3
 ```
 
 **Arch Linux:**
 
 ```bash
-sudo pacman -S python-pip python-gobject gtk3 libappindicator-gtk3
+sudo pacman -S python-gobject gtk4 libadwaita libappindicator-gtk3
 ```
 
 ### Setup
@@ -96,8 +96,8 @@ sudo pacman -S python-pip python-gobject gtk3 libappindicator-gtk3
 1. **Clone the Repository:**
 
     ```bash
-    git clone https://github.com/yourusername/immich-sync-app.git
-    cd immich-sync-app
+    git clone https://github.com/yourusername/mimick-app.git
+    cd mimick-app
     ```
 
 2. **Create a Virtual Environment:**
@@ -141,14 +141,14 @@ To start automatically on login:
 
     ```bash
     mkdir -p ~/.config/systemd/user/
-    cp setup/immich-sync.service ~/.config/systemd/user/
+    cp setup/mimick.service ~/.config/systemd/user/
     ```
 
-2. Edit the service file (`~/.config/systemd/user/immich-sync.service`) to update the path to the python executable and script location.
+2. Edit the service file (`~/.config/systemd/user/mimick.service`) to update the path to the python executable and script location.
 3. Enable and start the service:
 
     ```bash
-    systemctl --user enable --now immich-sync
+    systemctl --user enable --now mimick
     ```
 
 ## Documentation

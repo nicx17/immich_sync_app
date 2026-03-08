@@ -5,8 +5,8 @@ import time
 class StateManager:
     def __init__(self):
         # Store state in XDG Runtime Dir or Cache. 
-        # Using ~/.cache/immich-sync/status.json is generally safe and persistent enough for this.
-        self.state_file = os.path.expanduser("~/.cache/immich-sync/status.json")
+        # Using ~/.cache/mimick/status.json is generally safe and persistent enough for this.
+        self.state_file = os.path.expanduser("~/.cache/mimick/status.json")
         self._ensure_dir()
         
     def _ensure_dir(self):

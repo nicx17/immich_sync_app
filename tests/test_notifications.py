@@ -24,7 +24,7 @@ def test_send_basic(notify_manager):
         assert "Hello" in cmd
         assert "World" in cmd
         assert "-h" in cmd
-        assert "string:x-canonical-private-synchronous:immich-sync-progress" in cmd
+        assert "string:x-canonical-private-synchronous:mimick-progress" in cmd
 
 def test_send_with_progress_and_timeout(notify_manager):
     with patch('subprocess.Popen') as mock_popen:

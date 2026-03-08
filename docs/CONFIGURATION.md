@@ -1,6 +1,6 @@
 # Configuration Guide
 
-This document covers all configurable aspects of `immich-sync`.
+This document covers all configurable aspects of `mimick`.
 
 ## User Interface Configuration
 
@@ -16,7 +16,7 @@ The most convenient way to configure the application is via the built-in Setting
 
 The configuration is stored in a JSON file located at:
 
-`~/.config/immich-sync/config.json`
+`~/.config/mimick/config.json`
 
 ### File Structure
 
@@ -47,16 +47,16 @@ The configuration is stored in a JSON file located at:
 
 ### Required API Key Permissions
 
-When generating an API Key in the Immich Web UI (Account Settings > API Keys), you can restrict its permissions for better security. `immich-sync` requires the following minimum permissions:
+When generating an API Key in the Immich Web UI (Account Settings > API Keys), you can restrict its permissions for better security. `mimick` requires the following minimum permissions:
 
 - **Asset**: `Read` (to check for duplicates), `Create` (to upload new media)
 - **Album**: `Read` (to list existing albums), `Create` (to create new albums), `Update` (to add uploaded media to albums)
 
 ### Keyring Storage
 
-To prevent storing API keys in plain text, `immich-sync` uses the desktop's native keyring service (Libsecret on GNOME, KWallet on KDE).
+To prevent storing API keys in plain text, `mimick` uses the desktop's native keyring service (Libsecret on GNOME, KWallet on KDE).
 
-- **Service Name**: `immich-sync`
+- **Service Name**: `mimick`
 - **Username**: `api_key`
 
 If you need to manually intervene with the keyring (e.g., if you are running headless), you can use Python's `keyring` CLI or `seahorse` (GNOME Passwords and Keys).
@@ -64,15 +64,15 @@ If you need to manually intervene with the keyring (e.g., if you are running hea
 **Using Python:**
 
 ```bash
-python -c "import keyring; keyring.set_password('immich-sync', 'api_key', 'YOUR_API_KEY_HERE')"
+python -c "import keyring; keyring.set_password('mimick', 'api_key', 'YOUR_API_KEY_HERE')"
 ```
 
 ## Systemd Service Configuration
 
-The application runs as a user service. The service file is located at `~/.config/systemd/user/immich-sync.service`.
+The application runs as a user service. The service file is located at `~/.config/systemd/user/mimick.service`.
 
 **Environment Variables:**
-Ideally, configure environment variables in `~/.config/environment.d/immich-sync.conf`.
+Ideally, configure environment variables in `~/.config/environment.d/mimick.conf`.
 
 - `DISPLAY`: Usually `:0`
 - `XDG_RUNTIME_DIR`: Required for DBus session bus access.

@@ -3,9 +3,9 @@
 
 set -e
 
-APP_NAME="immich-sync"
-ICON_NAME="immich-sync"
-DESKTOP_FILE="immich-sync.desktop"
+APP_NAME="mimick"
+ICON_NAME="mimick"
+DESKTOP_FILE="mimick.desktop"
 VENV_DIR=".venv"
 
 # Directories
@@ -20,7 +20,7 @@ mkdir -p "$USER_ICONS_SCALABLE"
 mkdir -p "$USER_ICONS_PNG"
 mkdir -p "$AUTOSTART_DIR"
 
-echo "=== Immich Sync Installer ==="
+echo "=== Mimick Installer ==="
 
 # 1. Environment Setup
 echo "[1/4] Setting up Python environment..."
@@ -56,13 +56,13 @@ if ! command -v pip &> /dev/null; then
     echo "Error: pip is missing from the virtual environment."
     echo "Attempting to bootstrap pip..."
     python3 -m ensurepip --default-pip
+fi
+
 # Verify installation of key UI libraries that often fail due to missing system deps
 if ! python3 -c "import pystray" &> /dev/null; then
     echo "Warning: 'pystray' failed to import. You might be missing system libraries."
     echo "On Debian/Ubuntu: sudo apt install libgirepository1.0-dev libcairo2-dev"
     echo "On Fedora: sudo dnf install gobject-introspection-devel cairo-devel"
-fi
-
 fi
 
 # Install dependencies
@@ -77,7 +77,7 @@ SCRIPT_PATH="$CWD/src/main.py"
 echo "[2/4] Installing icons..."
 
 # Install SVG (Scalable) - Standard XDG location
-cp setup/icons/immich-sync.svg "$USER_ICONS_SCALABLE/$ICON_NAME.svg"
+cp setup/icons/mimick.svg "$USER_ICONS_SCALABLE/$ICON_NAME.svg"
 
 # Install PNG (128x128) - Standard XDG location
 cp src/assets/icon.png "$USER_ICONS_PNG/$ICON_NAME.png"
@@ -107,7 +107,7 @@ echo "[3/4] Configuring desktop entry..."
 # Create a temporary desktop file
 cat > "setup/$DESKTOP_FILE.tmp" <<EOF
 [Desktop Entry]
-Name=Immich Sync
+Name=Mimick
 Comment=Automatically upload photos to Immich
 Exec=env XDG_CURRENT_DESKTOP=Unity GDK_BACKEND=x11 "$PYTHON_EXEC" "$SCRIPT_PATH"
 Icon=$ICON_NAME
@@ -116,7 +116,7 @@ Type=Application
 Categories=Utility;Network;
 Keywords=Photo;Sync;Backup;
 StartupNotify=false
-StartupWMClass=immich-sync.desktop
+StartupWMClass=mimick.desktop
 EOF
 
 # Install Desktop Entry

@@ -1,6 +1,7 @@
 import time
 import os
 import logging
+logger = logging.getLogger(__name__)
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from watchdog.observers import Observer
@@ -16,7 +17,7 @@ ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.heic', '.mp4', '.mov', '.gif', 
 
 class ImmichEventHandler(FileSystemEventHandler):
     """
-    Handles file system events for the Immich Sync App.
+    Handles file system events for the Mimick App.
     Only processes files with allowed extensions and ignores others (like .xmp sidecars).
     """
 
@@ -36,10 +37,10 @@ class ImmichEventHandler(FileSystemEventHandler):
         
         # Filter by extension (case-insensitive)
         if ext.lower() not in ALLOWED_EXTENSIONS:
-            logging.debug(f"Ignored file (invalid extension): {file_path}")
+            logger.debug(f"Ignored file (invalid extension): {file_path}")
             return
 
-        logging.info(f"New file change detected: {file_path}")
+        logger.info(f"New file change detected: {file_path}")
         # Offload checks to a thread pool to avoid blocking the observer or spawning unlimited threads
         # find corresponding configured path
         matched_config = None
@@ -59,10 +60,10 @@ class ImmichEventHandler(FileSystemEventHandler):
         
         # Filter by extension (case-insensitive)
         if ext.lower() not in ALLOWED_EXTENSIONS:
-            logging.debug(f"Ignored moved file (invalid extension): {file_path}")
+            logger.debug(f"Ignored moved file (invalid extension): {file_path}")
             return
 
-        logging.info(f"File moved/renamed detected: {file_path}")
+        logger.info(f"File moved/renamed detected: {file_path}")
         
         matched_config = None
         for base_path, conf in self.path_config.items():
@@ -76,7 +77,7 @@ class ImmichEventHandler(FileSystemEventHandler):
         if self.wait_for_file_completion(file_path):
             checksum = calculate_checksum(file_path)
             if checksum:
-                logging.info(f"[FOUND] Valid media file: {file_path}")
+                logger.info(f"[FOUND] Valid media file: {file_path}")
                 # Add to upload queue
                 task = {
                     'path': file_path,
@@ -85,7 +86,7 @@ class ImmichEventHandler(FileSystemEventHandler):
                 }
                 self.queue_manager.add_to_queue(task)
             else:
-                logging.error(f"[ERROR] Could not read file: {file_path}")
+                logger.error(f"[ERROR] Could not read file: {file_path}")
 
     def shutdown(self):
         self.executor.shutdown(wait=True)
@@ -125,7 +126,7 @@ class ImmichEventHandler(FileSystemEventHandler):
             
             time.sleep(check_interval)
         
-        logging.warning(f"[TIMEOUT] File {file_path} remained locked or inactive for {idle_timeout}s")
+        logger.warning(f"[TIMEOUT] File {file_path} remained locked or inactive for {idle_timeout}s")
         return False
 
 class Monitor:
@@ -152,14 +153,14 @@ class Monitor:
         for p in self.paths_to_watch:
             path = p["path"] if isinstance(p, dict) else p
             if not os.path.exists(path):
-                logging.error(f"Error: The directory {path} does not exist. Skipping.")
+                logger.error(f"Error: The directory {path} does not exist. Skipping.")
                 continue
                 
             self.observer.schedule(event_handler, path, recursive=True)
-            logging.info(f"Scheduled watch for: {path}")
+            logger.info(f"Scheduled watch for: {path}")
 
         self.observer.start()
-        logging.info("Monitor started.")
+        logger.info("Monitor started.")
         
         if blocking:
             try:
@@ -167,11 +168,11 @@ class Monitor:
                     time.sleep(1)
             except KeyboardInterrupt:
                 self.stop()
-                logging.info("Monitor interrupted by user.")
+                logger.info("Monitor interrupted by user.")
 
 
     def stop(self):
-        logging.info("Stopping monitor...")
+        logger.info("Stopping monitor...")
         self.observer.stop()
         self.queue_manager.stop()
         

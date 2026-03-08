@@ -1,1 +1,1 @@
-# Immich Sync App Package
+# Mimick App Package
