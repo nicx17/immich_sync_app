@@ -56,6 +56,10 @@
 ## Planned
 
 ### Next Up
+
+- [ ] **Fix bug** multiple settings window spawning. lock to single window
+- [ ] **Headless Operation** should operate without window being visible.. background process
+
 - [ ] **Flatpak manifest** — Flathub-ready packaging with `xdg-desktop-portal` filesystem constraints.
 - [ ] **Complete folder sync** — Two-way sync mode: toggle to sync remote deletions/additions back to local.
 - [ ] **Arch AUR submission** — Publish PKGBUILD to AUR as `mimick`.
