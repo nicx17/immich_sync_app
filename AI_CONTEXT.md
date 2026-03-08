@@ -40,7 +40,7 @@ The application is decoupled into a background daemon and a UI process (PySide6-
 - **Monitoring:** `watchdog`
 - **Testing:** `pytest` (heavy use of `mocker` and `requests_mock`)
 - **Packaging:** `setuptools`, AppImage, standard Linux `.desktop`/`.service` integration
-- **Current Version:** v1.0.2
+- **Current Version:** v2.0.0
 
 ## Common AI Agent Tasks / Context Usage
 When assisting with this repository, an AI agent should keep in mind:

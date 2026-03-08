@@ -403,12 +403,18 @@ class SettingsWindow(Adw.ApplicationWindow):
         about = Adw.AboutWindow(
             application_name="Mimick",
             application_icon="icon",
-            version="1.0.2",
+            version="2.0.0",
             developer_name="Nick Cardoso",
             website="https://github.com/nicx17/immich_sync_app",
             issue_url="https://github.com/nicx17/immich_sync_app/issues",
-            license_type=Gtk.License.GPL_3_0
+            license_type=Gtk.License.GPL_3_0,
+            designers=["Round Icons (Unsplash)"]
         )
+        about.add_link(
+            "Logo Illustration by Round Icons",
+            "https://unsplash.com/illustrations/a-white-and-orange-flower-on-a-white-background-IkQ_WrJzZOM?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText"
+        )
+
         about.set_transient_for(self)
         about.present()
 

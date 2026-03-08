@@ -57,3 +57,4 @@ logs.txt
 meson.build
 test_gobject.sh
 codebase_analysis.md
+test_about.py

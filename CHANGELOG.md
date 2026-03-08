@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-03-08
+
+### Added
+- **Complete Rebranding to Mimick**: Officially renamed the project from "Immich Sync" to "Mimick" to establish a unique identity and drop the generic moniker. All internal app IDs, metadata, documentations, and daemon variables have been fully synchronized.
+- **GTK4 / libadwaita Migration**: Totally replaced the heavy PySide6 UI framework with a native, responsive GTK4 + libadwaita interface. The application now perfectly mimics the native look and feel of modern GNOME and KDE desktop environments.
+- **Scalable Vector Icons**: Modernized app icon integration by deploying the high-resolution `mimick.svg` into system `hicolor/scalable/apps/` directories.
+
+### Changed
+- AppImage build scripts and installation loops have been completely restructured to support the new `mimick` nomenclature and GTK requirements.
+- Standardized the GNOME window `StartupWMClass` bindings effectively preventing stray or duplicate launcher icons on Wayland/X11 desktops.
+
 ## [1.0.2] - 2026-03-07
 
 ### Fixed
