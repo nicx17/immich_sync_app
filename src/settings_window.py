@@ -405,8 +405,8 @@ class SettingsWindow(Adw.ApplicationWindow):
             application_icon="icon",
             version="2.0.0",
             developer_name="Nick Cardoso",
-            website="https://github.com/nicx17/immich_sync_app",
-            issue_url="https://github.com/nicx17/immich_sync_app/issues",
+            website="https://github.com/nicx17/mimick",
+            issue_url="https://github.com/nicx17/mimick/issues",
             license_type=Gtk.License.GPL_3_0,
             designers=["Nick Cardoso"]
         )

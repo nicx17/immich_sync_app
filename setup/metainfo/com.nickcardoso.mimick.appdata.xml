@@ -17,8 +17,8 @@
     </p>
   </description>
   <launchable type="desktop-id">com.nickcardoso.mimick.desktop</launchable>
-  <url type="homepage">https://github.com/nicx17/immich_sync_app</url>
-  <url type="bugtracker">https://github.com/nicx17/immich_sync_app/issues</url>
+  <url type="homepage">https://github.com/nicx17/mimick</url>
+  <url type="bugtracker">https://github.com/nicx17/mimick/issues</url>
   
   <provides>
     <binary>mimick</binary>

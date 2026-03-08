@@ -5,7 +5,7 @@
 <img src="src/assets/icon.png" width="128" alt="Mimick Logo">
 
 ![Status](https://img.shields.io/badge/Status-beta-FF90C3?style=for-the-badge)
-![GitHub Release](https://img.shields.io/github/v/release/nicx17/immich_sync_app?include_prereleases&style=for-the-badge&logo=github&color=FF90C3)
+![GitHub Release](https://img.shields.io/github/v/release/nicx17/mimick?include_prereleases&style=for-the-badge&logo=github&color=FF90C3)
 ![Python](https://img.shields.io/badge/Python_3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 ![GTK4](https://img.shields.io/badge/GTK4-7DF12B?style=for-the-badge&logo=gtk&logoColor=white)
@@ -49,7 +49,7 @@ This application monitors local directories (e.g., `~/Pictures`, `~/Videos`) for
 
 The easiest way to install Mimick is via the standalone AppImage, which includes all dependencies out-of-the-box.
 
-1. Go to the [Releases page](https://github.com/nicx17/immich_sync_app/releases) and download the latest `Mimick-x86_64.AppImage`.
+1. Go to the [Releases page](https://github.com/nicx17/mimick/releases) and download the latest `Mimick-x86_64.AppImage`.
 2. Make it executable:
 
    ```bash
