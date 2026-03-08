@@ -1,84 +1,68 @@
-# Mimick for Linux: Feature Roadmap & Architecture
+# Mimick for Linux: Feature Roadmap
 
-## 1. Core Sync Engine (Background Daemon)
+## Completed
 
-- [x] Implement `watchdog` to monitor target directories (`~/Pictures/Screenshots`) via the Linux kernel `inotify` subsystem.
-- [x] **One-Way Sync:** Upload files to Immich; never delete local files or download from server.
-- [x] **File Filtering:** Whitelist common media types (JPG, PNG, HEIC, MP4) and explicitly ignore sidecar files (XMP).
-- [x] Add write-completion detection to ensure files are fully saved before reading (optimized with non-blocking threads).
-- [x] **Concurrency Control:** Implement a Worker Queue to process bulk file drops.
-- [x] **Parallel Uploads:** Use multi-threaded workers (10 threads) for high-speed batch uploading.
-- [x] Create a local retry queue (SQLite or JSON) for offline support.
-- [x] **Reverse Proxy Error Handling:** Catch HTTP 413, 502, 504.
-- [x] Implement daemon logging to standard Linux locations (`journald`).
+### Core Sync Engine
+- [x] Monitor directories via Linux `inotify` (`notify` crate).
+- [x] File write-completion detection (size stabilisation over 3 consecutive polls).
+- [x] SHA-1 checksumming per file for Immich deduplication (64KB chunked, low RAM).
+- [x] One-way sync — never delete local files or download from server.
+- [x] File type whitelist (JPG, PNG, HEIC, MP4, MOV, GIF, WEBP, TIFF, RAW, ARW, DNG). Sidecars ignored.
+- [x] 10 concurrent streaming upload workers (constant RAM use regardless of file size).
+- [x] Persistent retry queue (`~/.cache/mimick/retries.json`) — failed uploads survive reboots.
 
-## 2. Immich API Client & Network Routing
+### Immich API Client
+- [x] Smart URL routing — LAN first, WAN fallback.
+- [x] Pre-upload deduplication via SHA-1 + 409 Conflict detection.
+- [x] Multipart streaming upload (disk → network, no full RAM load).
+- [x] ISO 8601 UTC timestamps (no chrono dependency, pure arithmetic).
+- [x] Album auto-creation from local folder name.
+- [x] Custom album selection per watch folder (existing or new).
+- [x] HTTP error handling (413, 502, 504).
 
-- [x] **Smart URL Routing (LAN vs. WAN):** Implement a lightweight ping to the Internal URL. Fallback to External URL if unreachable.
-- [x] **Pre-Upload Deduplication:** Calculate SHA-1 checksum locally; verify against API before uploading (via 409 Conflict).
-- [x] **Resiliency:** Implement exponential backoff for failed uploads and connection pooling.
-- [x] Handle authentication via `x-api-key` headers.
-- [x] Construct the `multipart/form-data` payload.
-- [x] **Strict Metadata Formatting:** Format timestamps strictly as ISO 8601 UTC.
-- [x] **Smart Albums:** Automatically create albums based on local folder names and add uploads to them.
+### Configuration & Security
+- [x] Config file at `~/.config/mimick/config.json` (serde_json).
+- [x] API key stored via `secret-tool` (libsecret) — never written to disk in plain text.
+- [x] Multiple watch directories with per-folder album config.
+- [x] `WatchPathEntry` supports both plain path strings and per-folder album configs.
 
-## 3. Configuration & Security
+### Settings UI
+- [x] GTK4 + Libadwaita native UI (dark mode, `adw::ApplicationWindow`).
+- [x] Internal/External URL fields with toggles (at least one must stay enabled — validated).
+- [x] Test Connection button (async ping, no UI freeze).
+- [x] Watch folders list with per-row album `DropDown` + custom name `Entry`.
+- [x] Live sync status row and progress bar (polling `status.json`).
+- [x] Save & Restart flow.
 
-- [x] Read/write settings to standard XDG directories (`~/.config/mimick/config.json`).
-- [x] Integrate Python `keyring` (Secret Service API via DBus) for secure API key storage.
-- [x] Support watching multiple directories simultaneously.
+### System Tray
+- [x] StatusNotifierItem tray via `ksni` crate.
+- [x] Graceful fallback when `org.kde.StatusNotifierWatcher` is unavailable (GNOME without extension).
 
-## 4. System Tray Interface (Anchor UI)
+### Desktop Integration
+- [x] `systemd` user service (`setup/mimick.service`) with journal logging.
+- [x] `.desktop` file with Settings action (`setup/mimick.desktop`).
+- [x] Native desktop notifications (`libnotify`).
+- [x] PKGBUILD for Arch Linux / AUR.
+- [x] AppImage packaging (`build_test_appimage.sh`).
 
-- [x] Implement `pystray` (AppIndicator/StatusNotifierItem protocols).
-- [x] Add dynamic icon states and a context menu (Pause, Sync Now, Settings, Quit).
-- [x] **Wayland Support:** Force AppIndicator backend via environment variables for GNOME/KDE Wayland.
-
-## 5. Settings Window (Configurator UI)
-
-- [x] Build a lightweight GUI window (PySide6).
-- [x] **Dual URL Configuration:** Inputs for Internal and External URLs.
-- [x] "Test Connection" button with detailed LAN/WAN reporting.
-- [x] **Progress Indication:** Added progress bar for uploads in the UI as well as the notification.
-
-## 6. Desktop Integration
-
-- [x] Write a `systemd` user service file (`mimick.service`) for auto-start.
-- [x] Implement native desktop notifications (via `dbus` / `libnotify`). Includes progress bar for uploads.
-
-## 7. Packaging & Distribution (New)
-
-- [x] Write a `setup.py` or `pyproject.toml` for standard Python packaging.
-- [x] Create an Arch Linux `PKGBUILD` for submission to the AUR.
-- [x] Create an official standalone custom AppImage for self-contained PySide6 distribution directly from GitHub.
-- [ ] (Optional) Create a Flatpak manifest for universal distro compatibility.
+### Rust Port (v2.0)
+- [x] Full rewrite from Python to Rust (Tokio + GTK4-rs + Libadwaita-rs).
+- [x] No Python runtime dependency — single statically-linked binary.
+- [x] 11 unit tests across `api_client`, `config`, `monitor`, `queue_manager`, `state_manager`.
+- [x] All GTK4 widgets updated to 4.10+ standards (no deprecated `ComboBoxText`, `MessageDialog`).
 
 ---
 
-## 8. GTK4 / Libadwaita Architecture Overhaul (Future Phase)
+## Planned
 
-- [ ] Migrate `PySide6` UI (`settings_window.py`) to `PyGObject` (`gi.repository.Gtk` / `Adw`).
-- [ ] Implement `Gtk.Application` to take advantage of native D-Bus application process locking (deprecating custom Unix Sockets & `QLocalServer`).
-- [ ] Redesign settings UI from raw data grids (`QTableWidget`) to native GNOME `Adw.PreferencesPage` and `Adw.ActionRow` layouts.
-- [ ] Separate the System Tray (`pystray`) into an isolated thread decoupled from the GTK main loop since GTK4 no longer natively supports system trays.
-- [ ] Build a Flathub-ready Flatpak manifest using GNOME Builder with strict `xdg-desktop-portal` filesystem constraints (`--filesystem=xdg-pictures`).
-- [ ] **Memory Optimization (GTK):** Merge the standalone PySide6 UI subprocess and daemon into a unified `Gtk.Application` loop to reduce the memory footprint by utilizing GNOME's pre-loaded shared system libraries (~50MB projected savings).
-- [ ] **Memory Optimization (GTK):** Merge the standalone UI subprocess and daemon into a unified `Gtk.Application` to drastically reduce the memory footprint by utilizing GNOME's pre-loaded shared system libraries instead of detached Qt bindings.
+### Next Up
+- [ ] **Flatpak manifest** — Flathub-ready packaging with `xdg-desktop-portal` filesystem constraints.
+- [ ] **Complete folder sync** — Two-way sync mode: toggle to sync remote deletions/additions back to local.
+- [ ] **Arch AUR submission** — Publish PKGBUILD to AUR as `mimick`.
 
-
-## 9. fix Bugs
-
-- [x] **Bug fix:auto switch url to external when internal not available**
-- [x] **on preffered local network check** If not on the home network always use external url
-- [x] **handle ping to internal gracefully.. diagnose appnot responding behaviour** 
-- [x] **do not try to upload to local instacne unless its verified that it exists or reachable by using ping**
-
-- [x] **investigate que behaviour**  missed images to be reuploaded once app running again
-- [x] **Analyse api key permissions**
-- [x] bug uploads video files befor they have been completely written in the folder being watched.. eg screencapture video screencasts 
-- [x] when a new folder is added to be watched and the trarget folder on the remote dosent exist. and multiple files are added to the local folder ... each worker handling each image ends up creating a seperate folder on the immich instance
-
--[x] tray icon on ubuntu dosent work so allow app to run without that feature.. clicking appicon in menu should not invoke icon tray unless tray icon works on that os config.. settings window should open as usual and background
-
-## 10. complete folder sync
-- [ ] **complete folder sync** sync folder added to remote or vice versa.. toggles for config.. sncy remote changes to local and sync local changes to remote
+### Future
+- [ ] **Exponential backoff** on retries (currently immediate re-queue on next launch).
+- [ ] **Progress notification** — Native desktop notification with upload count, not just log.
+- [ ] **Tray icon dynamic states** — Distinct icons for idle / uploading / error.
+- [ ] **Selective sync** — File type filter toggles per watch folder in the UI.
+- [ ] **ARM64 AppImage** — Cross-compile and package for Raspberry Pi / ARM desktops.
