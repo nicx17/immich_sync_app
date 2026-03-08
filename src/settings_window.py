@@ -1,92 +1,156 @@
 import sys
 import os
 import logging
-from PySide6.QtWidgets import (
-    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
-                               QLabel, QLineEdit, QPushButton, QListWidget, 
-                               QListWidgetItem, QMessageBox, QFileDialog, QFormLayout, QProgressBar, QTextEdit, QDialog, QCheckBox)
-from PySide6.QtGui import QIcon, QPainter, QColor, QBrush, QPen
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, Property, QRectF
+logger = logging.getLogger(__name__)
+import gi
+
+gi.require_version('Gtk', '4.0')
+gi.require_version('Adw', '1')
+from gi.repository import Gtk, Adw, GLib, Gio
+
 from config import Config
 from api_client import ImmichApiClient
 from state_manager import StateManager
 
-class SlideSwitch(QCheckBox):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(50, 26)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._position = 3
+class SettingsWindow(Adw.ApplicationWindow):
+    def __init__(self, application, monitor=None):
+        super().__init__(application=application)
+        self.set_title("Immich Auto-Sync Settings")
+        self.set_default_size(600, 900)
         
-        self.animation = QPropertyAnimation(self, b"position")
-        self.animation.setDuration(150)
+        # Enforce Dark Theme
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         
-        self.stateChanged.connect(self.setup_animation)
+        # When running standalone, config might be initialized here
+        self.config = Config()
+        self.monitor = monitor
+        self.state_manager = StateManager()
 
-    @Property(float)
-    def position(self): # type: ignore
-        return self._position
-
-    @position.setter
-    def position(self, pos): # type: ignore
-        self._position = pos
-        self.update()
-
-    def setup_animation(self, value):
-        self.animation.stop()
-        if value:
-            self.animation.setEndValue(27)
-        else:
-            self.animation.setEndValue(3)
-        self.animation.start()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.remote_albums = []
         
-        # Draw background
-        bg_color = QColor("#4CAF50") if self.isChecked() else QColor("#555555")
-        painter.setBrush(QBrush(bg_color))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(0, 0, self.width(), self.height(), 13, 13)
-        
-        # Draw handle
-        painter.setBrush(QBrush(QColor("#FFFFFF")))
-        painter.drawEllipse(QRectF(self._position, 3, 20, 20))
-
-
-class SettingsWindow(QWidget):
-    def __init__(self, config_manager=None, monitor=None):
-        super().__init__()
-        self.setWindowTitle("Immich Auto-Sync Settings")
-        
-        # Set Window Icon
-        # Prioritize local asset file for reliability
-        icon_path = os.path.join(os.path.dirname(__file__), "assets", "icon.png")
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
-        elif QIcon.hasThemeIcon("immich-sync"):
-            self.setWindowIcon(QIcon.fromTheme("immich-sync"))
-            
-        self.resize(600, 500)
-        self._set_modern_style()
-        
-        # When running standalone, config_manager might be None
-        self.config = config_manager if config_manager else Config()
-        self.monitor = monitor # Might be None if running standalone
-        
-        self._init_ui()
+        self._build_ui()
         self._load_values()
 
-        self.state_manager = StateManager()
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_progress)
-        self.timer.start(500)
+        # Update progress bar safely from background
+        GLib.timeout_add(500, self.update_progress)
+
+    def _build_ui(self):
+        # We use a Box container holding a HeaderBar and a Scrollable Window for settings
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.set_content(vbox)
+
+        # HeaderBar
+        header = Adw.HeaderBar()
+        vbox.append(header)
+
+        # About Button
+        about_btn = Gtk.Button(icon_name="help-about-symbolic")
+        about_btn.set_tooltip_text("About Immich Auto-Sync")
+        about_btn.connect("clicked", self.on_about_clicked)
+        header.pack_start(about_btn)
+
+        # Main scrollable area
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_vexpand(True)
+        vbox.append(scroll)
+
+        # Clamp to keep settings centered/max width but let height expand
+        clamp = Adw.Clamp()
+        clamp.set_maximum_size(600)
+        clamp.set_margin_top(12)
+        clamp.set_margin_bottom(12)
+        clamp.set_margin_start(12)
+        clamp.set_margin_end(12)
+        scroll.set_child(clamp)
+
+        # Main Page Box
+        page_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+        clamp.set_child(page_box)
+
+        # --- PROGRESS GROUP ---
+        progress_group = Adw.PreferencesGroup(title="Sync Status")
+        page_box.append(progress_group)
+
+        self.status_row = Adw.ActionRow(title="Idle")
+        self.status_row.set_subtitle("Waiting to sync...")
+        progress_group.add(self.status_row)
+
+        self.progress_bar = Gtk.ProgressBar()
+        self.progress_bar.set_margin_top(12)
+        self.progress_bar.set_margin_bottom(12)
+        self.progress_bar.set_margin_start(12)
+        self.progress_bar.set_margin_end(12)
+        self.progress_bar.set_fraction(0.0)
+        progress_group.add(self.progress_bar)
+
+        # --- CONNECTIVITY GROUP ---
+        conn_group = Adw.PreferencesGroup(title="Connectivity")
+        page_box.append(conn_group)
+
+        # Internal URL
+        self.internal_row = Adw.ActionRow(title="Internal URL (LAN)")
+        self.internal_switch = Gtk.Switch()
+        self.internal_switch.set_valign(Gtk.Align.CENTER)
+        self.internal_switch.connect("notify::active", self._validate_toggles)
+        self.internal_row.add_prefix(self.internal_switch)
+        
+        self.internal_entry = Gtk.Entry(placeholder_text="http://192.168.1.10:2283")
+        self.internal_entry.set_valign(Gtk.Align.CENTER)
+        self.internal_entry.set_hexpand(True)
+        self.internal_row.add_suffix(self.internal_entry)
+        conn_group.add(self.internal_row)
+
+        # External URL
+        self.external_row = Adw.ActionRow(title="External URL (WAN)")
+        self.external_switch = Gtk.Switch()
+        self.external_switch.set_valign(Gtk.Align.CENTER)
+        self.external_switch.connect("notify::active", self._validate_toggles)
+        self.external_row.add_prefix(self.external_switch)
+
+        self.external_entry = Gtk.Entry(placeholder_text="https://immich.example.com")
+        self.external_entry.set_valign(Gtk.Align.CENTER)
+        self.external_entry.set_hexpand(True)
+        self.external_row.add_suffix(self.external_entry)
+        conn_group.add(self.external_row)
+
+        # API Key
+        self.api_key_row = Adw.ActionRow(title="API Key")
+        self.api_key_entry = Gtk.PasswordEntry()
+        self.api_key_entry.set_valign(Gtk.Align.CENTER)
+        self.api_key_entry.set_hexpand(True)
+        self.api_key_row.add_suffix(self.api_key_entry)
+        conn_group.add(self.api_key_row)
+
+        # Test Connection Button
+        test_btn = Gtk.Button(label="Test Connection")
+        test_btn.set_margin_top(12)
+        test_btn.connect("clicked", self.on_test_connection_clicked)
+        conn_group.add(test_btn)
+
+
+        # --- WATCH FOLDERS GROUP ---
+        self.folders_group = Adw.PreferencesGroup(title="Watch Folders")
+        page_box.append(self.folders_group)
+        
+        # We list existing folders as ActionRows dynamically
+        self.add_folder_btn = Gtk.Button(label="Add Folder")
+        self.add_folder_btn.set_margin_top(12)
+        self.add_folder_btn.connect("clicked", self.on_add_folder_clicked)
+        self._tracked_group_widgets = []
+        save_group = Adw.PreferencesGroup()
+        page_box.append(save_group)
+        
+        save_btn = Gtk.Button(label="Save & Restart")
+        save_btn.add_css_class("suggested-action")
+        save_btn.connect("clicked", self.on_save_clicked)
+        save_group.add(save_btn)
+
 
     def update_progress(self):
         state = self.state_manager.read_state()
         if not state:
-            return
+            return True # Continue timer
             
         status = state.get('status', 'idle')
         progress = state.get('progress', 0)
@@ -95,231 +159,16 @@ class SettingsWindow(QWidget):
         current_file = state.get('current_file')
         
         if status == 'idle':
-            self.status_label.setText(f"Status: Idle (Processed {processed} files)")
-            # If we processed something, keep bar full, else 0.
-            self.progress_bar.setValue(100 if processed > 0 else 0)
+            self.status_row.set_title(f"Idle")
+            self.status_row.set_subtitle(f"Processed {processed} files")
+            self.progress_bar.set_fraction(1.0 if processed > 0 else 0.0)
         elif status == 'uploading':
             filename = os.path.basename(current_file) if current_file else "..."
-            self.status_label.setText(f"Uploading ({processed}/{total}): {filename}")
-            self.progress_bar.setValue(progress)
-
-    def _set_modern_style(self):
-        # Apply a sleek dark theme
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #000000;
-                color: #ffffff;
-                font-family: "Inter", "Roboto", "Ubuntu", "Segoe UI", system-ui, sans-serif;
-                font-size: 18px;
-                border: none;
-            }
-            QLineEdit {
-                background-color: #111111;
-                border: 2px solid #444;
-                border-radius: 6px;
-                padding: 10px;
-                color: #ffffff;
-                selection-background-color: #ffffff;
-                selection-color: #000000;
-            }
-            QLineEdit:hover {
-                border: 2px solid #666;
-            }
-            QLineEdit:focus {
-                border: 2px solid #ffffff;
-                background-color: #222222;
-            }
-            QPushButton {
-                background-color: #1a1a1a;
-                border: 2px solid #555;
-                color: #ffffff;
-                border-radius: 6px;
-                padding: 10px 20px;
-                font-weight: 600;
-                min-width: 100px;
-            }
-            QPushButton:hover {
-                background-color: #333333;
-                border: 2px solid #888;
-            }
-            QPushButton:pressed {
-                background-color: #ffffff; 
-                border-color: #ffffff;
-                color: #000000;
-            }
-            QListWidget {
-                background-color: #111111;
-                border: 2px solid #444;
-                border-radius: 6px;
-                padding: 5px;
-            }
-            QListWidget::item {
-                padding: 8px 12px;
-                border-radius: 4px;
-                color: #ffffff;
-            }
-            QListWidget::item:selected {
-                background-color: #ffffff;
-                color: #000000;
-            }
-            QListWidget::item:hover:!selected {
-                background-color: #222222;
-            }
-            QLabel {
-                color: #dddddd;
-                font-weight: 500;
-                margin-top: 5px;
-            }
-            QProgressBar {
-                border: none;
-                background-color: #222222;
-                border-radius: 10px;
-                text-align: center;
-                color: #000000;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QProgressBar::chunk {
-                background-color: #ffffff;
-                border-radius: 10px;
-            }
-            QMessageBox {
-                background-color: #000000;
-                color: #ffffff;
-            }
-            QMessageBox QLabel {
-                color: #ffffff;
-            }
-            QMessageBox QPushButton {
-                min-width: 80px;
-            }
-        """)
-
-    def _init_ui(self):
-        layout = QVBoxLayout()
-        layout.setContentsMargins(30, 30, 30, 30)
-        layout.setSpacing(15)
-        
-        # --- Connection Header ---
-        conn_header = QLabel("Connectivity")
-        conn_header.setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff; margin-bottom: 5px;")
-        layout.addWidget(conn_header)
-
-        # --- Connection Form ---
-        conn_layout = QFormLayout()
-        conn_layout.setSpacing(15)
-        conn_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        
-        # Internal URL Box
-        internal_layout = QHBoxLayout()
-        self.internal_url_enabled = SlideSwitch()
-        self.internal_url_enabled.setChecked(True)
-        self.internal_url_enabled.stateChanged.connect(self._validate_toggles)
-        self.internal_url_input = QLineEdit()
-        self.internal_url_input.setPlaceholderText("http://192.168.1.10:2283")
-        internal_layout.addWidget(self.internal_url_enabled)
-        internal_layout.addWidget(self.internal_url_input)
-        conn_layout.addRow("Internal URL (LAN):", internal_layout)
-        
-        # External URL Box
-        external_layout = QHBoxLayout()
-        self.external_url_enabled = SlideSwitch()
-        self.external_url_enabled.setChecked(True)
-        self.external_url_enabled.stateChanged.connect(self._validate_toggles)
-        self.external_url_input = QLineEdit()
-        self.external_url_input.setPlaceholderText("https://immich.example.com")
-        external_layout.addWidget(self.external_url_enabled)
-        external_layout.addWidget(self.external_url_input)
-        conn_layout.addRow("External URL (WAN):", external_layout)
-        
-        self.api_key_input = QLineEdit()
-        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_input.setPlaceholderText("Paste API Key here")
-        conn_layout.addRow("API Key:", self.api_key_input)
-        
-        layout.addLayout(conn_layout)
-        
-        # Test Connection Button
-        self.test_btn = QPushButton("Test Connection")
-        self.test_btn.clicked.connect(self.test_connection)
-        layout.addWidget(self.test_btn)
-        
-        layout.addSpacing(20)
-        
-        # --- Progress ---
-        layout.addSpacing(10)
-        status_header = QLabel("Sync Status")
-        status_header.setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff; margin-top: 5px;")
-        layout.addWidget(status_header)
-
-        self.status_label = QLabel("Status: Idle")
-        layout.addWidget(self.status_label)
-        
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFixedHeight(20) # Make it slimmer
-        layout.addWidget(self.progress_bar)
-        
-        layout.addSpacing(10)
-
-        # --- Watch Paths ---
-        layout.addSpacing(10)
-        watch_header = QLabel("Watch Folders")
-        watch_header.setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff; margin-top: 10px; margin-bottom: 5px;")
-        layout.addWidget(watch_header)
-        
-        self.path_list = QTableWidget(0, 2)
-        self.path_list.setHorizontalHeaderLabels(["Folder Path", "Target Immich Album"])
-        self.path_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.path_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.path_list.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.path_list.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        layout.addWidget(self.path_list)
-        
-        path_btn_layout = QHBoxLayout()
-        self.add_path_btn = QPushButton("+ Add Folder")
-        self.add_path_btn.clicked.connect(self.add_path)
-        path_btn_layout.addWidget(self.add_path_btn)
-        
-        self.remove_path_btn = QPushButton("- Remove Folder")
-        self.remove_path_btn.clicked.connect(self.remove_path)
-        path_btn_layout.addWidget(self.remove_path_btn)
-        
-        layout.addLayout(path_btn_layout)
-        
-        layout.addStretch()
-        
-        # --- Bottom Buttons ---
-        bottom_layout = QHBoxLayout()
-        
-        self.about_btn = QPushButton("About")
-        self.about_btn.clicked.connect(self.show_about_dialog)
-        bottom_layout.addWidget(self.about_btn)
-
-        bottom_layout.addStretch()
-
-        self.close_btn = QPushButton("Close")
-        self.close_btn.clicked.connect(self.close)
-        bottom_layout.addWidget(self.close_btn)
-        
-        self.save_btn = QPushButton("Save && Restart")
-        self.save_btn.clicked.connect(self.save_settings)
-        bottom_layout.addWidget(self.save_btn)
-        
-        layout.addLayout(bottom_layout)
-        
-        self.setLayout(layout)
-
-    def show_about_dialog(self):
-        QMessageBox.about(self, "About Immich Auto-Sync", 
-            "<h3>Immich Auto-Sync</h3>"
-            "<p>A daemon-based synchronization tool for automatically uploading media files to an Immich server.</p>"
-            "<p>Version: 1.0.2<br/>"
-            "License: GPLv3</p>"
-            "<p>Icon by Round Icons on Unsplash.</p>"
-            "<p><a href='https://github.com/nicx17/immich_sync_app'>https://github.com/nicx17/immich_sync_app</a></p>")
-
+            self.status_row.set_title(f"Uploading ({processed}/{total})")
+            self.status_row.set_subtitle(filename)
+            self.progress_bar.set_fraction(progress / 100.0)
+            
+        return True # Continue GLib timer
 
     def _fetch_remote_albums(self):
         internal = self.config.internal_url if self.config.internal_url_enabled else ""
@@ -327,7 +176,6 @@ class SettingsWindow(QWidget):
         api_key = self.config.get_api_key()
         if api_key and (internal or external):
             client = ImmichApiClient(internal, external, api_key)
-            # Try to fetch without failing hard
             try:
                 if client.check_connection():
                     return client.get_albums()
@@ -335,176 +183,185 @@ class SettingsWindow(QWidget):
                 pass
         return []
 
-    def _validate_toggles(self):
-        if not self.internal_url_enabled.isChecked() and not self.external_url_enabled.isChecked():
-            # If user unchecks the last one, revert it
-            if self.sender() == self.internal_url_enabled:
-                self.internal_url_enabled.setChecked(True)
-            else:
-                self.external_url_enabled.setChecked(True)
-            QMessageBox.warning(self, "Invalid Selection", "At least one URL (Internal or External) must be enabled.")
+    def _validate_toggles(self, switch, gparam):
+        if not self.internal_switch.get_active() and not self.external_switch.get_active():
+            # Revert the one that was just disabled
+            switch.set_active(True)
             
-        self.internal_url_input.setEnabled(self.internal_url_enabled.isChecked())
-        self.external_url_input.setEnabled(self.external_url_enabled.isChecked())
+            # Show a dialog
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                heading="Invalid Selection",
+                body="At least one URL (Internal or External) must be enabled."
+            )
+            dialog.add_response("ok", "OK")
+            dialog.present()
+            
+        self.internal_entry.set_sensitive(self.internal_switch.get_active())
+        self.external_entry.set_sensitive(self.external_switch.get_active())
 
     def _load_values(self):
-        # Temporarily block signals when loading to avoid validation popups
-        self.internal_url_enabled.blockSignals(True)
-        self.external_url_enabled.blockSignals(True)
+        # Set states without triggering callbacks if possible
+        self.internal_switch.set_active(self.config.internal_url_enabled)
+        self.external_switch.set_active(self.config.external_url_enabled)
         
-        self.internal_url_input.setText(self.config.internal_url)
-        self.external_url_input.setText(self.config.external_url)
+        self.internal_entry.set_text(self.config.internal_url)
+        self.external_entry.set_text(self.config.external_url)
         
-        self.internal_url_enabled.setChecked(self.config.internal_url_enabled)
-        self.external_url_enabled.setChecked(self.config.external_url_enabled)
-        
-        self.internal_url_input.setEnabled(self.config.internal_url_enabled)
-        self.external_url_input.setEnabled(self.config.external_url_enabled)
-        
-        self.internal_url_enabled.blockSignals(False)
-        self.external_url_enabled.blockSignals(False)
+        self.internal_entry.set_sensitive(self.config.internal_url_enabled)
+        self.external_entry.set_sensitive(self.config.external_url_enabled)
         
         api_key = self.config.get_api_key()
         if api_key:
-            self.api_key_input.setText(api_key)
+            self.api_key_entry.set_text(api_key)
             
-        # Try to fetch albums for the dropdown
+        # Try to fetch albums asynchronously or synchronously (we'll do sync for simplicity here, but UI might freeze briefly)
         self.remote_albums = self._fetch_remote_albums()
-            
-        self.path_list.setRowCount(0)
+        
+        self.folder_rows = [] # keep track of UI objects
+        
         for p in self.config.watch_paths:
             if isinstance(p, dict):
-                self._add_path_to_table(p["path"], p.get("album_id"), p.get("album_name"))
+                self._add_path_to_ui(p["path"], p.get("album_id"), p.get("album_name"))
             else:
-                self._add_path_to_table(p, None, None)
+                self._add_path_to_ui(p, None, None)
 
-    def _add_path_to_table(self, folder, current_album_id=None, current_album_name=None):
-        row = self.path_list.rowCount()
-        self.path_list.insertRow(row)
+    def _add_path_to_ui(self, folder, current_album_id=None, current_album_name=None):
+        row = Adw.ActionRow(title=folder)
         
-        path_item = QTableWidgetItem(folder)
-        self.path_list.setItem(row, 0, path_item)
+        # Album combo box
+        model = Gtk.StringList()
+        model.append("Default (Folder Name)")
         
-        combo = QComboBox()
-        combo.setEditable(True)
-        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        combo.setToolTip("Select an existing album, or type a new album name to create.")
+        album_names_to_ids = {"Default (Folder Name)": None}
         
-        combo.addItem("Default (Folder Name)", userData=None)
-        
-        # Populate with remote albums
-        if hasattr(self, 'remote_albums') and self.remote_albums:
+        if self.remote_albums:
             for album in self.remote_albums:
-                combo.addItem(album['albumName'], userData=album['id'])
+                model.append(album['albumName'])
+                album_names_to_ids[album['albumName']] = album['id']
                 
-        # Set selection if it exists
-        if current_album_id:
-            idx = combo.findData(current_album_id)
-            if idx >= 0:
-                combo.setCurrentIndex(idx)
-        elif current_album_name and current_album_name != "Default (Folder Name)":
-            # If there's no ID, but a custom name was typed, show it
-            combo.setCurrentText(current_album_name)
-        
-        self.path_list.setCellWidget(row, 1, combo)
+        # If user had a custom string not in remote somehow
+        if current_album_name and current_album_name not in album_names_to_ids:
+            model.append(current_album_name)
+            album_names_to_ids[current_album_name] = current_album_id
 
-    def add_path(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select Folder to Watch")
-        if folder:
-            # Check if already exists
-            items = []
-            for i in range(self.path_list.rowCount()):
-                item = self.path_list.item(i, 0)
-                if item:
-                    items.append(item.text())
-                    
-            if folder not in items:
-                self._add_path_to_table(folder)
+        combo = Gtk.DropDown(model=model)
+        combo.set_valign(Gtk.Align.CENTER)
+        
+        # Set active item
+        if current_album_name:
+            for i in range(model.get_n_items()):
+                if model.get_string(i) == current_album_name:
+                    combo.set_selected(i)
+                    break
+        
+        row.add_suffix(combo)
+        
+        # Remove button
+        remove_btn = Gtk.Button(icon_name="user-trash-symbolic")
+        remove_btn.set_valign(Gtk.Align.CENTER)
+        remove_btn.add_css_class("destructive-action")
+        remove_btn.connect("clicked", self.on_remove_folder_clicked, row)
+        row.add_suffix(remove_btn)
+        
+        # Keep track in python list, recreate group
+        self.folder_rows.append({"folder": folder, "combo": combo, "row": row, "mapping": album_names_to_ids, "model": model})
+        self._refresh_folders_group()
 
-    def remove_path(self):
-        current_row = self.path_list.currentRow()
-        if current_row >= 0:
-            self.path_list.removeRow(current_row)
-
-    def test_connection(self):
-        internal = self.internal_url_input.text().strip() if self.internal_url_enabled.isChecked() else ""
-        external = self.external_url_input.text().strip() if self.external_url_enabled.isChecked() else ""
-        api_key = self.api_key_input.text().strip()
+    def _refresh_folders_group(self):
+        # Safely remove only the widgets we added
+        for widget in self._tracked_group_widgets:
+            try:
+                self.folders_group.remove(widget)
+            except Exception:
+                pass
+        self._tracked_group_widgets.clear()
         
-        logging.info(f"Testing connectivity to Internal: {internal}, External: {external}")
-        
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        self.setEnabled(False) # Disable window interactions
-        
-        try:
-            # Use transient client for testing
-            client = ImmichApiClient(internal, external, api_key)
+        # Re-add
+        for f in self.folder_rows:
+            self.folders_group.add(f["row"])
+            self._tracked_group_widgets.append(f["row"])
             
-            # Test Internal explicitly
-            internal_status = "N/A"
-            internal_ok = False
-            if internal:
-                logging.info(f"Testing Internal URL: {client.internal_url}")
-                internal_ok = client._ping(client.internal_url)
-                internal_status = "OK" if internal_ok else "FAILED"
-                
-            # Test External explicitly
-            external_status = "N/A"
-            external_ok = False
-            if external:
-                logging.info(f"Testing External URL: {client.external_url}")
-                external_ok = client._ping(client.external_url)
-                external_status = "OK" if external_ok else "FAILED"
+        # Re-add the button at the bottom
+        self.folders_group.add(self.add_folder_btn)
+        self._tracked_group_widgets.append(self.add_folder_btn)
 
-            # Construct Report
-            report = (
-                f"Internal Connection: {internal_status}\n"
-                f"External Connection: {external_status}\n"
-            )
+
+    def on_add_folder_clicked(self, btn):
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Select Folder to Watch")
+        
+        def on_folder_selected(dialog, result):
+            try:
+                folder = dialog.select_folder_finish(result)
+                path = folder.get_path()
+                if path:
+                    # Check duplicates
+                    for f in self.folder_rows:
+                        if f["folder"] == path:
+                            return
+                    self._add_path_to_ui(path)
+            except GLib.Error as e:
+                logger.error(f"Error selecting folder: {e}")
+
+        dialog.select_folder(self, None, on_folder_selected)
+
+    def on_remove_folder_clicked(self, btn, row):
+        for f in self.folder_rows:
+            if f["row"] == row:
+                self.folder_rows.remove(f)
+                break
+        self._refresh_folders_group()
+
+    def on_test_connection_clicked(self, btn):
+        internal = self.internal_entry.get_text().strip() if self.internal_switch.get_active() else ""
+        external = self.external_entry.get_text().strip() if self.external_switch.get_active() else ""
+        api_key = self.api_key_entry.get_text().strip()
+        
+        btn.set_sensitive(False)
+        
+        def run_test():
+            client = ImmichApiClient(internal, external, api_key)
+            internal_ok = client._ping(client.internal_url) if internal else False
+            external_ok = client._ping(client.external_url) if external else False
+            
+            GLib.idle_add(show_results, internal_ok, external_ok, client)
+
+        def show_results(internal_ok, external_ok, client):
+            btn.set_sensitive(True)
+            report = f"Internal Connection: {'OK' if internal_ok else 'FAILED' if internal else 'N/A'}\n"
+            report += f"External Connection: {'OK' if external_ok else 'FAILED' if external else 'N/A'}\n"
             
             if internal_ok:
                 report += f"\nActive Mode: LAN ({client.internal_url})"
-                QMessageBox.information(self, "Connection Test - Success", report)
+                self._show_msg("Success", report)
             elif external_ok:
                 report += f"\nActive Mode: WAN ({client.external_url})"
-                QMessageBox.information(self, "Connection Test - Success", report)
+                self._show_msg("Success", report)
             else:
                 report += "\nCould not connect to Immich at either address."
-                QMessageBox.critical(self, "Connection Test - Failed", report)
-        finally:
-            self.setEnabled(True)
-            QApplication.restoreOverrideCursor()
+                self._show_msg("Failed", report)
+                
+            return False # Stop idle
+            
+        import threading
+        threading.Thread(target=run_test, daemon=True).start()
 
-    def save_settings(self):
-        logging.info("Saving settings...")
-        # Update config object locally
-        self.config.data["internal_url"] = self.internal_url_input.text().strip()
-        self.config.data["external_url"] = self.external_url_input.text().strip()
-        self.config.data["internal_url_enabled"] = self.internal_url_enabled.isChecked()
-        self.config.data["external_url_enabled"] = self.external_url_enabled.isChecked()
+    def on_save_clicked(self, btn):
+        logger.info("Saving settings...")
+        self.config.data["internal_url"] = self.internal_entry.get_text().strip()
+        self.config.data["external_url"] = self.external_entry.get_text().strip()
+        self.config.data["internal_url_enabled"] = self.internal_switch.get_active()
+        self.config.data["external_url_enabled"] = self.external_switch.get_active()
         
         # Collect paths
         paths = []
-        for i in range(self.path_list.rowCount()):
-            path_item = self.path_list.item(i, 0)
-            if not path_item: continue
-            folder = path_item.text()
-            
-            combo = self.path_list.cellWidget(i, 1) # type: ignore 
-            if isinstance(combo, QComboBox):
-                album_name = combo.currentText().strip()
-                # Check if this exact text exists in the list to determine if it's custom
-                idx = combo.findText(album_name)
-                if idx >= 0:
-                    album_id = combo.itemData(idx)
-                else:
-                    album_id = None # Custom text implies a new uncreated album
-                
-                if not album_name:
-                    album_name = "Default (Folder Name)"
-            else:
-                album_name = "Default (Folder Name)"
-                album_id = None
+        for f in self.folder_rows:
+            folder = f["folder"]
+            # get currently selected text from drop down
+            selected = f["combo"].get_selected()
+            album_name = f["model"].get_string(selected)
+            album_id = f["mapping"].get(album_name)
             
             paths.append({
                 "path": folder,
@@ -513,24 +370,53 @@ class SettingsWindow(QWidget):
             })
             
         self.config.data["watch_paths"] = paths
-        
-        logging.info(f"Saving {len(paths)} watch paths: {paths}")
-        
-        # Save JSON
         self.config.save()
-        logging.info("Configuration saved to disk.")
         
-        # Save Keyring
-        key = self.api_key_input.text().strip()
+        key = self.api_key_entry.get_text().strip()
         if key:
             self.config.set_api_key(key)
-            logging.info("API Key updated in keyring.")
             
-        QMessageBox.information(self, "Saved", "Settings saved. Please restart the app for changes to take effect fully.")
-        self.close()
+        def on_close(dialog, res):
+            self.get_application().quit()
+            
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading="Saved",
+            body="Settings saved. The application will now exit to restart."
+        )
+        dialog.add_response("ok", "OK")
+        dialog.connect("response", on_close)
+        dialog.present()
 
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = SettingsWindow()
-    window.show()
-    sys.exit(app.exec())
+
+    def on_about_clicked(self, btn):
+        self.show_about_dialog()
+
+    def show_about_dialog(self):
+        # Add assets directory to icon theme search path so it can find "icon.png"
+        from gi.repository import Gdk
+        display = Gdk.Display.get_default()
+        if display:
+            theme = Gtk.IconTheme.get_for_display(display)
+            theme.add_search_path(os.path.join(os.path.dirname(__file__), "assets"))
+
+        about = Adw.AboutWindow(
+            application_name="Immich Auto-Sync",
+            application_icon="icon",
+            version="1.0.2",
+            developer_name="Nick Cardoso",
+            website="https://github.com/nicx17/immich_sync_app",
+            issue_url="https://github.com/nicx17/immich_sync_app/issues",
+            license_type=Gtk.License.GPL_3_0
+        )
+        about.set_transient_for(self)
+        about.present()
+
+    def _show_msg(self, title, msg):
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading=title,
+            body=msg
+        )
+        dialog.add_response("ok", "OK")
+        dialog.present()

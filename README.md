@@ -8,7 +8,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/nicx17/immich_sync_app?include_prereleases&style=for-the-badge&logo=github&color=FF90C3)
 ![Python](https://img.shields.io/badge/Python_3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
-![PySide6](https://img.shields.io/badge/PySide6-41CD52?style=for-the-badge&logo=qt&logoColor=white)
+![GTK4](https://img.shields.io/badge/GTK4-7DF12B?style=for-the-badge&logo=gtk&logoColor=white)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0)
 
 </div>
@@ -76,19 +76,19 @@ If you prefer not to use the AppImage, you can run the app directly from source.
 **Ubuntu/Debian:**
 
 ```bash
-sudo apt install python3-pip python3-venv libgirepository1.0-dev libcairo2-dev gir1.2-gtk-3.0 gir1.2-appindicator3-0.1
+sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 libgirepository1.0-dev gcc libcairo2-dev pkg-config python3-dev gir1.2-gtk-3.0 gir1.2-appindicator3-0.1
 ```
 
 **Fedora:**
 
 ```bash
-sudo dnf install python3-pip python3-gobject gtk3 libappindicator-gtk3
+sudo dnf install python3-gobject gtk4 libadwaita libappindicator-gtk3
 ```
 
 **Arch Linux:**
 
 ```bash
-sudo pacman -S python-pip python-gobject gtk3 libappindicator-gtk3
+sudo pacman -S python-gobject gtk4 libadwaita libappindicator-gtk3
 ```
 
 ### Setup

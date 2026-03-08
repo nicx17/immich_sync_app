@@ -23,7 +23,7 @@ dependencies = [
     "keyring>=24.3.0",
     "pystray>=0.19.5",
     "Pillow>=10.2.0",
-    "PySide6>=6.6.1",
+    "PyGObject>=3.42.0",
 ]
 requires-python = ">=3.10"
 

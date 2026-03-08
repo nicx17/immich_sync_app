@@ -2,6 +2,7 @@ import os
 import json
 import keyring
 import logging
+logger = logging.getLogger(__name__)
 
 APP_NAME = "immich-sync"
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", APP_NAME)
@@ -17,9 +18,9 @@ class Config:
             os.makedirs(CONFIG_DIR, exist_ok=True)
             
     def _load_config(self):
-        logging.debug(f"Loading config from {CONFIG_FILE}")
+        logger.debug(f"Loading config from {CONFIG_FILE}")
         if not os.path.exists(CONFIG_FILE):
-             logging.info("Config file not found, creating default.")
+             logger.info("Config file not found, creating default.")
              # Default structure
              return {
                  "watch_paths": [os.path.join(os.path.expanduser("~"), "Pictures")],
@@ -32,10 +33,10 @@ class Config:
         try:
             with open(CONFIG_FILE, 'r') as f:
                 data = json.load(f)
-                logging.debug("Config loaded successfully.")
+                logger.debug("Config loaded successfully.")
                 return data
         except json.JSONDecodeError as e:
-            logging.error(f"Failed to load config (JSON error): {e}")
+            logger.error(f"Failed to load config (JSON error): {e}")
             return {}
 
     def save(self):
@@ -46,14 +47,14 @@ class Config:
         try:
             return keyring.get_password(APP_NAME, "api_key")
         except Exception as e:
-            logging.error(f"Keyring error: {e}")
+            logger.error(f"Keyring error: {e}")
             return None
         
     def set_api_key(self, api_key):
         try:
             keyring.set_password(APP_NAME, "api_key", api_key)
         except Exception as e:
-            logging.error(f"Keyring error: {e}")
+            logger.error(f"Keyring error: {e}")
             
     # Properties for easy access
     @property

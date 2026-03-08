@@ -4,13 +4,17 @@ setup(
     name="immich-sync",
     version="1.0.2",
     packages=find_packages(),
+    include_package_data=True,
+    package_data={
+        'src': ['assets/icon.png'],
+    },
     install_requires=[
         "watchdog>=4.0.0",
         "requests>=2.31.0",
         "keyring>=24.3.0",
         "pystray>=0.19.5",
         "Pillow>=10.2.0",
-        "PySide6>=6.6.1",
+        "PyGObject>=3.42.0",
     ],
     entry_points={
         "console_scripts": [

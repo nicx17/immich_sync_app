@@ -1,5 +1,6 @@
 import hashlib
 import logging
+logger = logging.getLogger(__name__)
 import os
 
 def calculate_checksum(file_path):
@@ -7,9 +8,9 @@ def calculate_checksum(file_path):
     Calculate the SHA-1 checksum of a file.
     Immich uses SHA-1 for deduplication checks.
     """
-    logging.debug(f"Calculating SHA-1 for: {file_path}")
+    logger.debug(f"Calculating SHA-1 for: {file_path}")
     if not os.path.exists(file_path):
-        logging.error(f"File not found for checksum: {file_path}")
+        logger.error(f"File not found for checksum: {file_path}")
         return None
 
     sha1 = hashlib.sha1()
@@ -25,9 +26,9 @@ def calculate_checksum(file_path):
                     break
                 sha1.update(data)
         checksum = sha1.hexdigest()
-        logging.debug(f"Checksum ({file_path}): {checksum}")
+        logger.debug(f"Checksum ({file_path}): {checksum}")
         return checksum
     except IOError as e:
         # File might be locked or unreadable
-        logging.error(f"IOError calculating checksum for {file_path}: {e}")
+        logger.error(f"IOError calculating checksum for {file_path}: {e}")
         return None

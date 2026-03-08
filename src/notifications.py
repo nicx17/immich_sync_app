@@ -1,5 +1,6 @@
 import subprocess
 import logging
+logger = logging.getLogger(__name__)
 
 class NotificationManager:
     def __init__(self, app_name="Immich Auto-Sync"):
@@ -31,4 +32,4 @@ class NotificationManager:
             # Only log once or just suppress to avoid log spam if not installed
             pass
         except Exception as e:
-            logging.error(f"Failed to send notification: {e}")
+            logger.error(f"Failed to send notification: {e}")
