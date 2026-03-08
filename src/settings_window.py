@@ -403,7 +403,7 @@ class SettingsWindow(Adw.ApplicationWindow):
         about = Adw.AboutWindow(
             application_name="Mimick",
             application_icon="icon",
-            version="2.0.0",
+            version="2.0.1",
             developer_name="Nick Cardoso",
             website="https://github.com/nicx17/mimick",
             issue_url="https://github.com/nicx17/mimick/issues",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mimick"
-version = "2.0.0"
+version = "2.0.1"
 description = "A background daemon to auto-sync photos to Immich on Linux"
 readme = "README.md"
 authors = [

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-03-08
+
+### Changed
+- Renamed repository and backend strings from `immich_sync_app` to `mimick`
+
 ## [2.0.0] - 2026-03-08
 
 ### Added
