@@ -1,65 +1,61 @@
 #!/bin/bash
-# uninstall.sh - Remove Mimick integration
+# uninstall.sh - Remove Mimick (Rust binary installation)
 
 APP_NAME="mimick"
 ICON_NAME="mimick"
 DESKTOP_FILE="mimick.desktop"
 
-# Directories
+INSTALL_BIN="$HOME/.local/bin"
 USER_APPS="$HOME/.local/share/applications"
 USER_ICONS_SCALABLE="$HOME/.local/share/icons/hicolor/scalable/apps"
 USER_ICONS_PNG="$HOME/.local/share/icons/hicolor/128x128/apps"
 AUTOSTART_DIR="$HOME/.config/autostart"
 
-echo "Uninstalling $APP_NAME..."
+echo "=== Mimick Uninstaller ==="
 
-# 1. Remove Desktop Entry
+# 1. Remove binary
+if [ -f "$INSTALL_BIN/$APP_NAME" ]; then
+    rm "$INSTALL_BIN/$APP_NAME"
+    echo "Removed binary: $INSTALL_BIN/$APP_NAME"
+else
+    echo "Binary not found at $INSTALL_BIN/$APP_NAME"
+fi
+
+# 2. Remove desktop entry
 if [ -f "$USER_APPS/$DESKTOP_FILE" ]; then
     rm "$USER_APPS/$DESKTOP_FILE"
     echo "Removed desktop entry: $USER_APPS/$DESKTOP_FILE"
-else
-    echo "Desktop entry not found."
 fi
 
-# 2. Remove Autostart Entry
+# 3. Remove autostart entry
 if [ -f "$AUTOSTART_DIR/$DESKTOP_FILE" ]; then
     rm "$AUTOSTART_DIR/$DESKTOP_FILE"
-    echo "Removed autostart entry: $AUTOSTART_DIR/$DESKTOP_FILE"
-else
-    echo "Autostart entry not found."
+    echo "Removed autostart entry."
 fi
 
-# 3. Remove Icons
-# SVG
-if [ -f "$USER_ICONS_SCALABLE/$ICON_NAME.svg" ]; then
-    rm "$USER_ICONS_SCALABLE/$ICON_NAME.svg"
-    echo "Removed icon: $USER_ICONS_SCALABLE/$ICON_NAME.svg"
-fi
-# PNG
-if [ -f "$USER_ICONS_PNG/$ICON_NAME.png" ]; then
-    rm "$USER_ICONS_PNG/$ICON_NAME.png"
-    echo "Removed icon: $USER_ICONS_PNG/$ICON_NAME.png"
-fi
-# System-wide (check if exists)
+# 4. Remove icons
+[ -f "$USER_ICONS_SCALABLE/$ICON_NAME.svg" ] && rm "$USER_ICONS_SCALABLE/$ICON_NAME.svg" && echo "Removed SVG icon."
+[ -f "$USER_ICONS_PNG/$ICON_NAME.png" ]      && rm "$USER_ICONS_PNG/$ICON_NAME.png"      && echo "Removed PNG icon."
+
 if [ -f "/usr/share/pixmaps/$ICON_NAME.png" ]; then
-    echo "Found system-wide icon at /usr/share/pixmaps/$ICON_NAME.png"
-    read -p "Remove system-wide icon? (requires sudo) (y/N) " -n 1 -r
+    read -p "Remove system-wide icon from /usr/share/pixmaps? (requires sudo) (y/N) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         sudo rm "/usr/share/pixmaps/$ICON_NAME.png"
-        echo "Removed /usr/share/pixmaps/$ICON_NAME.png"
+        echo "Removed system-wide icon."
     fi
 fi
 
-# Update icon cache
 gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 
-# 4. Cleanup Environment
-read -p "Remove virtual environment (.venv)? (y/N) " -n 1 -r
+# 5. Optionally remove config + cache
+read -p "Remove config (~/.config/mimick) and cache (~/.cache/mimick)? (y/N) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    #rm -rf .venv
-    echo "Removed virtual environment."
+    rm -rf "$HOME/.config/mimick"
+    rm -rf "$HOME/.cache/mimick"
+    echo "Removed config and cache directories."
 fi
 
-echo "Uninstallation Complete."
+echo ""
+echo "=== Uninstallation Complete ==="

@@ -8,12 +8,11 @@ Welcome to Mimick for Linux! This guide provides detailed instructions on how to
 
 ### The System Tray Icon
 
-Once the application is running, a blue "Immich" icon will appear in your system tray (usually at the top right on GNOME/KDE, or bottom right on other desktop environments).
-*If you are using GNOME and don't see system tray icons, ensure you have the "AppIndicator and KStatusNotifierItem Support" extension enabled.*
+Once the application is running, a blue "Immich" icon will appear in your system tray (usually at the top right on GNOME/KDE).
 
-**Note for Ubuntu 24+ / Wayland Users:** On newer desktop environments that strictly disable legacy system trays, `mimick` will automatically detect this and run purely in the background (headless daemon mode). You can still open the **Settings** menu at any time by simply clicking the "Mimick" launcher from your system App Grid / Application Menu.
+*If you are using GNOME and don't see system tray icons, ensure you have the "AppIndicator and KStatusNotifierItem Support" GNOME extension enabled. Stock GNOME does not support StatusNotifier tray icons out of the box.*
 
-Clicking on the tray icon reveals a menu with two primary options:
+Clicking on the tray icon reveals a menu:
 
 * **Settings**: Opens the configuration and status window.
 * **Quit**: Safely shuts down the application and stops all background syncing.
@@ -24,27 +23,27 @@ Clicking on the tray icon reveals a menu with two primary options:
 
 ### Accessing Settings
 
-If you didn't configure the application on the first run, right-click the tray icon and select **Settings**.
+Right-click the tray icon and select **Settings**, or launch with `mimick --settings`.
 
 ### Connectivity & Server Details
 
-1. **Internal URL (LAN)**: Enter the local IP address of your Immich server if it sits on the same network as your desktop (e.g., `http://192.168.1.10:2283`). This allows for high-speed local transfers when you are at home. You can toggle this connection mode on or off.
-2. **External URL (WAN)**: Enter the public address of your server if you expose it to the internet (e.g., `https://immich.yourdomain.com`). The application will fall back to this address if you take your laptop on the road. You can toggle this connection mode on or off using the sliding switch. Must have at least one URL toggled on.
+1. **Internal URL (LAN)**: Enter the local IP address of your Immich server (e.g., `http://192.168.1.10:2283`). Can be toggled on/off.
+2. **External URL (WAN)**: Enter the public address (e.g., `https://immich.yourdomain.com`). Can be toggled on/off. At least one URL must always remain enabled.
 3. **API Key**:
     * Open your Immich Web Interface in a browser.
-    * Go to **Account Settings** (profile icon in the top right) -> **API Keys**.
+    * Go to **Account Settings** → **API Keys**.
     * Click **New API Key**, give it a name (like "Linux Desktop"), and click Create.
-    * Copy the long string of text and paste it into the application's API Key field.
-    * *Note: This key is never stored in plain text. It is saved in your system's secure keyring.*
+    * Copy the key and paste it into the API Key field in Mimick.
+    * *The key is stored in your system's secure keyring (libsecret). It is never written to disk in plain text.*
 
-**Test Connection**: Click this button to verify that the app can successfully reach your server. The test uses a wait cursor to prevent UI stalling during network exploration, explicitly verifying the valid `{"res": "pong"}` JSON payload to guarantee you are speaking to the true Immich server rather than a captive router portal. The popup will tell you exactly which toggle (Internal vs External) it successfully locked onto.
+**Test Connection**: Verifies connectivity by pinging the Immich `/api/server/ping` endpoint, confirming a valid `{"res": "pong"}` JSON response to ensure you are talking to an actual Immich server rather than a captive portal.
 
 ### Choosing Folders to Watch
 
 1. Under **Watch Folders**, click **+ Add Folder**.
 2. Select a local directory (e.g., `~/Pictures`, `~/Videos/Exports`).
-3. The application will monitor these folders recursively (including all sub-folders).
-4. *Smart Album Selection*: By default, if you drop files into `~/Pictures/Vacation`, the app will automatically create an album in Immich named "Vacation". You can also map specific watch folders directly to existing Immich albums by selecting them from the dropdown menu, or type a custom new album name to be created automatically.
+3. The application monitors these folders recursively.
+4. **Album Selection**: Each folder row has a dropdown to assign an Immich album. Choose an existing album, type a custom name (a new album will be created), or leave as "Default (Folder Name)" to auto-name from the folder.
 
 ---
 
@@ -52,33 +51,36 @@ If you didn't configure the application on the first run, right-click the tray i
 
 ### Automatic Detection
 
-Once configured, the application runs silently in the background. When you add a new photo to one of your watched folders, `mimick` detects it instantly via Linux filesystem events (`inotify`).
+Once configured, the application runs silently in the background. When you add a new photo to a watched folder, `mimick` detects it via Linux filesystem events (`inotify`):
 
-* It waits a moment to ensure the file has finished downloading or rendering.
-* It calculates a checksum of the photo.
-* It uploads it to your Immich server in the background.
+1. Waits for the file size to stabilise (file is fully written to disk).
+2. Calculates a SHA-1 checksum for deduplication.
+3. Streams the file to Immich using the standard asset API.
+4. Adds the asset to the configured album.
 
 ### Sync Status
 
-You can check to see what the application is currently doing by opening the **Settings** window.
-The "Sync Status" section features a progress bar and label indicating:
+Open the **Settings** window to see what is currently happening:
 
-* **Status: Idle**: Nothing is currently uploading. It will show the total number of files processed.
-* **Uploading**: Will list the specific filename being transferred and show a dynamic progress bar tracking the batch.
+* **Idle** — Nothing is uploading. Shows total processed count.
+* **Uploading** — Shows the current filename and a progress bar for the active batch.
 
-### Notifications
+### Offline Reliability
 
-As files are uploaded, you may see a native desktop notification appear on your screen showing the upload progress.
+If an upload fails, the file is saved to `~/.cache/mimick/retries.json`. On the next launch, any persisted retries are automatically re-queued and uploaded.
 
 ---
 
 ## 4. Frequently Asked Questions
 
 **Q: Will this delete my local files?**
-No. This is strictly a "One-Way Sync" (Backup mode). It reads your local files and uploads them. It will *never* delete a file on your local machine, and it will *never* download files deleted from the Immich web interface back to your computer.
+No. Mimick is strictly one-way (backup mode). It reads local files and uploads them. It never modifies or deletes files on your local machine.
 
 **Q: Are sidecar files supported?**
-Currently, `mimick` intentionally ignores metadata sidecar files (like `.xmp`). Immich has limited backend support for sidecars uploaded via the standard API without bulk CLI tools, so we filter them to prevent clutter.
+Currently, Mimick ignores metadata sidecar files (`.xmp`, etc.). Immich has limited sidecar support via the standard API, so they are filtered to prevent clutter.
 
 **Q: What happens if my server is offline?**
-The application will detect the connection failure. Right now, it relies on connection retries. Advanced offline queuing is currently on the development roadmap.
+The upload will fail gracefully and the file is saved to the retry queue (`~/.cache/mimick/retries.json`). On next launch, it will be automatically retried.
+
+**Q: The tray icon does not appear on GNOME.**
+GNOME requires the "AppIndicator and KStatusNotifierItem Support" extension. Install it from the GNOME Extensions website. Without it, the warning `Watcher(ServiceUnknown)` is expected and harmless — the app still runs fully in the background.
