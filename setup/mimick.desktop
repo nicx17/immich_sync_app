@@ -1,18 +1,15 @@
 [Desktop Entry]
 Name=Mimick
 Comment=Automatically upload photos to Immich
-# Change this path to your execution path
-Exec=/path/to/python3 /path/to/mimick/src/main.py
+Exec=mimick
 Icon=mimick
 Terminal=false
 Type=Application
 Categories=Utility;Network;
-X-GNOME-Autostart-enabled=true
+Keywords=Photo;Sync;Backup;Immich;
 StartupNotify=false
-# Matches the window class set in src/settings_main.py
-StartupWMClass=mimick.desktop
-Actions=Settings;
+X-GNOME-Autostart-enabled=true
 
 [Desktop Action Settings]
 Name=Open Settings
-Exec=/path/to/python3 /path/to/mimick/src/main.py --settings
+Exec=mimick --settings
