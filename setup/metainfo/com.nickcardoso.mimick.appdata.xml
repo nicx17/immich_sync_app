@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.nickcardoso.immich_sync</id>
-  <name>Immich Sync</name>
+  <id>com.nickcardoso.mimick</id>
+  <name>Mimick</name>
   <summary>A background daemon to auto-sync photos to Immich on Linux</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
@@ -10,18 +10,18 @@
   </developer>
   <description>
     <p>
-      Immich Sync is a Linux daemon running in the background to automatically synchronize your local media files to a designated Immich server.
+      Mimick is a Linux daemon running in the background to automatically synchronize your local media files to a designated Immich server.
     </p>
     <p>
       It watches configured folders, utilizes inotify for instantaneous event triggering, tracks deduplication via SHA-1 checksum computations locally, and securely stores configuration parameters leveraging the native secret keyring standard. Includes a system tray indicator for settings and manual controls.
     </p>
   </description>
-  <launchable type="desktop-id">com.nickcardoso.immich_sync.desktop</launchable>
+  <launchable type="desktop-id">com.nickcardoso.mimick.desktop</launchable>
   <url type="homepage">https://github.com/nicx17/immich_sync_app</url>
   <url type="bugtracker">https://github.com/nicx17/immich_sync_app/issues</url>
   
   <provides>
-    <binary>immich-sync</binary>
+    <binary>mimick</binary>
   </provides>
   
   <categories>

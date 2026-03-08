@@ -43,7 +43,7 @@ class QueueManager:
         
         self.worker_threads = []
         self.num_workers = 10 
-        self.retry_storage_file = os.path.expanduser("~/.cache/immich-sync/retries.json")
+        self.retry_storage_file = os.path.expanduser("~/.cache/mimick/retries.json")
         self.retry_lock = threading.Lock()
         
     def _save_retries(self):

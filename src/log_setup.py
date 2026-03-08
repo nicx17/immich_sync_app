@@ -17,7 +17,7 @@ def setup_logging():
     log_file = os.path.join(CONFIG_DIR, "app.log")
     
     # Determine level
-    level = logging.DEBUG if os.environ.get("IMMICH_SYNC_DEBUG") == "1" else logging.INFO
+    level = logging.DEBUG if os.environ.get("MIMICK_DEBUG") == "1" else logging.INFO
     
     # Configure root logger with better format
     log_format = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
@@ -26,7 +26,7 @@ def setup_logging():
     handlers = [logging.StreamHandler(sys.stdout)]
     
     # Only attach file handler if we want logs to disk
-    if os.environ.get("IMMICH_SYNC_NO_LOG_FILE") != "1":
+    if os.environ.get("MIMICK_NO_LOG_FILE") != "1":
         try:
             handlers.append(logging.handlers.RotatingFileHandler(
                 log_file, maxBytes=5*1024*1024, backupCount=2, encoding='utf-8'
@@ -54,6 +54,6 @@ def setup_logging():
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
-        logging.getLogger("immich-sync.Core").critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+        logging.getLogger("mimick.Core").critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
         
     sys.excepthook = handle_exception

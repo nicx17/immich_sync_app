@@ -1,6 +1,6 @@
-# Building the Immich Sync AppImage
+# Building the Mimick AppImage
 
-This document details the process for manually building an AppImage for the Immich Sync application. This packages the application along with its Python dependencies into a single, portable executable file that doesn't rely on the system's `site-packages`.
+This document details the process for manually building an AppImage for the Mimick application. This packages the application along with its Python dependencies into a single, portable executable file that doesn't rely on the system's `site-packages`.
 
 ## Prerequisites
 
@@ -45,12 +45,12 @@ Copy the application source code and graphical assets into the standard location
 ```bash
 # Copy source code and set permissions
 cp -r src/* AppDir/usr/bin/
-mv AppDir/usr/bin/main.py AppDir/usr/bin/immich-sync
-chmod +x AppDir/usr/bin/immich-sync
+mv AppDir/usr/bin/main.py AppDir/usr/bin/mimick
+chmod +x AppDir/usr/bin/mimick
 
 # Copy icons (root location for AppImage standard, standard location for system)
-cp src/assets/icon.png AppDir/immich-sync.png
-cp src/assets/icon.png AppDir/usr/share/icons/hicolor/256x256/apps/immich-sync.png
+cp src/assets/icon.png AppDir/mimick.png
+cp src/assets/icon.png AppDir/usr/share/icons/hicolor/256x256/apps/mimick.png
 ```
 
 ---
@@ -71,11 +71,11 @@ pip install -r requirements.txt --target=AppDir/usr/lib/python3/site-packages
 Create the standard Desktop entry inside the root of the `AppDir`. This gives the AppImage a name, an icon, and instructions on what to run.
 
 ```bash
-cat << 'EOF' > AppDir/immich-sync.desktop
+cat << 'EOF' > AppDir/mimick.desktop
 [Desktop Entry]
-Name=Immich Sync
-Exec=immich-sync
-Icon=immich-sync
+Name=Mimick
+Exec=mimick
+Icon=mimick
 Type=Application
 Categories=Utility;Network;
 Comment=Automatic background sync for Immich
@@ -100,7 +100,7 @@ export HERE="$(dirname "$(readlink -f "${0}")")"
 export PYTHONPATH="$HERE/usr/lib/python3/site-packages:$PYTHONPATH"
 
 # Execute the python script using the system's python3 interpreter
-exec python3 "$HERE/usr/bin/immich-sync" "$@"
+exec python3 "$HERE/usr/bin/mimick" "$@"
 EOF
 
 # Make the hook executable

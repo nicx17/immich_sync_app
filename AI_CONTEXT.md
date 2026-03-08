@@ -1,7 +1,7 @@
-# Immich Sync Application Context
+# Mimick Application Context
 
 ## Application Overview
-`immich-sync` is a multi-threaded Linux desktop daemon and system tray application designed to automatically synchronize local media files (photos, videos) with an [Immich](https://immich.app/) server.
+`mimick` is a multi-threaded Linux desktop daemon and system tray application designed to automatically synchronize local media files (photos, videos) with an [Immich](https://immich.app/) server.
 
 ## Architecture & Core Components
 The application is decoupled into a background daemon and a UI process (PySide6-based settings window, GTK-based legacy tray icon).
@@ -13,7 +13,7 @@ The application is decoupled into a background daemon and a UI process (PySide6-
 
 ### 2. Queue Manager (`src/queue_manager.py`)
 - A thread-safe orchestrator for upload tasks using background worker threads (10 default).
-- **Offline Reliability:** Implements a persistent on-disk retry queue (`~/.cache/immich-sync/retries.json`) with robust file locking and unique thread ID temp files.
+- **Offline Reliability:** Implements a persistent on-disk retry queue (`~/.cache/mimick/retries.json`) with robust file locking and unique thread ID temp files.
 - Re-queues failed items securely across daemon restarts to guarantee zero-loss uploads.
 
 ### 3. API Client (`src/api_client.py`)
@@ -31,7 +31,7 @@ The application is decoupled into a background daemon and a UI process (PySide6-
 - `src/`: Contains all main application source code.
 - `tests/`: Extensive unit tests (50+ passing `pytest` cases covering advanced mocks).
 - `docs/`: Extensive documentation including architecture, development, troubleshooting, and packaging guides.
-- `setup/`: Packaging files including a Desktop entry (`immich-sync.desktop`), systemd user service (`immich-sync.service`), and PKGBUILD for Arch Linux packaging.
+- `setup/`: Packaging files including a Desktop entry (`mimick.desktop`), systemd user service (`mimick.service`), and PKGBUILD for Arch Linux packaging.
 - `*.AppImage` / `install-appimage.sh`: Logic for building and installing AppImages.
 
 ## Tech Stack
@@ -50,4 +50,4 @@ When assisting with this repository, an AI agent should keep in mind:
 - **Wayland Compatibility:** The application has known workarounds for legacy X11 tray icons running under Wayland (`GDK_BACKEND=x11`). Be cautious when modifying `tray_icon.py` or entrypoint logic.
 - **Recent Focus:** Resiliency (on-disk queues) and robust file-read-completion strategies for large videos.
 
-Use this file as a mental anchor when returning to work on `immich-sync`.
+Use this file as a mental anchor when returning to work on `mimick`.

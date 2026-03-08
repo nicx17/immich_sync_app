@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This guide covers common issues encountered while using `immich-sync`.
+This guide covers common issues encountered while using `mimick`.
 
 ## Common Issues
 
@@ -36,13 +36,13 @@ If you are running on a server without a desktop session (e.g., via SSH only), `
 ### Clearing the Upload Queue (Local Cache)
 If the application gets permanently stuck constantly trying to upload a corrupt or broken file on every start causing a queue blockage, you can manually delete the retry cache offline:
 ```bash
-rm -f ~/.cache/immich-sync/retries.json
+rm -f ~/.cache/mimick/retries.json
 ```
 
 ### Viewing Logs (Systemd)
 If running as a service:
 ```bash
-journalctl --user -u immich-sync -f
+journalctl --user -u mimick -f
 ```
 
 ### Manual Debugging
@@ -55,6 +55,6 @@ Look for lines starting with `ERROR` or `CRITICAL`.
 ### Check Configuration Validity
 Verify your config file is valid JSON:
 ```bash
-cat ~/.config/immich-sync/config.json | jq .
+cat ~/.config/mimick/config.json | jq .
 ```
 If `jq` reports an error, the file is malformed.

@@ -243,7 +243,7 @@ class ImmichApiClient:
         
         data = {
             "albumName": album_name, 
-            "description": "Created by Immich Auto-Sync"
+            "description": "Created by Mimick"
         }
         
         try:

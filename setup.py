@@ -1,12 +1,12 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="immich-sync",
+    name="mimick",
     version="1.0.2",
     packages=find_packages(),
     include_package_data=True,
     package_data={
-        'src': ['assets/icon.png'],
+        'src': ['assets/*'],
     },
     install_requires=[
         "watchdog>=4.0.0",
@@ -18,7 +18,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "immich-sync=src.main:main",
+            "mimick=src.main:main",
         ],
     },
     author="Nick",

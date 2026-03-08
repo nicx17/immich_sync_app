@@ -17,7 +17,7 @@ ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.heic', '.mp4', '.mov', '.gif', 
 
 class ImmichEventHandler(FileSystemEventHandler):
     """
-    Handles file system events for the Immich Sync App.
+    Handles file system events for the Mimick App.
     Only processes files with allowed extensions and ignores others (like .xmp sidecars).
     """
 

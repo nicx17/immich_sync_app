@@ -4,7 +4,7 @@ import keyring
 import logging
 logger = logging.getLogger(__name__)
 
-APP_NAME = "immich-sync"
+APP_NAME = "mimick"
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", APP_NAME)
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 

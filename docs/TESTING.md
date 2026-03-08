@@ -1,6 +1,6 @@
-# Testing Guide: Immich Auto-Sync
+# Testing Guide: Mimick
 
-This document outlines how to execute, interpret, and expand the automated testing suite for the Immich Auto-Sync application.
+This document outlines how to execute, interpret, and expand the automated testing suite for the Mimick application.
 
 ## 1. The Testing Framework
 The application uses **`pytest`** as the primary testing runner. 

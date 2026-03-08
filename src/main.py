@@ -26,7 +26,7 @@ def check_single_instance_or_run_settings(args):
     """
     lock_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
-        lock_socket.bind('\0immich-sync-daemon-lock')
+        lock_socket.bind('\0mimick-daemon-lock')
         
         # If we got the lock, and they specifically ONLY asked for settings,
         # we can just launch settings_main.py and keep daemon running if we want,
@@ -37,7 +37,7 @@ def check_single_instance_or_run_settings(args):
             subprocess.Popen([sys.executable, script_path])
         return lock_socket
     except socket.error:
-        logger.info("Immich Auto-Sync daemon is already running.")
+        logger.info("Mimick daemon is already running.")
         # If daemon is running and user clicked launcher, open settings.
         script_path = os.path.join(os.path.dirname(__file__), "settings_main.py")
         print("Daemon is already running. Opening settings window instead.")
@@ -46,7 +46,7 @@ def check_single_instance_or_run_settings(args):
         sys.exit(0)
 
 def main():
-    parser = argparse.ArgumentParser(description="Immich Sync - Linux Background Daemon")
+    parser = argparse.ArgumentParser(description="Mimick - Linux Background Daemon")
     parser.add_argument("path", nargs="?", help="Override watch path (optional)", default=None)
     parser.add_argument("--no-tray", action="store_true", help="Run in terminal mode without system tray")
     parser.add_argument("--settings", action="store_true", help="Launch settings window directly")
@@ -80,7 +80,7 @@ def main():
             print("Please provide a path to watch either via CLI or config.json.")
             sys.exit(1)
 
-    logger.info(f"Immich Auto-Sync starting with paths: {watch_paths}")
+    logger.info(f"Mimick starting with paths: {watch_paths}")
     monitor = Monitor(watch_paths)
     
     if args.no_tray:

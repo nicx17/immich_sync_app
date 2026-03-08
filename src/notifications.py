@@ -3,9 +3,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 class NotificationManager:
-    def __init__(self, app_name="Immich Auto-Sync"):
+    def __init__(self, app_name="Mimick"):
         self.app_name = app_name
-        self.notification_id = "immich-sync-progress" # Unique ID for replacement
+        self.notification_id = "mimick-progress" # Unique ID for replacement
 
     def send(self, title, message, progress=None, timeout=None):
         """

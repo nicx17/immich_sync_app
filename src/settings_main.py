@@ -15,7 +15,7 @@ from settings_window import SettingsWindow
 class ImmichSyncApp(Adw.Application):
     def __init__(self):
         super().__init__(
-            application_id="com.github.nicx17.immich_sync",
+            application_id="com.github.nicx17.mimick",
             flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE
         )
         self.settings_window = None

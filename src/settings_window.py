@@ -15,7 +15,7 @@ from state_manager import StateManager
 class SettingsWindow(Adw.ApplicationWindow):
     def __init__(self, application, monitor=None):
         super().__init__(application=application)
-        self.set_title("Immich Auto-Sync Settings")
+        self.set_title("Mimick Settings")
         self.set_default_size(600, 900)
         
         # Enforce Dark Theme
@@ -45,7 +45,7 @@ class SettingsWindow(Adw.ApplicationWindow):
 
         # About Button
         about_btn = Gtk.Button(icon_name="help-about-symbolic")
-        about_btn.set_tooltip_text("About Immich Auto-Sync")
+        about_btn.set_tooltip_text("About Mimick")
         about_btn.connect("clicked", self.on_about_clicked)
         header.pack_start(about_btn)
 
@@ -401,7 +401,7 @@ class SettingsWindow(Adw.ApplicationWindow):
             theme.add_search_path(os.path.join(os.path.dirname(__file__), "assets"))
 
         about = Adw.AboutWindow(
-            application_name="Immich Auto-Sync",
+            application_name="Mimick",
             application_icon="icon",
             version="1.0.2",
             developer_name="Nick Cardoso",

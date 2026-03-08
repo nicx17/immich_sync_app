@@ -1,4 +1,4 @@
-# Immich Auto-Sync for Linux: Feature Roadmap & Architecture
+# Mimick for Linux: Feature Roadmap & Architecture
 
 ## 1. Core Sync Engine (Background Daemon)
 
@@ -24,7 +24,7 @@
 
 ## 3. Configuration & Security
 
-- [x] Read/write settings to standard XDG directories (`~/.config/immich-sync/config.json`).
+- [x] Read/write settings to standard XDG directories (`~/.config/mimick/config.json`).
 - [x] Integrate Python `keyring` (Secret Service API via DBus) for secure API key storage.
 - [x] Support watching multiple directories simultaneously.
 
@@ -43,7 +43,7 @@
 
 ## 6. Desktop Integration
 
-- [x] Write a `systemd` user service file (`immich-sync.service`) for auto-start.
+- [x] Write a `systemd` user service file (`mimick.service`) for auto-start.
 - [x] Implement native desktop notifications (via `dbus` / `libnotify`). Includes progress bar for uploads.
 
 ## 7. Packaging & Distribution (New)

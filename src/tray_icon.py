@@ -25,9 +25,9 @@ class TrayIcon:
         logger.info("Creating pystray Icon instance...")
         # Try simplified icon first to debug GTK Critical error
         self.icon = pystray.Icon(
-            "immich-sync", 
+            "mimick", 
             image, 
-            "Immich Auto-Sync", 
+            "Mimick", 
             menu=pystray.Menu(
                 item('Settings', self.show_settings),
                 item('About', self.show_about),

@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide is for developers who want to contribute to `immich-sync`.
+This guide is for developers who want to contribute to `mimick`.
 
 ## Setting Up the Environment
 
@@ -18,8 +18,8 @@ This guide is for developers who want to contribute to `immich-sync`.
 1. **Clone the Repository:**
 
     ```bash
-    git clone https://github.com/your-repo/immich-sync.git
-    cd immich-sync
+    git clone https://github.com/your-repo/mimick.git
+    cd mimick
     ```
 
 2. **Create Virtual Environment:**

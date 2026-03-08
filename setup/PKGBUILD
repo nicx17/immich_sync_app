@@ -1,5 +1,5 @@
 # Maintainer: Nick <nick@nickcardoso.com>
-pkgname=immich-sync
+pkgname=mimick
 pkgver=1.0.2
 pkgrel=1
 pkgdesc="A background daemon to auto-sync photos to Immich on Linux"
@@ -21,8 +21,15 @@ package() {
     python -m installer --destdir="$pkgdir" dist/*.whl
 
     # Install .desktop file
-    install -Dm644 setup/immich-sync.desktop "$pkgdir/usr/share/applications/immich-sync.desktop"
+    install -Dm644 setup/mimick.desktop "$pkgdir/usr/share/applications/mimick.desktop"
+    
+    # Install icons
+    install -Dm644 src/assets/icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/mimick.svg"
+    install -Dm644 src/assets/icon_128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/mimick.png"
+
+    # Install metainfo
+    install -Dm644 setup/metainfo/com.nickcardoso.mimick.appdata.xml "$pkgdir/usr/share/metainfo/com.nickcardoso.mimick.appdata.xml"
     
     # Install systemd user service (example for user service)
-    install -Dm644 setup/immich-sync.service "$pkgdir/usr/lib/systemd/user/immich-sync.service"
+    install -Dm644 setup/mimick.service "$pkgdir/usr/lib/systemd/user/mimick.service"
 }
