@@ -14,7 +14,7 @@ setup(
         "keyring>=24.3.0",
         "pystray>=0.19.5",
         "Pillow>=10.2.0",
-        "PyGObject>=3.42.0",
+        "PyGObject>=3.42.0,<3.55.0",
     ],
     entry_points={
         "console_scripts": [

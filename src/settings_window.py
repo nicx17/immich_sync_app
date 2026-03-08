@@ -408,7 +408,7 @@ class SettingsWindow(Adw.ApplicationWindow):
             website="https://github.com/nicx17/immich_sync_app",
             issue_url="https://github.com/nicx17/immich_sync_app/issues",
             license_type=Gtk.License.GPL_3_0,
-            designers=["Round Icons (Unsplash)"]
+            designers=["Nick Cardoso"]
         )
         about.add_link(
             "Logo Illustration by Round Icons",

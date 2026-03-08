@@ -5,4 +5,4 @@ pystray
 Pillow
 pytest
 requests-mock
-PyGObject
+PyGObject<3.55.0

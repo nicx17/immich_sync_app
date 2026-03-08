@@ -47,6 +47,6 @@ jobs:
       - name: Release AppImage
         uses: softprops/action-gh-release@v2
         with:
-          files: "Immich_Sync-*.AppImage"
+          files: "Mimick-*.AppImage"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
