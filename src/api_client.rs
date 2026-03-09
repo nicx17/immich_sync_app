@@ -20,6 +20,8 @@ impl ImmichApiClient {
     pub fn new(internal_url: String, external_url: String, api_key: String) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(300))
+            .pool_max_idle_per_host(1)   // keep at most 1 idle connection per host
+            .pool_idle_timeout(Duration::from_secs(30)) // drop idle connections after 30s
             .build()
             .unwrap_or_default();
 
@@ -144,7 +146,7 @@ impl ImmichApiClient {
         let filename = path.file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "upload".to_string());
-        let device_asset_id = format!("mimick-rust-{}", &checksum[..8.min(checksum.len())]);
+        let device_asset_id = format!("mimick-rust-{}", checksum);
         let device_id = "mimick-rust-client".to_string();
         let mime = mime_for_path(path);
 
@@ -163,7 +165,7 @@ impl ImmichApiClient {
         let stream = tokio_util::codec::FramedRead::new(file, tokio_util::codec::BytesCodec::new());
         let file_body = reqwest::Body::wrap_stream(stream);
 
-        let file_part = reqwest::multipart::Part::stream(file_body)
+        let file_part = reqwest::multipart::Part::stream_with_length(file_body, meta.len())
             .file_name(filename.clone())
             .mime_str(mime)
             .ok()?;

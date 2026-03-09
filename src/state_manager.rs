@@ -8,6 +8,11 @@ pub struct AppState {
     pub queue_size: usize,
     pub total_queued: usize,
     pub processed_count: usize,
+    #[serde(default)]
+    pub failed_count: usize,
+    /// In-flight worker count — not persisted to disk.
+    #[serde(skip)]
+    pub active_workers: usize,
     pub current_file: Option<String>,
     pub status: String,
     pub progress: u8,
@@ -20,6 +25,8 @@ impl Default for AppState {
             queue_size: 0,
             total_queued: 0,
             processed_count: 0,
+            failed_count: 0,
+            active_workers: 0,
             current_file: None,
             status: "idle".to_string(),
             progress: 0,
@@ -54,13 +61,15 @@ impl StateManager {
         }
         
         if let Ok(content) = serde_json::to_string(&state) {
-            let tmp_file = self.state_file.with_extension("tmp");
-            if fs::write(&tmp_file, content).is_ok() {
+            let unique_ext = format!("tmp.{}", SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos());
+            let tmp_file = self.state_file.with_extension(unique_ext);
+            if fs::write(&tmp_file, &content).is_ok() {
                 if fs::rename(&tmp_file, &self.state_file).is_ok() {
                     log::debug!("State written: status={} progress={} processed={}/{}",
                         state.status, state.progress,
                         state.processed_count, state.total_queued);
                 } else {
+                    let _ = fs::remove_file(&tmp_file); // cleanup on fail
                     log::warn!("Failed to atomically rename state file");
                 }
             } else {

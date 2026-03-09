@@ -52,6 +52,7 @@ pub struct ConfigData {
     pub watch_paths: Vec<WatchPathEntry>,
     #[serde(default)]
     pub run_on_startup: bool,
+    #[serde(default)]
     pub album_sync: bool,
     #[serde(default)]
     pub delete_after_sync: bool,

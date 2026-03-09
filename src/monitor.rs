@@ -30,6 +30,7 @@ impl Monitor {
     /// Start the watcher. Emits `(path, sha1_hex)` tuples on the channel.
     pub fn start(&self, tx: mpsc::Sender<(String, String)>) {
         let watch_paths = self.watch_paths.clone();
+        let handle = tokio::runtime::Handle::current();
 
         std::thread::spawn(move || {
             let (notify_tx, notify_rx) = std::sync::mpsc::channel();
@@ -102,17 +103,24 @@ impl Monitor {
                                     continue;
                                 }
 
+                                // Cleanup debounce map periodically to prevent unbounded growth
+                                if debounce_map.len() > 1000 {
+                                    let cutoff = now - Duration::from_secs(60);
+                                    debounce_map.retain(|_, last| *last > cutoff);
+                                }
+
                                 log::info!("New file event: {}", path_str);
                                 debounce_map.insert(path_str.clone(), now);
 
                                 let tx_clone = tx.clone();
-                                std::thread::spawn(move || {
-                                    match wait_for_file_completion(&path_str) {
+                                handle.spawn(async move {
+                                    match wait_for_file_completion(&path_str).await {
                                         true => {
-                                            match compute_sha1_chunked(&path_str) {
+                                            let p_clone = path_str.clone();
+                                            match tokio::task::spawn_blocking(move || compute_sha1_chunked(&p_clone)).await.unwrap() {
                                                 Ok(checksum) => {
                                                     log::info!("File ready: {} (sha1={})", path_str, checksum);
-                                                    let _ = tx_clone.blocking_send((path_str, checksum));
+                                                    let _ = tx_clone.send((path_str, checksum)).await;
                                                 }
                                                 Err(e) => log::error!("Checksum error for {}: {}", path_str, e),
                                             }
@@ -134,7 +142,7 @@ impl Monitor {
 
 /// Wait for a file's size to remain unchanged for REQUIRED_STABLE_COUNTS checks.
 /// Mirrors Python's `wait_for_file_completion`.
-fn wait_for_file_completion(path: &str) -> bool {
+async fn wait_for_file_completion(path: &str) -> bool {
     let mut last_size: i64 = -1;
     let mut stable_count: u32 = 0;
     let mut last_change = Instant::now();
@@ -145,7 +153,7 @@ fn wait_for_file_completion(path: &str) -> bool {
             return false;
         }
 
-        match fs::metadata(path) {
+        match tokio::fs::metadata(path).await {
             Ok(meta) => {
                 let size = meta.len() as i64;
                 if size == last_size && size > 0 {
@@ -164,7 +172,7 @@ fn wait_for_file_completion(path: &str) -> bool {
             Err(_) => return false,
         }
 
-        std::thread::sleep(Duration::from_millis(CHECK_INTERVAL_MS));
+        tokio::time::sleep(Duration::from_millis(CHECK_INTERVAL_MS)).await;
     }
 }
 

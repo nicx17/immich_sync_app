@@ -17,7 +17,12 @@ pub fn send(title: &str, message: &str, progress: Option<u8>) {
     }
 
     match cmd.spawn() {
-        Ok(_) => log::debug!("Notification sent: {} - {}", title, message),
+        Ok(mut child) => {
+            // Reap the child process to avoid zombies.
+            // notify-send exits in < 50ms so this barely blocks.
+            let _ = child.wait();
+            log::debug!("Notification sent: {} - {}", title, message)
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // notify-send not installed — silently ignore
         }

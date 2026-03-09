@@ -2,7 +2,7 @@ use gtk::prelude::*;
 use gtk::{Box, DropDown, Entry, FileDialog, ListBox, Orientation, PasswordEntry, ProgressBar, ScrolledWindow, StringList, Switch, Button};
 use libadwaita as adw;
 use adw::prelude::*;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ use glib::clone;
 
 use crate::config::Config;
 use crate::api_client::ImmichApiClient;
-use crate::state_manager::StateManager;
+use crate::state_manager::AppState;
 
 struct FolderRowData {
     pub path: String,
@@ -21,7 +21,7 @@ struct FolderRowData {
     pub custom_entry: Entry,
 }
 
-pub fn build_settings_window(app: &adw::Application) {
+pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<AppState>>, api_client: Option<Arc<ImmichApiClient>>) {
     // Use adw::ApplicationWindow to avoid double titlebar
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -30,8 +30,6 @@ pub fn build_settings_window(app: &adw::Application) {
         .default_height(900)
         .build();
     let app_clone = app.clone();
-
-    let state_manager = Arc::new(StateManager::new());
 
     // Force Dark Theme
     let style_mgr = adw::StyleManager::default();
@@ -180,6 +178,8 @@ pub fn build_settings_window(app: &adw::Application) {
         .build();
     conn_group.add(&test_btn);
 
+    // Clone before moving into test_btn closure so api_client is still available below
+    let api_client_for_test = api_client.clone();
     test_btn.connect_clicked(clone!(
         #[weak] internal_switch,
         #[weak] external_switch,
@@ -202,25 +202,34 @@ pub fn build_settings_window(app: &adw::Application) {
             } else {
                 String::new()
             };
-            let api_key = api_key_entry.text().to_string();
+            let _api_key = api_key_entry.text().to_string();
 
             let (tx, mut rx) = tokio::sync::oneshot::channel::<(bool, bool)>();
 
-            // Spawn the async work – only primitives captured here
-            tokio::spawn(async move {
-                let client = ImmichApiClient::new(internal.clone(), external.clone(), api_key);
-                let int_ok = if !internal.is_empty() {
-                    client.ping_url(&internal).await
-                } else {
-                    false
-                };
-                let ext_ok = if !external.is_empty() {
-                    client.ping_url(&external).await
-                } else {
-                    false
-                };
-                let _ = tx.send((int_ok, ext_ok));
-            });
+            // Use the application-wide API client — do NOT create ImmichApiClient::new() here.
+            // Creating a fresh reqwest client per click allocates a new connection pool
+            // that lingers for 30s even after the test completes.
+            if let Some(ref shared_client) = api_client_for_test {
+                let ping_client = shared_client.clone();
+                let internal2 = internal.clone();
+                let external2 = external.clone();
+                tokio::spawn(async move {
+                    let int_ok = if !internal2.is_empty() {
+                        ping_client.ping_url(&internal2).await
+                    } else {
+                        false
+                    };
+                    let ext_ok = if !external2.is_empty() {
+                        ping_client.ping_url(&external2).await
+                    } else {
+                        false
+                    };
+                    let _ = tx.send((int_ok, ext_ok));
+                });
+            } else {
+                // No client available — report failure
+                let _ = tx.send((false, false));
+            }
 
             // Poll the oneshot receiver from the GTK main loop
             glib::timeout_add_local(Duration::from_millis(50), clone!(
@@ -276,57 +285,71 @@ pub fn build_settings_window(app: &adw::Application) {
     let tracked_rows = Rc::new(RefCell::new(Vec::<FolderRowData>::new()));
     let albums: Rc<RefCell<Vec<(String, String)>>> = Rc::new(RefCell::new(Vec::new()));
 
-    // Spawn async album fetch
-    let client = Arc::new(ImmichApiClient::new(
-        config.data.internal_url.clone(),
-        config.data.external_url.clone(),
-        config.get_api_key().unwrap_or_default(),
-    ));
+    // Reuse the application-wide API client — do NOT create a new one here.
+    // Creating a new reqwest Client per window open allocates a new connection pool
+    // that takes ~30s to self-clean, causing RAM to grow with each open/close cycle.
     let albums_ref = albums.clone();
     let tracked_rows_async = tracked_rows.clone();
 
-    glib::MainContext::default().spawn_local(async move {
-        let fetched = client.get_all_albums().await;
-        *albums_ref.borrow_mut() = fetched.clone();
-        
-        for row_data in tracked_rows_async.borrow().iter() {
-            let current_selected = row_data.dropdown.selected();
-            let mut current_text = None;
-            if current_selected < row_data.string_list.n_items() {
-                if let Some(s) = row_data.string_list.string(current_selected) {
-                    current_text = Some(s.to_string());
-                }
+    if let Some(client) = api_client {
+        // Downgrade the window to a weak ref BEFORE the spawn.
+        // After the async await, we upgrade it — if it's None the window was closed
+        // while the API call was in-flight. We bail immediately, releasing all strong
+        // refs to FolderRowData (and their contained GTK widgets) so they can be freed.
+        // Without this, rapid open/close cycles would accumulate orphaned widget sets.
+        let weak_win = window.downgrade();
+
+        glib::MainContext::default().spawn_local(async move {
+            let fetched = client.get_all_albums().await;
+
+            // Window may have been closed while we awaited the network response.
+            // Bail out early — drops tracked_rows_async and albums_ref immediately.
+            if weak_win.upgrade().is_none() {
+                log::debug!("Settings window closed during album fetch — discarding result.");
+                return;
             }
-            
-            row_data.string_list.splice(0, row_data.string_list.n_items(), &["Default (Folder Name)"]);
-            for (name, _) in &fetched {
-                if name != "Default (Folder Name)" {
-                    row_data.string_list.append(name);
+
+            *albums_ref.borrow_mut() = fetched.clone();
+
+            for row_data in tracked_rows_async.borrow().iter() {
+                let current_selected = row_data.dropdown.selected();
+                let mut current_text = None;
+                if current_selected < row_data.string_list.n_items() {
+                    if let Some(s) = row_data.string_list.string(current_selected) {
+                        current_text = Some(s.to_string());
+                    }
                 }
-            }
-            row_data.string_list.append("Custom Album...");
-            
-            if let Some(text) = current_text {
-                let mut found = false;
-                for i in 0..row_data.string_list.n_items() {
-                    if let Some(s) = row_data.string_list.string(i) {
-                        if s.as_str() == text {
-                            row_data.dropdown.set_selected(i);
-                            found = true;
-                            break;
+
+                row_data.string_list.splice(0, row_data.string_list.n_items(), &["Default (Folder Name)"]);
+                for (name, _) in &fetched {
+                    if name != "Default (Folder Name)" {
+                        row_data.string_list.append(name);
+                    }
+                }
+                row_data.string_list.append("Custom Album...");
+
+                if let Some(text) = current_text {
+                    let mut found = false;
+                    for i in 0..row_data.string_list.n_items() {
+                        if let Some(s) = row_data.string_list.string(i) {
+                            if s.as_str() == text {
+                                row_data.dropdown.set_selected(i);
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                    if !found {
+                        if text == "Custom Album..." {
+                            row_data.dropdown.set_selected(row_data.string_list.n_items() - 1);
+                        } else {
+                            row_data.dropdown.set_selected(0);
                         }
                     }
                 }
-                if !found {
-                    if text == "Custom Album..." {
-                        row_data.dropdown.set_selected(row_data.string_list.n_items() - 1);
-                    } else {
-                        row_data.dropdown.set_selected(0);
-                    }
-                }
             }
-        }
-    });
+        });
+    }
 
     // List FIRST (matching Python layout), then Add button below
     let folders_list = ListBox::builder()
@@ -495,39 +518,58 @@ pub fn build_settings_window(app: &adw::Application) {
         }
     ));
 
-    // Background state poller
-    let status_row_clone = status_row.clone();
-    let progress_bar_clone = progress_bar.clone();
-
+    // Background state poller — reads directly from in-memory shared state.
+    // No disk I/O; the timer tears itself down automatically when the window closes
+    // because the weak references to status_row / progress_bar fail to upgrade.
     glib::timeout_add_local(Duration::from_millis(500), clone!(
-        #[weak] status_row_clone,
-        #[weak] progress_bar_clone,
+        #[weak] status_row,
+        #[weak] progress_bar,
         #[upgrade_or] glib::ControlFlow::Break,
         move || {
-            let state = state_manager.read_state();
-            let status = state.status.clone();
-            let progress = state.progress;
-            let processed = state.processed_count;
-            let total = state.total_queued;
-            let current_file = state.current_file.as_deref().unwrap_or("...");
+            let (status, progress, processed, total, failed, current_file) = {
+                let s = shared_state.lock().unwrap();
+                (
+                    s.status.clone(),
+                    s.progress,
+                    s.processed_count,
+                    s.total_queued,
+                    s.failed_count,
+                    s.current_file.clone().unwrap_or_else(|| "...".to_string()),
+                )
+            }; // lock released here
 
             if status == "idle" {
-                status_row_clone.set_title("Idle");
-                status_row_clone.set_subtitle(&format!("Processed {} files", processed));
-                progress_bar_clone.set_fraction(if processed > 0 { 1.0 } else { 0.0 });
+                if failed > 0 {
+                    status_row.set_title("Offline / Waiting");
+                    status_row.set_subtitle(&format!("{} item(s) pending network", failed));
+                    progress_bar.set_fraction(1.0);
+                } else {
+                    status_row.set_title("Idle");
+                    status_row.set_subtitle(&format!("Successfully processed {} file(s)", processed.saturating_sub(failed)));
+                    progress_bar.set_fraction(if processed > 0 { 1.0 } else { 0.0 });
+                }
             } else if status == "uploading" {
-                let filename = std::path::Path::new(current_file)
+                let filename = std::path::Path::new(&current_file)
                     .file_name()
                     .map(|n| n.to_string_lossy())
                     .unwrap_or_else(|| std::borrow::Cow::Borrowed("..."));
-                status_row_clone.set_title(&format!("Uploading ({}/{})", processed, total));
-                status_row_clone.set_subtitle(&filename);
-                progress_bar_clone.set_fraction((progress as f64) / 100.0);
+                status_row.set_title(&format!("Uploading ({}/{})", processed, total));
+                status_row.set_subtitle(&filename);
+                progress_bar.set_fraction((progress as f64) / 100.0);
             }
 
             glib::ControlFlow::Continue
         }
     ));
+    // Hide instead of destroy on close.
+    // The GTK widget tree (CSS caches, accessibility nodes, GSlice pools, GL state)
+    // is built once and reused on every open/close cycle — zero new allocations per open.
+    // open_settings_if_needed calls win.present() on the hidden window, which is
+    // guaranteed to be in app.windows() even when not visible.
+    window.connect_close_request(|win| {
+        win.set_visible(false);
+        glib::Propagation::Stop  // prevent the default destroy
+    });
 
     window.present();
 }

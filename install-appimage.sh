@@ -43,7 +43,8 @@ gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 
 # 4. Create Desktop Entry
 echo "Creating desktop entry..."
-cat > "$USER_APPS/$APP_NAME.desktop" <<DESKTOP
+DESKTOP_FILE="$USER_APPS/com.nickcardoso.mimick.desktop"
+cat > "$DESKTOP_FILE" <<DESKTOP
 [Desktop Entry]
 Name=Mimick
 Comment=Automatic background sync for Immich
@@ -53,22 +54,23 @@ Terminal=false
 Type=Application
 Categories=Utility;Network;
 StartupNotify=false
-StartupWMClass=mimick.desktop
+StartupWMClass=Mimick
 Actions=Settings;
 
 [Desktop Action Settings]
 Name=Open Settings
 Exec=$TARGET_APPIMAGE --settings
 DESKTOP
-chmod +x "$USER_APPS/$APP_NAME.desktop"
+chmod +x "$DESKTOP_FILE"
 
 # 5. Autostart check
 read -p "Do you want to start automatically on login? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    ln -sf "$USER_APPS/$APP_NAME.desktop" "$AUTOSTART_DIR/$APP_NAME.desktop"
+    ln -sf "$DESKTOP_FILE" "$AUTOSTART_DIR/com.nickcardoso.mimick.desktop"
     echo "Autostart enabled."
 else
+    rm -f "$AUTOSTART_DIR/com.nickcardoso.mimick.desktop"
     rm -f "$AUTOSTART_DIR/$APP_NAME.desktop"
     echo "Autostart disabled."
 fi

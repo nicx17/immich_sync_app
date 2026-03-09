@@ -4,77 +4,99 @@ This document describes the high-level architecture of `mimick`, a Linux desktop
 
 ## System Components
 
-The application is designed as a multi-threaded daemon with a decoupled UI process.
+The application is a **single-process** Rust daemon using the GTK4/Tokio runtime with application ID `com.nickcardoso.mimick`.
 
 ```mermaid
 graph TD
-    User[User] -->|Interacts| Tray[System Tray Icon]
-    Tray -->|Launches| Settings[Settings Window (PySide6)]
-    
-    subgraph Daemon [Background Service]
-        Main[main.py] --> Monitor[File Monitor (Watchdog)]
-        Main --> Tray
-        
-        Monitor -->|File Events| Queue[Queue Manager]
-        Queue -->|Distributes| Workers[Worker Threads (x10)]
-        
-        Workers -->|Upload| API[Immich API Client]
-        Workers -->|Update| State[State Manager]
-        Workers -->|Notify| Notify[Notification Manager]
+    User[User] -->|Clicks Settings| Tray[System Tray Icon - ksni]
+    Tray -->|tokio::sync::watch channel| Main[GTK Main Loop - main.rs]
+
+    subgraph Daemon [Primary Process]
+        Main --> Monitor[File Monitor - notify crate]
+        Main --> QueueManager[Queue Manager]
+        Main --> SharedState["Arc&lt;Mutex&lt;AppState&gt;&gt; - in memory"]
+
+        Monitor -->|File Events + SHA-1| QueueManager
+        QueueManager -->|3 async workers| API[Immich API Client - shared]
+        QueueManager -->|Update directly| SharedState
+
+        API -->|LAN / WAN failover| Immich[(Immich Server)]
     end
-    
+
+    subgraph Settings UI [Settings Window - GTK4 / Libadwaita]
+        Window[Settings Window - built once, hidden on close] -->|500ms timer - lock only| SharedState
+    end
+
+    Main -->|present / set_visible| Window
+
     subgraph Storage
-        Config[config.json]
-        Keyring[System Keyring]
-        StateFile[status.json]
+        Config["config.json (~/.config/mimick/)"]
+        Keyring[System Keyring - secret-tool]
+        RetryFile["retries.json (~/.cache/mimick/) - written on shutdown only"]
+        StateFile["status.json (~/.cache/mimick/) - written on shutdown only"]
     end
-    
-    Settings -->|Read/Write| Config
-    Settings -->|Read only| Keyring
-    Settings -->|Read only| StateFile
-    
-    State -->|Write| StateFile
-    Queue -->|Read| Keyring
+
+    Window -->|Read/Write| Config
+    Window -->|Read/Write| Keyring
+    Main -->|Read on startup, Write on exit| StateFile
+    QueueManager -->|Write on exit| RetryFile
 ```
 
-### 1. Core Daemon (`src/main.py`)
+## Component Details
 
-The entry point of the application. It performs environment setup (setting `XDG_CURRENT_DESKTOP="Unity"` to enforce AppIndicators via `pystray`, and forcing X11 backend for GDK (`GDK_BACKEND="x11"`) to avoid Wayland issues with legacy tray icons) and initializes the `Monitor` and `TrayIcon`.
+### 1. Core Daemon (`src/main.rs`)
 
-### 2. File Monitor (`src/monitor.py`)
+Initializes the GTK4 `adw::Application` with ID `com.nickcardoso.mimick`. Only the primary instance (determined via D-Bus single-instance enforcement) spawns daemon services. Secondary processes forward their command line to the primary via GTK's single-instance mechanism.
 
-Uses the `watchdog` library to listen for filesystem events (`IN_CREATE`, `IN_MOVED_TO`).
+- `connect_command_line` opens the settings window when `--settings` is passed **or** when `cmdline.is_remote()` is true (user clicks the app icon while the daemon is already running)
+- Shared `Arc<Mutex<AppState>>` is created before all closures and threaded into both `connect_startup` (workers) and `connect_command_line` (settings window)
+- Shared `Arc<ImmichApiClient>` is stored in a `OnceLock` and reused by the settings window — only one reqwest connection pool is ever allocated
 
-- **Event Handling**: Filters events to allow only specific media extensions (`.jpg`, `.png`, `.mp4`, etc.).
-- **Debouncing**: Implements a `wait_for_file_completion` check to ensure files are fully written to disk before processing.
-- **Checksum**: Calculates SHA-1 checksums immediately to support Immich's deduplication logic.
+### 2. File Monitor (`src/monitor.rs`)
 
-### 3. Queue Manager (`src/queue_manager.py`)
+Uses the `notify` crate for inotify-based filesystem events.
 
-A thread-safe orchestrator for upload tasks.
+- Filters to media extensions only
+- 2-second debounce per path
+- Per-file `wait_for_file_completion` (async, Tokio task — no OS thread per file)
+- SHA-1 checksum via 64KB chunked `spawn_blocking` (no load into RAM)
 
-- **Upload Queue**: A FIFO queue receiving file tasks from the Monitor.
-- **Retry Queue**: Captures failed uploads and safely persists them via `~/.cache/mimick/retries.json` to guarantee offline restorations across soft reboots.
-- **Worker Pool**: Spawns 10 daemon threads to process uploads in parallel, coupled with a `Retry-Worker` repeating every 60 seconds.
-- **Progress Tracking**: updates the `StateManager` with current progress.
+### 3. Queue Manager (`src/queue_manager.rs`)
 
-### 4. API Client (`src/api_client.py`)
+Thread-safe upload orchestrator using a single `Arc<Mutex<AppState>>` for all counters and status.
 
-Encapsulates communication with the Immich Server.
+- **3 async workers** sharing one `mpsc::Receiver` via `Arc<tokio::sync::Mutex>`
+- Workers update `AppState` directly in memory — no disk writes during uploads
+- **In-memory retry list** (`Arc<std::sync::Mutex<Vec<FileTask>>>`): retries on next successful upload (network recovery), flushed to disk only on graceful shutdown via `QueueManager::flush_retries()`
+- Reads persisted retries from disk on startup (crash recovery); re-queues after 5s delay
+- `QM_HANDLE: OnceLock<Arc<QueueManager>>` allows `main()` to call `flush_retries()` after `app.run()` returns
 
-- **Dual-URL Support**: Checks logical connectivity to Internal (LAN) URL first, falling back to External (WAN) URL depending on toggle switch states in the local Config. Includes captive portal verification checks.
-- **Failover State Reset**: Automatically clears active TCP URL caches on request timeouts so the LAN vs WAN exploration triggers accurately immediately after connection drops.
-- **Asset Upload**: Handles `multipart/form-data` uploads.
-- **Album Management**: Uploads are mapped to a configured `album_id`, a custom `album_name`, or dynamically matches the immediate parent folder name. The system queries the `ApiClient` to resolve or create the missing album dynamically over REST. Features robust internal routing with `threading.Lock()` to prevent race conditions from generating duplicate album records under simultaneous heavy worker loads.
+### 4. API Client (`src/api_client.rs`)
 
-### 5. Settings UI (`src/settings_window.py`)
+- LAN-first, WAN fallback connectivity check
+- Active URL cached in `Mutex<Option<String>>`; cleared on network error to force re-check
+- Files streamed with `reqwest::multipart::Part::stream_with_length` — zero RAM buffering
+- Full 40-char SHA-1 hex used as `device_asset_id` for reliable Immich server-side deduplication
+- Connection pool: max 1 idle connection per host, 30s idle timeout
+- Single shared instance via `API_CLIENT_HANDLE: OnceLock<Arc<ImmichApiClient>>` — no new pool per settings window open
 
-A standalone `PySide6` (Qt) application that runs firmly in a separate process from the daemon.
+### 5. Settings UI (`src/settings_window.rs`)
 
-- **Reasoning**: Mixing GTK (used by `pystray`/`AppIndicator`) and Qt event loops in the same process causes instability and crashes.
-- **Communication**: Reads status from `~/.cache/mimick/status.json` to display the progress bar.
+- **Built once per process**, then hidden on close (`window.connect_close_request` → `set_visible(false)` + `Propagation::Stop`)  
+- Subsequent opens call `win.present()` on the existing hidden window — zero new GTK allocations per open/close cycle
+- `Arc<Mutex<AppState>>` passed in directly; the 500ms `glib::timeout_add_local` timer reads it without any disk I/O
+- Album list fetched via the shared `Arc<ImmichApiClient>` on first show; a `glib::WeakRef` guard on the window ensures the async task returns early if the window is closed before the API responds
+- Test Connection button uses the shared client — no new reqwest pool per click
 
-### 6. Notifications & State
+### 6. System Tray (`src/tray_icon.rs`)
 
-- **Notifications**: Uses `notify-send` via `subprocess` to display native desktop notifications with progress bars.
-- **State Manager**: Serializes the daemon's current activity (queue size, current file) to a JSON file for the UI to consume.
+- Uses `ksni` (D-Bus StatusNotifierItem)
+- Clicking "Settings" sends `true` on a `tokio::sync::watch` channel — **no child process spawned**
+- A `glib::timeout_add_local(250ms)` in the GTK main loop polls an `Arc<Mutex<bool>>` flag set by the Tokio watch-forward task; on trigger, calls `open_settings_if_needed` in-process
+
+### 7. State & Persistence
+
+- **`AppState`**: in-memory struct shared by workers and UI via `Arc<Mutex<AppState>>`; `active_workers: usize` field (skipped in serde) tracks in-flight uploads for idle detection
+- **`StateManager`** (`src/state_manager.rs`): reads saved state on startup for crash recovery; writes on graceful shutdown only
+- **Retry queue**: in-memory during session; disk path `~/.cache/mimick/retries.json` written only on exit
+- **Notifications**: `notify-send` via `std::process::Command::spawn()` + `child.wait()` (reaps child immediately, no zombies); called via `tokio::task::spawn_blocking` to avoid blocking the worker thread
