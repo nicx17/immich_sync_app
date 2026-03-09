@@ -37,8 +37,8 @@ chmod +x "$TARGET_APPIMAGE"
 echo "Extracting icon..."
 # The AppImage is an executable that can extract itself if told to
 # But we already have the source, so we'll just use the source icon for ease
-cp src/assets/icon.png "$USER_ICONS/$APP_NAME.png"
-cp src/assets/icon.svg "$USER_ICONS_SCALABLE/$APP_NAME.svg"
+cp src/assets/icon.png "$USER_ICONS/io.github.nicx17.mimick.png"
+cp src/assets/icon.svg "$USER_ICONS_SCALABLE/io.github.nicx17.mimick.svg"
 gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 
 # 4. Create Desktop Entry
@@ -49,7 +49,7 @@ cat > "$DESKTOP_FILE" <<DESKTOP
 Name=Mimick
 Comment=Automatic background sync for Immich
 Exec=$TARGET_APPIMAGE
-Icon=$APP_NAME
+Icon=io.github.nicx17.mimick
 Terminal=false
 Type=Application
 Categories=Utility;Network;
