@@ -1,17 +1,20 @@
-use gtk::prelude::*;
-use gtk::{Box, DropDown, Entry, FileDialog, ListBox, Orientation, PasswordEntry, ProgressBar, ScrolledWindow, StringList, Switch, Button};
-use libadwaita as adw;
+use crate::config::WatchPathEntry;
 use adw::prelude::*;
-use std::sync::{Arc, Mutex};
-use std::rc::Rc;
+use glib::clone;
+use gtk::prelude::*;
+use gtk::{
+    Box, Button, DropDown, Entry, FileDialog, ListBox, Orientation, PasswordEntry, ProgressBar,
+    ScrolledWindow, StringList, Switch,
+};
+use libadwaita as adw;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use crate::config::WatchPathEntry;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use glib::clone;
 
-use crate::config::Config;
 use crate::api_client::ImmichApiClient;
+use crate::config::Config;
 use crate::state_manager::AppState;
 
 struct FolderRowData {
@@ -21,7 +24,11 @@ struct FolderRowData {
     pub custom_entry: Entry,
 }
 
-pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<AppState>>, api_client: Option<Arc<ImmichApiClient>>) {
+pub fn build_settings_window(
+    app: &adw::Application,
+    shared_state: Arc<Mutex<AppState>>,
+    api_client: Option<Arc<ImmichApiClient>>,
+) {
     // Use adw::ApplicationWindow to avoid double titlebar
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -82,7 +89,9 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
     clamp.set_child(Some(&page_box));
 
     // --- PROGRESS GROUP ---
-    let progress_group = adw::PreferencesGroup::builder().title("Sync Status").build();
+    let progress_group = adw::PreferencesGroup::builder()
+        .title("Sync Status")
+        .build();
     page_box.append(&progress_group);
 
     let status_row = adw::ActionRow::builder()
@@ -101,11 +110,15 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
     progress_group.add(&progress_bar);
 
     // --- CONNECTIVITY GROUP ---
-    let conn_group = adw::PreferencesGroup::builder().title("Connectivity").build();
+    let conn_group = adw::PreferencesGroup::builder()
+        .title("Connectivity")
+        .build();
     page_box.append(&conn_group);
 
     // Internal URL
-    let internal_row = adw::ActionRow::builder().title("Internal URL (LAN)").build();
+    let internal_row = adw::ActionRow::builder()
+        .title("Internal URL (LAN)")
+        .build();
     let internal_switch = Switch::builder().valign(gtk::Align::Center).build();
     let internal_entry = Entry::builder()
         .placeholder_text("http://192.168.1.10:2283")
@@ -117,7 +130,9 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
     conn_group.add(&internal_row);
 
     // External URL
-    let external_row = adw::ActionRow::builder().title("External URL (WAN)").build();
+    let external_row = adw::ActionRow::builder()
+        .title("External URL (WAN)")
+        .build();
     let external_switch = Switch::builder().valign(gtk::Align::Center).build();
     let external_entry = Entry::builder()
         .placeholder_text("https://immich.example.com")
@@ -131,8 +146,10 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
     // Toggle validation: prevent both switches being OFF at the same time
     // Mirrors Python's _validate_toggles logic
     internal_switch.connect_active_notify(clone!(
-        #[weak] external_switch,
-        #[weak] window,
+        #[weak]
+        external_switch,
+        #[weak]
+        window,
         move |sw| {
             if !sw.is_active() && !external_switch.is_active() {
                 sw.set_active(true);
@@ -147,8 +164,10 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
     ));
 
     external_switch.connect_active_notify(clone!(
-        #[weak] internal_switch,
-        #[weak] window,
+        #[weak]
+        internal_switch,
+        #[weak]
+        window,
         move |sw| {
             if !sw.is_active() && !internal_switch.is_active() {
                 sw.set_active(true);
@@ -181,13 +200,20 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
     // Clone before moving into test_btn closure so api_client is still available below
     let api_client_for_test = api_client.clone();
     test_btn.connect_clicked(clone!(
-        #[weak] internal_switch,
-        #[weak] external_switch,
-        #[weak] internal_entry,
-        #[weak] external_entry,
-        #[weak] api_key_entry,
-        #[weak] window,
-        #[weak] test_btn,
+        #[weak]
+        internal_switch,
+        #[weak]
+        external_switch,
+        #[weak]
+        internal_entry,
+        #[weak]
+        external_entry,
+        #[weak]
+        api_key_entry,
+        #[weak]
+        window,
+        #[weak]
+        test_btn,
         move |btn| {
             btn.set_sensitive(false);
 
@@ -232,53 +258,63 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
             }
 
             // Poll the oneshot receiver from the GTK main loop
-            glib::timeout_add_local(Duration::from_millis(50), clone!(
-                #[weak] window,
-                #[weak] test_btn,
-                #[upgrade_or] glib::ControlFlow::Break,
-                move || {
-                    match rx.try_recv() {
-                        Ok((int_ok, ext_ok)) => {
-                            test_btn.set_sensitive(true);
+            glib::timeout_add_local(
+                Duration::from_millis(50),
+                clone!(
+                    #[weak]
+                    window,
+                    #[weak]
+                    test_btn,
+                    #[upgrade_or]
+                    glib::ControlFlow::Break,
+                    move || {
+                        match rx.try_recv() {
+                            Ok((int_ok, ext_ok)) => {
+                                test_btn.set_sensitive(true);
 
-                            let int_label = if int_ok { "OK" } else { "FAILED" };
-                            let ext_label = if ext_ok { "OK" } else { "FAILED" };
-                            let mut report = format!("Internal: {}\nExternal: {}", int_label, ext_label);
-                            let heading = if int_ok || ext_ok {
-                                if int_ok {
-                                    report.push_str("\n\nActive Mode: LAN");
+                                let int_label = if int_ok { "OK" } else { "FAILED" };
+                                let ext_label = if ext_ok { "OK" } else { "FAILED" };
+                                let mut report =
+                                    format!("Internal: {}\nExternal: {}", int_label, ext_label);
+                                let heading = if int_ok || ext_ok {
+                                    if int_ok {
+                                        report.push_str("\n\nActive Mode: LAN");
+                                    } else {
+                                        report.push_str("\n\nActive Mode: WAN");
+                                    }
+                                    "Connection Successful"
                                 } else {
-                                    report.push_str("\n\nActive Mode: WAN");
-                                }
-                                "Connection Successful"
-                            } else {
-                                report = "Could not connect to Immich at either address.".to_string();
-                                "Connection Failed"
-                            };
+                                    report = "Could not connect to Immich at either address."
+                                        .to_string();
+                                    "Connection Failed"
+                                };
 
-                            let dialog = adw::MessageDialog::builder()
-                                .transient_for(&window)
-                                .heading(heading)
-                                .body(&report)
-                                .build();
-                            dialog.add_response("ok", "OK");
-                            dialog.present();
+                                let dialog = adw::MessageDialog::builder()
+                                    .transient_for(&window)
+                                    .heading(heading)
+                                    .body(&report)
+                                    .build();
+                                dialog.add_response("ok", "OK");
+                                dialog.present();
 
-                            glib::ControlFlow::Break
+                                glib::ControlFlow::Break
+                            }
+                            Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
+                                // Still waiting
+                                glib::ControlFlow::Continue
+                            }
+                            Err(_) => glib::ControlFlow::Break, // channel dropped
                         }
-                        Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
-                            // Still waiting
-                            glib::ControlFlow::Continue
-                        }
-                        Err(_) => glib::ControlFlow::Break, // channel dropped
                     }
-                }
-            ));
+                ),
+            );
         }
     ));
 
     // --- WATCH FOLDERS GROUP ---
-    let folders_group = adw::PreferencesGroup::builder().title("Watch Folders").build();
+    let folders_group = adw::PreferencesGroup::builder()
+        .title("Watch Folders")
+        .build();
     page_box.append(&folders_group);
 
     let config = Config::new();
@@ -320,7 +356,11 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
                     }
                 }
 
-                row_data.string_list.splice(0, row_data.string_list.n_items(), &["Default (Folder Name)"]);
+                row_data.string_list.splice(
+                    0,
+                    row_data.string_list.n_items(),
+                    &["Default (Folder Name)"],
+                );
                 for (name, _) in &fetched {
                     if name != "Default (Folder Name)" {
                         row_data.string_list.append(name);
@@ -341,7 +381,9 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
                     }
                     if !found {
                         if text == "Custom Album..." {
-                            row_data.dropdown.set_selected(row_data.string_list.n_items() - 1);
+                            row_data
+                                .dropdown
+                                .set_selected(row_data.string_list.n_items() - 1);
                         } else {
                             row_data.dropdown.set_selected(0);
                         }
@@ -359,10 +401,7 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
         .build();
     folders_group.add(&folders_list);
 
-    let add_folder_btn = Button::builder()
-        .label("Add Folder")
-        .margin_top(12)
-        .build();
+    let add_folder_btn = Button::builder().label("Add Folder").margin_top(12).build();
     folders_group.add(&add_folder_btn);
 
     // Add existing paths to listbox with album dropdown
@@ -382,23 +421,27 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
         let tracked_clone = tracked_rows_clone.clone();
         let albums_ref = albums_clone.clone();
 
-        dialog.select_folder(Some(&window_clone), gtk::gio::Cancellable::NONE, move |res| {
-            if let Ok(file) = res {
-                if let Some(path) = file.path() {
-                    let path_str = path.to_string_lossy().to_string();
-                    if tracked_clone.borrow().iter().any(|r| r.path == path_str) {
-                        return;
+        dialog.select_folder(
+            Some(&window_clone),
+            gtk::gio::Cancellable::NONE,
+            move |res| {
+                if let Ok(file) = res {
+                    if let Some(path) = file.path() {
+                        let path_str = path.to_string_lossy().to_string();
+                        if tracked_clone.borrow().iter().any(|r| r.path == path_str) {
+                            return;
+                        }
+                        #[allow(deprecated)]
+                        add_folder_row(
+                            &list_clone,
+                            &WatchPathEntry::Simple(path_str),
+                            &albums_ref.borrow(),
+                            &tracked_clone,
+                        );
                     }
-                    #[allow(deprecated)]
-                    add_folder_row(
-                        &list_clone,
-                        &WatchPathEntry::Simple(path_str),
-                        &albums_ref.borrow(),
-                        &tracked_clone,
-                    );
                 }
-            }
-        });
+            },
+        );
     });
 
     // Save & Restart
@@ -412,14 +455,22 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
     save_group.add(&save_btn);
 
     save_btn.connect_clicked(clone!(
-        #[weak] internal_switch,
-        #[weak] external_switch,
-        #[weak] internal_entry,
-        #[weak] external_entry,
-        #[weak] api_key_entry,
-        #[strong] app_clone,
-        #[strong] tracked_rows,
-        #[strong] albums,
+        #[weak]
+        internal_switch,
+        #[weak]
+        external_switch,
+        #[weak]
+        internal_entry,
+        #[weak]
+        external_entry,
+        #[weak]
+        api_key_entry,
+        #[strong]
+        app_clone,
+        #[strong]
+        tracked_rows,
+        #[strong]
+        albums,
         move |_| {
             let mut config = Config::new();
             config.data.internal_url_enabled = internal_switch.is_active();
@@ -433,7 +484,7 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
             for row_data in tracked_rows.borrow().iter() {
                 let folder = row_data.path.clone();
                 let selected_idx = row_data.dropdown.selected();
-                
+
                 let album_name = if selected_idx == row_data.string_list.n_items() - 1 {
                     row_data.custom_entry.text().to_string()
                 } else if let Some(s) = row_data.string_list.string(selected_idx) {
@@ -441,7 +492,7 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
                 } else {
                     "Default (Folder Name)".to_string()
                 };
-                
+
                 if album_name.is_empty() || album_name == "Default (Folder Name)" {
                     watch_paths.push(WatchPathEntry::Simple(folder));
                 } else {
@@ -481,9 +532,12 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
 
     // Toggle validation – at least one URL must always be enabled
     internal_switch.connect_active_notify(clone!(
-        #[weak] external_switch,
-        #[weak] internal_entry,
-        #[weak] window,
+        #[weak]
+        external_switch,
+        #[weak]
+        internal_entry,
+        #[weak]
+        window,
         move |switch| {
             if !switch.is_active() && !external_switch.is_active() {
                 switch.set_active(true);
@@ -500,9 +554,12 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
     ));
 
     external_switch.connect_active_notify(clone!(
-        #[weak] internal_switch,
-        #[weak] external_entry,
-        #[weak] window,
+        #[weak]
+        internal_switch,
+        #[weak]
+        external_entry,
+        #[weak]
+        window,
         move |switch| {
             if !switch.is_active() && !internal_switch.is_active() {
                 switch.set_active(true);
@@ -521,46 +578,55 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
     // Background state poller — reads directly from in-memory shared state.
     // No disk I/O; the timer tears itself down automatically when the window closes
     // because the weak references to status_row / progress_bar fail to upgrade.
-    glib::timeout_add_local(Duration::from_millis(500), clone!(
-        #[weak] status_row,
-        #[weak] progress_bar,
-        #[upgrade_or] glib::ControlFlow::Break,
-        move || {
-            let (status, progress, processed, total, failed, current_file) = {
-                let s = shared_state.lock().unwrap();
-                (
-                    s.status.clone(),
-                    s.progress,
-                    s.processed_count,
-                    s.total_queued,
-                    s.failed_count,
-                    s.current_file.clone().unwrap_or_else(|| "...".to_string()),
-                )
-            }; // lock released here
+    glib::timeout_add_local(
+        Duration::from_millis(500),
+        clone!(
+            #[weak]
+            status_row,
+            #[weak]
+            progress_bar,
+            #[upgrade_or]
+            glib::ControlFlow::Break,
+            move || {
+                let (status, progress, processed, total, failed, current_file) = {
+                    let s = shared_state.lock().unwrap();
+                    (
+                        s.status.clone(),
+                        s.progress,
+                        s.processed_count,
+                        s.total_queued,
+                        s.failed_count,
+                        s.current_file.clone().unwrap_or_else(|| "...".to_string()),
+                    )
+                }; // lock released here
 
-            if status == "idle" {
-                if failed > 0 {
-                    status_row.set_title("Offline / Waiting");
-                    status_row.set_subtitle(&format!("{} item(s) pending network", failed));
-                    progress_bar.set_fraction(1.0);
-                } else {
-                    status_row.set_title("Idle");
-                    status_row.set_subtitle(&format!("Successfully processed {} file(s)", processed.saturating_sub(failed)));
-                    progress_bar.set_fraction(if processed > 0 { 1.0 } else { 0.0 });
+                if status == "idle" {
+                    if failed > 0 {
+                        status_row.set_title("Offline / Waiting");
+                        status_row.set_subtitle(&format!("{} item(s) pending network", failed));
+                        progress_bar.set_fraction(1.0);
+                    } else {
+                        status_row.set_title("Idle");
+                        status_row.set_subtitle(&format!(
+                            "Successfully processed {} file(s)",
+                            processed.saturating_sub(failed)
+                        ));
+                        progress_bar.set_fraction(if processed > 0 { 1.0 } else { 0.0 });
+                    }
+                } else if status == "uploading" {
+                    let filename = std::path::Path::new(&current_file)
+                        .file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_else(|| std::borrow::Cow::Borrowed("..."));
+                    status_row.set_title(&format!("Uploading ({}/{})", processed, total));
+                    status_row.set_subtitle(&filename);
+                    progress_bar.set_fraction((progress as f64) / 100.0);
                 }
-            } else if status == "uploading" {
-                let filename = std::path::Path::new(&current_file)
-                    .file_name()
-                    .map(|n| n.to_string_lossy())
-                    .unwrap_or_else(|| std::borrow::Cow::Borrowed("..."));
-                status_row.set_title(&format!("Uploading ({}/{})", processed, total));
-                status_row.set_subtitle(&filename);
-                progress_bar.set_fraction((progress as f64) / 100.0);
-            }
 
-            glib::ControlFlow::Continue
-        }
-    ));
+                glib::ControlFlow::Continue
+            }
+        ),
+    );
     // Hide instead of destroy on close.
     // The GTK widget tree (CSS caches, accessibility nodes, GSlice pools, GL state)
     // is built once and reused on every open/close cycle — zero new allocations per open.
@@ -568,7 +634,7 @@ pub fn build_settings_window(app: &adw::Application, shared_state: Arc<Mutex<App
     // guaranteed to be in app.windows() even when not visible.
     window.connect_close_request(|win| {
         win.set_visible(false);
-        glib::Propagation::Stop  // prevent the default destroy
+        glib::Propagation::Stop // prevent the default destroy
     });
 
     window.present();
@@ -595,7 +661,7 @@ fn add_folder_row(
         .model(&string_list)
         .valign(gtk::Align::Center)
         .build();
-    
+
     let custom_entry = gtk::Entry::builder()
         .placeholder_text("New album name")
         .valign(gtk::Align::Center)
@@ -647,9 +713,10 @@ fn add_folder_row(
     let list_clone = list.clone();
     let tracked_clone = tracked_rows.clone();
     let path_clone = path.clone();
-    
+
     remove_btn.connect_clicked(clone!(
-        #[weak] row,
+        #[weak]
+        row,
         move |_| {
             list_clone.remove(&row);
             tracked_clone.borrow_mut().retain(|r| r.path != path_clone);
@@ -686,9 +753,9 @@ fn show_about_dialog(parent: &adw::ApplicationWindow) {
         .transient_for(parent)
         .build();
 
-    about.add_link(
-        "Logo Illustration by Round Icons",
-        "https://unsplash.com/illustrations/a-white-and-orange-flower-on-a-white-background-IkQ_WrJzZOM"
+    about.add_credit_section(
+        Some("Icon Design"),
+        &["Round Icons (https://unsplash.com/illustrations/a-white-and-orange-flower-on-a-white-background-IkQ_WrJzZOM)"],
     );
 
     about.present();
