@@ -110,12 +110,6 @@ impl Config {
             }
         } else {
             log::info!("No config found, creating default at: {}", self.config_file.display());
-            // Default watch path = Pictures directory
-            if let Some(pic_dir) = dirs::picture_dir() {
-                self.data.watch_paths.push(WatchPathEntry::Simple(
-                    pic_dir.to_string_lossy().to_string(),
-                ));
-            }
             self.save();
         }
         false
