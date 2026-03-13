@@ -15,7 +15,7 @@ impl ksni::Tray for MimickTray {
     }
 
     fn icon_name(&self) -> String {
-        "mimick".to_string()
+        "io.github.nicx17.mimick".to_string()
     }
 
     fn title(&self) -> String {

@@ -10,6 +10,7 @@ Actions=Settings;
 Keywords=Photo;Sync;Backup;Immich;
 StartupNotify=false
 X-GNOME-Autostart-enabled=true
+StartupWMClass=io.github.nicx17.mimick
 
 [Desktop Action Settings]
 Name=Open Settings
