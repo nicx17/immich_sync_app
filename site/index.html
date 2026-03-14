@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mimick Flatpak Repository</title>
+    <meta
+        name="description"
+        content="Install Mimick, a sleek Linux-to-Immich sync daemon, from the official Flatpak repository."
+    >
+    <link rel="icon" href="icon.png" type="image/png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <main>
+        <div class="container">
+            <header>
+                <div class="icon-frame">
+                    <img class="hero-icon" src="icon.png" alt="Mimick app icon">
+                </div>
+                <p class="eyebrow">Official Flatpak Repository</p>
+                <h1>Mimick</h1>
+                <p class="subtitle">
+                    Sync photos and videos from Linux to Immich automatically.
+                </p>
+            </header>
+
+            <section class="install-card">
+                <div class="install-header">
+                    <p class="install-label">Install</p>
+                    <button class="copy-button" type="button" data-copy-target="install-command">
+                        Copy
+                    </button>
+                </div>
+                <pre><code id="install-command">flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
+flatpak install --user mimick-repo io.github.nicx17.mimick</code></pre>
+            </section>
+
+            <section class="links-container" aria-label="Repository links">
+                <a class="link-block" href="mimick.flatpakrepo">
+                    <span class="link-icon">01</span>
+                    <span class="link-copy">
+                        <strong>Download repository file</strong>
+                        <span>Get the <code>.flatpakrepo</code> directly.</span>
+                    </span>
+                </a>
+                <a class="link-block" href="https://github.com/nicx17/mimick">
+                    <span class="link-icon">02</span>
+                    <span class="link-copy">
+                        <strong>View on GitHub</strong>
+                        <span>Browse source, releases, and issues.</span>
+                    </span>
+                </a>
+                <a class="link-block" href="https://github.com/nicx17/mimick/blob/main/CHANGELOG.md">
+                    <span class="link-icon">03</span>
+                    <span class="link-copy">
+                        <strong>Read the changelog</strong>
+                        <span>See the latest app and packaging changes.</span>
+                    </span>
+                </a>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <div class="footer-inner">
+            <p><span class="footer-label">App ID</span> <code>io.github.nicx17.mimick</code></p>
+            <a class="footer-link" href="https://nicx17.github.io/mimick/">nicx17.github.io/mimick</a>
+        </div>
+    </footer>
+
+    <script>
+        const copyButton = document.querySelector(".copy-button");
+
+        if (copyButton) {
+            copyButton.addEventListener("click", async () => {
+                const targetId = copyButton.getAttribute("data-copy-target");
+                const codeBlock = targetId ? document.getElementById(targetId) : null;
+
+                if (!codeBlock) {
+                    return;
+                }
+
+                const originalLabel = copyButton.textContent;
+
+                try {
+                    await navigator.clipboard.writeText(codeBlock.textContent.trim());
+                    copyButton.textContent = "Copied";
+                } catch {
+                    copyButton.textContent = "Failed";
+                }
+
+                window.setTimeout(() => {
+                    copyButton.textContent = originalLabel;
+                }, 1600);
+            });
+        }
+    </script>
+</body>
+</html>

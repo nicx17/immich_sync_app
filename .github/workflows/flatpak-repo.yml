@@ -5,6 +5,10 @@ on:
     branches: [ "main" ] # Runs every time you push to main
   workflow_dispatch: # Allows you to run it manually from the Actions tab
 
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 # Grants permissions to deploy to GitHub Pages
 permissions:
   contents: read
@@ -14,8 +18,9 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,7 +34,8 @@ jobs:
       - name: Build Flatpak Repository
         run: |
           # Build the app and output it to a folder named 'repo'
-          flatpak-builder --user --repo=repo --force-clean --install-deps-from=flathub build-dir io.github.nicx17.mimick.yml
+          flatpak-builder --user --repo=repo --force-clean --install-deps-from=flathub build-dir io.github.nicx17.mimick.local.yml
+          flatpak build-update-repo repo --generate-static-deltas
     
       - name: Generate .flatpakrepo file
         run: |
@@ -40,42 +46,15 @@ jobs:
           Homepage=https://github.com/nicx17/mimick
           Comment=Official repository for the Mimick Immich sync daemon
           Description=A daemon-based synchronization tool for uploading media files from a Linux desktop to an Immich server.
-          Icon=https://raw.githubusercontent.com/nicx17/mimick/main/src/assets/icon.png
+          Icon=https://nicx17.github.io/mimick/icon.png
           GPGVerify=false
           EOF
           
-      - name: Generate index.html landing page
+      - name: Copy landing page assets
         run: |
-          cat << 'EOF' > repo/index.html
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Mimick Flatpak Repository</title>
-              <style>
-                  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #333; background: #f9f9f9; }
-                  .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-                  h1 { color: #0056b3; }
-                  pre { background: #2d2d2d; color: #ccc; padding: 15px; border-radius: 5px; overflow-x: auto; }
-                  code { font-family: monospace; font-size: 1.1em; }
-              </style>
-          </head>
-          <body>
-              <div class="container">
-                  <h1>Mimick Flatpak Repository</h1>
-                  <p>This is the official Flatpak repository for <strong>Mimick</strong>, a daemon-based synchronization tool for uploading media files to an Immich server.</p>
-                  
-                  <h3>How to install:</h3>
-                  <p>Run these commands in your Linux terminal:</p>
-                  <pre><code>flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
-          flatpak install --user mimick-repo io.github.nicx17.mimick</code></pre>
-                  
-                  <p><a href="https://github.com/nicx17/mimick">View source code on GitHub</a></p>
-              </div>
-          </body>
-          </html>
-          EOF    
+          cp site/index.html repo/index.html
+          cp site/styles.css repo/styles.css
+          cp site/icon.png repo/icon.png
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v4
@@ -86,4 +65,5 @@ jobs:
           path: 'repo' # Uploads the compiled Flatpak repo
 
       - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4

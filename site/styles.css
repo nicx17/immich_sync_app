@@ -1,0 +1,303 @@
+:root {
+    --bg-primary: #f7f2ea;
+    --bg-secondary: rgba(255, 252, 248, 0.92);
+    --text-main: #241c18;
+    --text-muted: #67564d;
+    --accent: #e7a15e;
+    --accent-deep: #bd6a33;
+    --border-color: rgba(83, 57, 41, 0.12);
+    --border-hover: rgba(111, 69, 45, 0.24);
+    --shadow-soft: 0 24px 60px rgba(79, 46, 29, 0.08);
+    --font-serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --font-sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    font-size: 115%;
+    line-height: 1.6;
+    background:
+        radial-gradient(circle at top, rgba(237, 173, 111, 0.14), transparent 34%),
+        linear-gradient(180deg, #fbf7f1 0%, #f7f2ea 52%, #f2ece3 100%);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    opacity: 0.03;
+    pointer-events: none;
+    z-index: -1;
+}
+
+main {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    width: 100%;
+    padding: 10vh 1.5rem 3rem;
+}
+
+.container {
+    width: 100%;
+    max-width: 760px;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 2.8rem;
+}
+
+.icon-frame {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 132px;
+    height: 132px;
+    margin-bottom: 1.25rem;
+    padding: 14px;
+    border: 1px solid rgba(189, 106, 51, 0.18);
+    border-radius: 34px;
+    background: linear-gradient(180deg, rgba(255, 248, 240, 0.98), rgba(248, 238, 228, 0.92));
+    box-shadow: var(--shadow-soft);
+}
+
+.hero-icon {
+    width: 100%;
+    height: 100%;
+    border-radius: 24px;
+    display: block;
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.14);
+}
+
+.eyebrow {
+    margin: 0 0 0.45rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+}
+
+h1 {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: clamp(3rem, 8vw, 4.6rem);
+    font-weight: 400;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+}
+
+.subtitle {
+    max-width: 34rem;
+    margin: 0.7rem auto 0;
+    color: var(--text-muted);
+    font-size: 1.12rem;
+}
+
+.install-card {
+    margin-bottom: 1.3rem;
+    padding: 1.45rem;
+    border: 1.2px solid var(--border-color);
+    border-radius: 18px;
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-soft);
+}
+
+.install-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.85rem;
+}
+
+.install-label {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+}
+
+.copy-button {
+    appearance: none;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 0.45rem 0.9rem;
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.copy-button:hover {
+    transform: translateY(-1px);
+    border-color: var(--border-hover);
+    background: rgba(255, 255, 255, 0.95);
+}
+
+pre {
+    margin: 0;
+    padding: 1rem 1.1rem;
+    border-radius: 14px;
+    background: #1d1714;
+    color: #f6ede5;
+    overflow-x: auto;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+code {
+    font-family: "SFMono-Regular", "JetBrains Mono", "Fira Code", monospace;
+    font-size: 0.94rem;
+}
+
+.links-container {
+    display: grid;
+    gap: 0.95rem;
+}
+
+.link-block {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.1rem 1.2rem;
+    border: 1.2px solid var(--border-color);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--text-main);
+    text-decoration: none;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.link-block:hover {
+    transform: translateY(-3px);
+    border-color: var(--border-hover);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 14px 32px rgba(58, 38, 27, 0.08);
+}
+
+.link-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 999px;
+    background: rgba(231, 161, 94, 0.18);
+    color: var(--accent-deep);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+}
+
+.link-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.link-copy strong {
+    font-size: 1.02rem;
+    font-weight: 600;
+}
+
+.link-copy span {
+    color: var(--text-muted);
+    font-size: 0.96rem;
+}
+
+footer {
+    width: 100%;
+    padding: 0 1.5rem 1rem;
+}
+
+.footer-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 0.94rem;
+}
+
+.footer-label {
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.footer-link {
+    color: var(--text-muted);
+    text-decoration: none;
+}
+
+.footer-link:hover {
+    color: var(--text-main);
+}
+
+@media (max-width: 820px) {
+    main {
+        padding-top: 7vh;
+    }
+}
+
+@media (max-width: 560px) {
+    body {
+        font-size: 98%;
+    }
+
+    main {
+        padding: 5vh 1rem 2rem;
+    }
+
+    .icon-frame {
+        width: 114px;
+        height: 114px;
+        border-radius: 28px;
+    }
+
+    h1 {
+        font-size: 2.7rem;
+    }
+
+    .subtitle {
+        font-size: 1rem;
+    }
+
+    .install-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .link-block {
+        align-items: flex-start;
+    }
+
+    .footer-inner {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
