@@ -1,0 +1,54 @@
+name: Build and Deploy Flatpak Repo
+
+on:
+  push:
+    branches: [ "main" ] # Runs every time you push to main
+  workflow_dispatch: # Allows you to run it manually from the Actions tab
+
+# Grants permissions to deploy to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Flatpak & Builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build Flatpak Repository
+        run: |
+          # Build the app and output it to a folder named 'repo'
+          flatpak-builder --repo=repo --force-clean build-dir io.github.nicx17.mimick.yml
+
+      - name: Generate .flatpakrepo file
+        run: |
+          cat << 'EOF' > repo/mimick.flatpakrepo
+          [Flatpak Repo]
+          Title=Mimick Repository
+          Url=https://nicx17.github.io/mimick/
+          Homepage=https://github.com/nicx17/mimick
+          Comment=Official repository for the Mimick Immich sync daemon
+          Description=A daemon-based synchronization tool for uploading media files from a Linux desktop to an Immich server.
+          Icon=https://raw.githubusercontent.com/nicx17/mimick/main/src/assets/icon.png
+          GPGVerify=false
+          EOF
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'repo' # Uploads the compiled Flatpak repo
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
