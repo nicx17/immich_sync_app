@@ -8,8 +8,8 @@
     --border-color: rgba(83, 57, 41, 0.12);
     --border-hover: rgba(111, 69, 45, 0.24);
     --shadow-soft: 0 24px 60px rgba(79, 46, 29, 0.08);
-    --font-serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-    --font-sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    --font-serif: "Newsreader", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --font-sans: "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
 * {
@@ -24,6 +24,7 @@ body {
     color: var(--text-main);
     font-family: var(--font-sans);
     font-size: 115%;
+    font-weight: 500;
     line-height: 1.6;
     background:
         radial-gradient(circle at top, rgba(237, 173, 111, 0.14), transparent 34%),
@@ -96,8 +97,8 @@ h1 {
     margin: 0;
     font-family: var(--font-serif);
     font-size: clamp(3rem, 8vw, 4.6rem);
-    font-weight: 400;
-    line-height: 0.95;
+    font-weight: 500;
+    line-height: 0.92;
     letter-spacing: -0.03em;
 }
 
@@ -105,7 +106,8 @@ h1 {
     max-width: 34rem;
     margin: 0.7rem auto 0;
     color: var(--text-muted);
-    font-size: 1.12rem;
+    font-size: 1.08rem;
+    font-weight: 500;
 }
 
 .install-card {
@@ -217,7 +219,7 @@ code {
 
 .link-copy strong {
     font-size: 1.02rem;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 .link-copy span {
