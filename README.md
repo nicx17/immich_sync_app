@@ -1,3 +1,4 @@
+
 # Mimick for Linux
 
 <div align="center">
@@ -15,7 +16,7 @@
 
 A daemon-based synchronization tool for uploading media files from a Linux desktop to an [Immich](https://immich.app/) server.
 
-Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files and automatically uploads them to your Immich instance. It runs as a background service and integrates with the GNOME desktop environment via a GTK4 / Libadwaita settings window and a StatusNotifier system tray icon.
+Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files and automatically uploads them to your Immich instance. It runs securely as a background service and integrates natively with the GNOME desktop environment via a GTK4 / Libadwaita settings window and a StatusNotifier system tray icon.
 
 > [!NOTE]
 > **This project is in BETA.** Core features are stable and tested. Please report any issues or edge cases you encounter.
@@ -44,83 +45,102 @@ Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files
   - GTK4 / Libadwaita settings UI (dark mode by default).
   - StatusNotifierItem system tray icon (requires AppIndicator support on GNOME).
 
-## Installation
+---
+
+## Installation (Recommended)
+
+The easiest and official way to install Mimick on any Linux distribution is via our Flatpak repository. This ensures you receive automatic updates whenever a new version is released.
+
+Run these commands in your terminal:
 
 
-### Method 1: Build and Install Locally with Flatpak
-
-You can build and install Mimick as a Flatpak locally:
-
-```bash
-git clone https://github.com/nicx17/mimick.git
-cd mimick
-flatpak-builder --user --install --force-clean build-dir io.github.nicx17.mimick.yml
-```
-
-Then run:
+# 1. Add the official Mimick repository
 
 ```bash
-flatpak run io.github.nicx17.mimick
+flatpak remote-add --user --if-not-exists mimick-repo [https://nicx17.github.io/mimick/mimick.flatpakrepo](https://nicx17.github.io/mimick/mimick.flatpakrepo)
 ```
 
-### Method 2: Build and Install Natively (Rust)
-
-#### Prerequisites
-
-- Rust toolchain (`cargo`): https://rustup.rs
-- GTK4 + Libadwaita development headers
-
-**Ubuntu / Debian:**
+# 2. Install the application
 
 ```bash
-sudo apt install libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential libsecret-1-dev
+flatpak install --user mimick-repo io.github.nicx17.mimick
 ```
+---
 
-**Fedora:**
-
-```bash
-sudo dnf install gtk4-devel libadwaita-devel libsecret-devel pkg-config
-```
-
-**Arch Linux:**
-
-```bash
-sudo pacman -S gtk4 libadwaita libsecret pkgconf base-devel
-```
-
-#### Build and Install
-
-```bash
-git clone https://github.com/nicx17/mimick.git
-cd mimick
-cargo build --release
-# Copy the desktop file and icons from setup/ to ~/.local/share/applications and ~/.local/share/icons for launcher integration
-```
-
-#### Run Directly (Development)
-
-```bash
-cargo run                   # start in background mode
-cargo run -- --settings     # open the settings window immediately
-```
-
-## Usage
+## Usage & Configuration
 
 ### First Launch
 
 Launch Mimick from your Application Launcher. The settings window opens automatically on first launch.
 
 1. **Internal URL** — LAN address (e.g., `http://192.168.1.50:2283`).
-2. **External URL** — WAN/Public address (e.g., `https://photos.example.com`).
+2. **External URL** — WAN/Public address (e.g., `https://photos.example.com`). *At least one must be enabled.*
 3. **API Key** — Generate in Immich Web UI under Account Settings > API Keys. Needs **Asset** and **Album** read/create permissions.
 4. **Watch Paths** — Add folders to monitor. Each folder can be assigned a target Immich album.
 
 ### Autostart
 
-If you want Mimick to start upon login, ensure you have configured it in your desktop environment's startup applications, or copy the `.desktop` file to `~/.config/autostart/`.
+If you want Mimick to start upon login, ensure you have configured it in your desktop environment's startup applications (e.g., GNOME Tweaks), or copy the `.desktop` file to `~/.config/autostart/`.
+
+---
+
+## Building from Source (For Developers)
+
+If you prefer to compile Mimick yourself, you can build it natively or package it as a local Flatpak.
+
+### Prerequisites (Native Build)
+
+* Rust toolchain (`cargo`): https://rustup.rs
+* GTK4 + Libadwaita development headers
+
+**Ubuntu / Debian:**
+
+```bash
+sudo apt install libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential libsecret-1-dev
+
+```
+
+**Fedora:**
+
+```bash
+sudo dnf install gtk4-devel libadwaita-devel libsecret-devel pkg-config
+
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -S gtk4 libadwaita libsecret pkgconf base-devel
+
+```
+
+### Native Rust Build
+
+```bash
+git clone [https://github.com/nicx17/mimick.git](https://github.com/nicx17/mimick.git)
+cd mimick
+cargo build --release
+# Copy the desktop file and icons from setup/ to ~/.local/share/applications and ~/.local/share/icons for launcher integration
+
+# Run Directly
+cargo run                   # start in background mode
+cargo run -- --settings     # open the settings window immediately
+
+```
+
+### Local Flatpak Build
+
+```bash
+git clone [https://github.com/nicx17/mimick.git](https://github.com/nicx17/mimick.git)
+cd mimick
+flatpak-builder --user --install --force-clean build-dir io.github.nicx17.mimick.yml
+flatpak run io.github.nicx17.mimick
+
+```
+
+---
 
 ## Documentation
-
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [User Guide](docs/USER_GUIDE.md)
 
@@ -130,8 +150,8 @@ Pull requests are welcome. See `CONTRIBUTING.md` for commit and style guidelines
 
 ## Acknowledgments
 
-- Application icon illustration by [Round Icons](https://unsplash.com/@roundicons) on Unsplash.
+* Application icon illustration by [Round Icons](https://unsplash.com/@roundicons) on Unsplash.
 
 ## License
 
-GNU General Public License v3.0 — see [LICENSE](LICENSE).
+GNU General Public License v3.0 — see [LICENSE](https://github.com/nicx17/mimick/blob/main/LICENSE).
