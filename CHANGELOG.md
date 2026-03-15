@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-03-15
+
 ### Added
 - A startup catch-up scan that walks watched folders on launch and queues media that was missed while Mimick was not running.
 - A local sync index that records previously synced files so unchanged media can be skipped quickly on later startups.
