@@ -18,7 +18,6 @@ finish-args:
   - --env=GSK_RENDERER=gl
   - --share=ipc
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --own-name=org.kde.*
   - --share=network
   # Folder access is granted per-directory via the file chooser portal
 

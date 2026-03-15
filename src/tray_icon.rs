@@ -60,11 +60,14 @@ pub async fn build_tray() -> Result<
 > {
     let (settings_tx, settings_rx) = watch::channel(false);
     let (quit_tx, quit_rx) = watch::channel(false);
-    let handle = MimickTray {
+    let tray = MimickTray {
         settings_tx,
         quit_tx,
-    }
-    .spawn()
-    .await?;
+    };
+    let handle = if ashpd::is_sandboxed() {
+        tray.disable_dbus_name(true).spawn().await?
+    } else {
+        tray.spawn().await?
+    };
     Ok((handle, settings_rx, quit_rx))
 }
