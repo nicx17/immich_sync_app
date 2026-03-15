@@ -76,12 +76,26 @@ The settings window has separate actions for hiding the window and quitting the 
 
 ### Automatic Detection
 
-Once configured, the application runs silently in the background. When you add a new photo to a watched folder, `mimick` detects it via filesystem monitoring:
+Once configured, the application runs silently in the background. It handles syncing in two ways:
+
+1. On startup, Mimick rescans watched folders for media that has not been synced yet.
+2. While running, Mimick watches those folders for newly added or changed media.
+
+For live changes, `mimick` detects files via filesystem monitoring:
 
 1. Waits for the file size to stabilise (file is fully written to disk).
 2. Calculates a SHA-1 checksum for deduplication.
 3. Streams the file to Immich using the standard asset API.
 4. Adds the asset to the configured album.
+
+### Existing Files and Reassignment
+
+Mimick keeps a local sync index so it can avoid reprocessing files that are already known to be synced.
+
+* Unchanged files that were already synced are skipped during startup rescans.
+* Files whose content changed are rehashed and uploaded again.
+* If you change the target album for a watched folder, Mimick can reassociate unchanged files to the new album on a later startup without needing to reupload the media data.
+* If the previously targeted album was deleted, Mimick refreshes the album mapping and retries using the current configured album name.
 
 ### Sync Status
 

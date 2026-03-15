@@ -42,6 +42,7 @@ Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files
 - **One-Way Sync**: Uploads media without modifying local files.
 - **Security**: API Key stored in the system keyring via `secret-tool` (libsecret).
 - **Autostart**: Optional login startup with desktop-portal permission inside Flatpak and native autostart integration outside Flatpak.
+- **Startup Catch-Up**: On launch, Mimick scans watched folders for media that has not been synced yet and queues only new, changed, or retargeted files.
 - **Clear Window Controls**: `Close` hides the settings window, while `Quit` stops the app completely.
 - **Desktop Integration**:
   - GTK4 / Libadwaita settings UI (dark mode by default).
@@ -98,6 +99,15 @@ Mimick now uses selected-folder access instead of full home-directory access in 
 * If you are upgrading from an older build that had full home access, re-add your existing watch folders once so the new permission model can take effect.
 * Portal-backed folders may appear by name in the UI and logs instead of showing the raw `/run/user/.../doc/...` sandbox path.
 
+### Existing Files and Album Changes
+
+Mimick does not only sync files created while it is already running.
+
+* On startup, Mimick rescans watched folders and queues media that has not been synced yet.
+* A local sync index is used so unchanged files that are already known to be synced are skipped quickly.
+* If you change the target Immich album for a watched folder, unchanged files can be reassociated to the new album on the next startup without forcing a full reupload.
+* If a previously targeted album was deleted, Mimick refreshes album resolution and recreates or rebinds the target album as needed.
+
 ### Quitting vs Closing
 
 Mimick is a background app, so closing the settings window does not quit it.
@@ -150,6 +160,8 @@ cargo run                   # start in background mode
 cargo run -- --settings     # open the settings window immediately
 
 ```
+
+Logs written to the terminal and to `~/.cache/mimick/mimick.log` now include timestamps.
 
 ### Local Flatpak Build
 

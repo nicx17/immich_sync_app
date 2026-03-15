@@ -1,6 +1,8 @@
 use crate::api_client::ImmichApiClient;
 use crate::notifications;
 use crate::state_manager::AppState;
+use crate::sync_index::{SyncIndex, SyncTarget};
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,6 +19,9 @@ pub struct FileTask {
     /// Album name to look up or create
     #[serde(default)]
     pub album_name: Option<String>,
+    /// True when the file content is already known to exist and only album reassociation is needed.
+    #[serde(default)]
+    pub reassociate_only: bool,
 }
 
 pub struct QueueManager {
@@ -26,6 +31,9 @@ pub struct QueueManager {
     shared_state: Arc<std::sync::Mutex<AppState>>,
     /// In-memory retry list — no per-failure disk writes.
     retry_list: Arc<std::sync::Mutex<Vec<FileTask>>>,
+    /// Paths already queued or awaiting retry. Prevents duplicate queue entries
+    /// when the startup scan and live watcher see the same file.
+    pending_paths: Arc<std::sync::Mutex<HashSet<String>>>,
     retry_path: PathBuf,
 }
 
@@ -34,6 +42,7 @@ impl QueueManager {
         api_client: Arc<ImmichApiClient>,
         workers: usize,
         shared_state: Arc<std::sync::Mutex<AppState>>,
+        sync_index: Arc<std::sync::Mutex<SyncIndex>>,
     ) -> Self {
         let (tx, rx) = mpsc::channel::<FileTask>(64);
         let rx = Arc::new(Mutex::new(rx));
@@ -60,11 +69,15 @@ impl QueueManager {
 
         // In-memory retry list: no disk writes during a session.
         let retry_list = Arc::new(std::sync::Mutex::new(Vec::<FileTask>::new()));
+        let pending_paths = Arc::new(std::sync::Mutex::new(
+            loaded_retries.iter().map(|task| task.path.clone()).collect(),
+        ));
 
         let qm = Self {
             sender: tx,
             shared_state: shared_state.clone(),
             retry_list: retry_list.clone(),
+            pending_paths: pending_paths.clone(),
             retry_path: retry_path.clone(),
         };
 
@@ -74,6 +87,8 @@ impl QueueManager {
             let api = api_client.clone();
             let state_ref = shared_state.clone();
             let retry_ref = retry_list.clone();
+            let pending_ref = pending_paths.clone();
+            let sync_index_ref = sync_index.clone();
 
             tokio::spawn(async move {
                 log::debug!("Worker {} started", i);
@@ -110,11 +125,27 @@ impl QueueManager {
                             );
 
                             let t_start = std::time::Instant::now();
-                            let success = handle_upload(&api, &file_task).await;
+                            let sync_target = handle_upload(&api, &file_task).await;
+                            let success = sync_target.is_some();
                             let elapsed = t_start.elapsed().as_secs_f32();
 
                             if success {
                                 log::info!("Upload SUCCESS: {} ({:.2}s)", file_task.path, elapsed);
+                                pending_ref.lock().unwrap().remove(&file_task.path);
+
+                                if let Some(target) = sync_target.as_ref() {
+                                    if let Err(err) = sync_index_ref
+                                        .lock()
+                                        .unwrap()
+                                        .record_synced(&file_task.path, &file_task.checksum, target)
+                                    {
+                                        log::warn!(
+                                            "Failed to update sync index for '{}': {}",
+                                            file_task.path,
+                                            err
+                                        );
+                                    }
+                                }
 
                                 // Atomically drain the in-memory retry list (fast, no I/O).
                                 let retries: Vec<FileTask> = {
@@ -218,8 +249,17 @@ impl QueueManager {
     }
 
     /// Add a file task to the upload queue.
-    pub async fn add_to_queue(&self, task: FileTask) {
+    pub async fn add_to_queue(&self, task: FileTask) -> bool {
         log::debug!("Queuing: {}", task.path);
+        {
+            let mut pending = self.pending_paths.lock().unwrap();
+            if pending.contains(&task.path) {
+                log::debug!("Skipping already pending task: {}", task.path);
+                return false;
+            }
+            pending.insert(task.path.clone());
+        }
+
         {
             let mut s = self.shared_state.lock().unwrap();
             s.total_queued += 1;
@@ -227,7 +267,11 @@ impl QueueManager {
         }
         if let Err(e) = self.sender.send(task).await {
             log::error!("Failed to send task to queue: {}", e);
+            self.pending_paths.lock().unwrap().remove(&e.0.path);
+            return false;
         }
+
+        true
     }
 
     /// Persist any remaining in-memory retry items to disk (call on graceful shutdown).
@@ -244,15 +288,28 @@ impl QueueManager {
 }
 
 /// Upload a file and add it to the appropriate album.
-async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> bool {
-    let asset_id = api.upload_asset(&task.path, &task.checksum).await;
+async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> Option<SyncTarget> {
+    let asset_id = if task.reassociate_only {
+        match api.find_existing_asset_id(&task.checksum).await {
+            Some(existing) => Some(existing),
+            None => api.upload_asset(&task.path, &task.checksum).await,
+        }
+    } else {
+        api.upload_asset(&task.path, &task.checksum).await
+    };
 
     let asset_id = match asset_id {
-        None => return false,
-        Some(ref id) if id == "DUPLICATE" => {
-            log::info!("Asset already on server: {}", task.path);
-            return true;
-        }
+        None => return None,
+        Some(ref id) if id == "DUPLICATE" => match api.find_existing_asset_id(&task.checksum).await {
+            Some(existing) => existing,
+            None => {
+                log::info!("Asset already on server: {}", task.path);
+                return Some(SyncTarget {
+                    album_name: task.album_name.clone().or_else(|| infer_album_name(&task.path)),
+                    album_id: task.album_id.clone(),
+                });
+            }
+        },
         Some(id) => id,
     };
 
@@ -268,7 +325,7 @@ async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> bool {
 
     log::info!("Adding '{}' to album '{}'", task.path, album_name);
 
-    let final_album_id = if let Some(ref id) = task.album_id {
+    let mut final_album_id = if let Some(ref id) = task.album_id {
         if !id.is_empty() {
             Some(id.clone())
         } else {
@@ -278,16 +335,49 @@ async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> bool {
         api.get_or_create_album(&album_name).await
     };
 
-    if let Some(album_id) = final_album_id {
-        api.add_assets_to_album(&album_id, &[asset_id]).await;
+    if let Some(album_id) = final_album_id.clone() {
+        if !api.add_assets_to_album(&album_id, std::slice::from_ref(&asset_id)).await {
+            if let Some(album_name) = task.album_name.clone().or_else(|| infer_album_name(&task.path)) {
+                log::warn!(
+                    "Album '{}' may be stale or deleted. Refreshing album resolution.",
+                    album_id
+                );
+                final_album_id = api
+                    .resolve_album_by_name(&album_name, true)
+                    .await;
+                if let Some(ref refreshed_id) = final_album_id {
+                    if !api
+                        .add_assets_to_album(refreshed_id, std::slice::from_ref(&asset_id))
+                        .await
+                    {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+        }
     } else {
         log::warn!(
             "Could not resolve album '{}'. Asset uploaded but not added to album.",
             album_name
         );
+        return None;
     }
 
-    true
+    Some(SyncTarget {
+        album_name: Some(album_name),
+        album_id: final_album_id,
+    })
+}
+
+fn infer_album_name(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_string())
 }
 
 fn save_retries(path: &PathBuf, tasks: &[FileTask]) {
@@ -337,6 +427,7 @@ mod tests {
             checksum: "sha123".to_string(),
             album_id: Some("id1".to_string()),
             album_name: Some("Album".to_string()),
+            reassociate_only: false,
         };
         let js = serde_json::to_string(&task).unwrap();
         assert!(js.contains("sha123"));
@@ -356,6 +447,7 @@ mod tests {
             checksum: "hash1".to_string(),
             album_id: None,
             album_name: None,
+            reassociate_only: false,
         };
 
         let tasks = vec![task];

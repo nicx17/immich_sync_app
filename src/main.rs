@@ -12,7 +12,9 @@ mod notifications;
 mod queue_manager;
 mod restart;
 mod settings_window;
+mod startup_scan;
 mod state_manager;
+mod sync_index;
 mod tray_icon;
 mod watch_path_display;
 
@@ -22,10 +24,12 @@ use monitor::Monitor;
 use queue_manager::{FileTask, QueueManager};
 use restart::{launch_replacement, take_restart_request};
 use settings_window::build_settings_window;
+use startup_scan::queue_unsynced_files;
 use state_manager::{AppState, StateManager};
+use sync_index::SyncIndex;
 use tray_icon::build_tray;
 
-use flexi_logger::{FileSpec, Logger, WriteMode};
+use flexi_logger::{FileSpec, Logger, WriteMode, colored_detailed_format, detailed_format};
 
 /// Holds the primary instance's QueueManager so the shutdown path can flush retries to disk.
 static QM_HANDLE: std::sync::OnceLock<Arc<QueueManager>> = std::sync::OnceLock::new();
@@ -48,6 +52,8 @@ async fn main() {
                 .suppress_timestamp() // "mimick.log" instead of "mimick_2026-03-09_10-33-35.log"
                 .suffix("log"),
         )
+        .format_for_files(detailed_format)
+        .format_for_stdout(colored_detailed_format)
         // Also print to stdout for systemd / terminal users
         .duplicate_to_stdout(flexi_logger::Duplicate::All)
         .write_mode(WriteMode::Direct)
@@ -106,11 +112,13 @@ async fn main() {
             api_key,
         ));
         let _ = API_CLIENT_HANDLE.set(api_client.clone());
+        let sync_index = Arc::new(Mutex::new(SyncIndex::new()));
 
         let qm = Arc::new(QueueManager::new(
             api_client,
             3,
             shared_state_startup.clone(),
+            sync_index.clone(),
         ));
 
         // Start file monitor using plain path strings
@@ -145,19 +153,32 @@ async fn main() {
                     }
                 }
 
-                qm_clone
+                let _ = qm_clone
                     .add_to_queue(FileTask {
                         path,
                         checksum,
                         album_id,
                         album_name,
+                        reassociate_only: false,
                     })
                     .await;
             }
         });
 
+        let startup_qm = qm.clone();
+        let startup_paths = config.data.watch_paths.clone();
+        let startup_sync_index = sync_index.clone();
+
         // Store in the global handle so main() can call flush_retries() on graceful shutdown.
         let _ = QM_HANDLE.set(qm);
+
+        tokio::spawn(async move {
+            let startup_api = API_CLIENT_HANDLE
+                .get()
+                .cloned()
+                .expect("API client should be initialized before startup scan");
+            queue_unsynced_files(startup_paths, startup_qm, startup_sync_index, startup_api).await;
+        });
 
         let app_clone2 = app.clone();
         let app_clone3 = app.clone();

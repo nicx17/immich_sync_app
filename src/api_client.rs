@@ -306,6 +306,15 @@ impl ImmichApiClient {
         }
     }
 
+    pub async fn refresh_album_cache(&self) {
+        {
+            let mut cache = self.album_cache.lock().await;
+            cache.clear();
+        }
+        *self.albums_fetched.lock().await = false;
+        self.fetch_all_albums().await;
+    }
+
     /// Return a snapshot of all cached albums as a list of (albumName, id)
     pub async fn get_all_albums(&self) -> Vec<(String, String)> {
         if !*self.albums_fetched.lock().await {
@@ -376,6 +385,68 @@ impl ImmichApiClient {
             }
         }
         self.create_album(album_name).await
+    }
+
+    pub async fn resolve_album_by_name(
+        &self,
+        album_name: &str,
+        force_refresh: bool,
+    ) -> Option<String> {
+        if force_refresh {
+            self.refresh_album_cache().await;
+        }
+        self.get_or_create_album(album_name).await
+    }
+
+    /// Check whether an asset already exists on the server by checksum and return its asset ID.
+    pub async fn find_existing_asset_id(&self, checksum: &str) -> Option<String> {
+        let base_url = self.get_active_url().await?;
+        let url = format!("{}/api/assets/bulk-upload-check", base_url);
+        let body = serde_json::json!({
+            "assets": [
+                {
+                    "id": checksum,
+                    "checksum": checksum
+                }
+            ]
+        });
+
+        match self
+            .client
+            .post(&url)
+            .header("x-api-key", &self.api_key)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .json(&body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let json = resp.json::<serde_json::Value>().await.ok()?;
+                json["results"]
+                    .as_array()
+                    .and_then(|results| results.first())
+                    .and_then(|item| item["assetId"].as_str())
+                    .map(ToString::to_string)
+            }
+            Ok(resp) => {
+                log::warn!(
+                    "Bulk upload check failed for checksum {}: {}",
+                    checksum,
+                    resp.status()
+                );
+                None
+            }
+            Err(err) => {
+                log::warn!(
+                    "Bulk upload check request failed for checksum {}: {}",
+                    checksum,
+                    err
+                );
+                None
+            }
+        }
     }
 
     /// Add a list of asset IDs to an album.
