@@ -43,6 +43,7 @@ The application writes rotating debug logs to `.cache`. If something breaks with
 ```bash
 tail -f ~/.cache/mimick/mimick.log
 ```
+Each log line includes a timestamp, level, and source module.
 
 ### Manual Debugging
 Run the application directly in a terminal to see `stdout` logs:
@@ -51,7 +52,7 @@ mimick
 # or if developing:
 cargo run
 ```
-Look for lines starting with `ERROR` or `WARN`.
+Terminal logs also include timestamps. Look for lines starting with `ERROR` or `WARN`.
 
 ### Check Configuration Validity
 Verify your config file is valid JSON:

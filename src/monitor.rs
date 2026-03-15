@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 /// Whitelisted media extensions (matches Python ALLOWED_EXTENSIONS)
-const MEDIA_EXTENSIONS: &[&str] = &[
+pub(crate) const MEDIA_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "heic", "mp4", "mov", "gif", "webp", "tiff", "tif", "raw", "arw", "dng",
 ];
 
@@ -230,7 +230,7 @@ async fn wait_for_file_completion(path: &str) -> bool {
 }
 
 /// Compute SHA-1 in 64KB chunks — handles large files without loading all into RAM.
-fn compute_sha1_chunked(path: &str) -> io::Result<String> {
+pub(crate) fn compute_sha1_chunked(path: &str) -> io::Result<String> {
     const BUF_SIZE: usize = 65536;
     let file = fs::File::open(path)?;
     let mut reader = BufReader::with_capacity(BUF_SIZE, file);
@@ -244,6 +244,18 @@ fn compute_sha1_chunked(path: &str) -> io::Result<String> {
         hasher.update(&buf[..n]);
     }
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+pub(crate) fn is_supported_media_path(path: &Path) -> bool {
+    if path.is_dir() {
+        return false;
+    }
+
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase());
+    let ext_str = ext.as_deref().unwrap_or("");
+    MEDIA_EXTENSIONS.contains(&ext_str)
 }
 
 #[cfg(test)]

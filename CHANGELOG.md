@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- A startup catch-up scan that walks watched folders on launch and queues media that was missed while Mimick was not running.
+- A local sync index that records previously synced files so unchanged media can be skipped quickly on later startups.
+
+### Changed
+- Changing the target Immich album for a watched folder now causes unchanged files to be reassociated to the new album on a later startup instead of being ignored.
+- If a previously targeted album no longer exists, Mimick now refreshes album resolution and retries with the current configured album target.
+- Terminal and file logs now include timestamped detailed formatting for easier troubleshooting.
+- Flatpak tray integration now uses a narrower StatusNotifier permission model and no longer requests broad `org.kde.*` bus-name ownership.
+
 ## [5.0.1] - 2026-03-14
 
 ### Added

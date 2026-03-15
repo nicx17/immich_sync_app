@@ -18,6 +18,10 @@ The most convenient way to configure the application is via the built-in Setting
 
 The settings window close button behaves like **Close** and keeps the background daemon running.
 
+When Mimick starts, it also rescans the configured watch folders for media that has not been synced yet. A local sync index is used so unchanged files that were already synced are skipped quickly instead of being reuploaded every launch.
+
+If you change the target album for a watched folder, Mimick can reassociate unchanged files to the new album on a later startup. If the previously used album was deleted, Mimick refreshes the album lookup and retries with the current configured album name.
+
 ## Manual Configuration (JSON)
 
 The configuration is stored in a JSON file located at:
@@ -50,6 +54,14 @@ The configuration is stored in a JSON file located at:
 | `internal_url_enabled` | Toggle allowing the Daemon to attempt LAN connectivity. | `true` |
 | `external_url_enabled` | Toggle allowing the Daemon to attempt WAN connectivity. | `true` |
 | `run_on_startup` | Whether Mimick should register itself for automatic login startup. | `false` |
+
+## Local State and Cache Files
+
+In addition to `config.json`, Mimick stores runtime state in the user cache directory:
+
+- `~/.cache/mimick/mimick.log`: rotating application logs with timestamps, levels, and source modules.
+- `~/.cache/mimick/retries.json`: queued retry items that could not be uploaded before shutdown.
+- `~/.cache/mimick/synced_index.json`: the local sync index used by startup rescans to skip already-synced unchanged files and detect album-target changes.
 
 ## API Key Security
 

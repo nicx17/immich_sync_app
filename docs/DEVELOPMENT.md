@@ -51,6 +51,7 @@ This guide is for developers who want to contribute to `mimick`.
 The application uses `flexi_logger`. 
 - By default, `cargo run` prints `INFO` level logs to the terminal.
 - Logs are simultaneously written to disk at `~/.cache/mimick/mimick.log`.
+- Both terminal and file logs use timestamped detailed formatting.
 - To increase verbosity, set the `RUST_LOG` environment variable:
 
 ```bash
