@@ -253,9 +253,7 @@ pub(crate) fn is_supported_media_path(path: &Path) -> bool {
         return false;
     }
 
-    let ext = path
-        .extension()
-        .map(|e| e.to_string_lossy().to_lowercase());
+    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
     let ext_str = ext.as_deref().unwrap_or("");
     MEDIA_EXTENSIONS.contains(&ext_str)
 }

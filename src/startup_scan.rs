@@ -73,29 +73,27 @@ pub async fn queue_unsynced_files(
                         let path_str = path.to_string_lossy().into_owned();
                         seen_paths.insert(path_str.clone());
                         let album_name = effective_album_name(entry, &path);
-                        let album_id = resolve_target_album_id(
-                            &api_client,
-                            &album_name,
-                            &mut album_id_cache,
-                        )
-                        .await;
+                        let album_id =
+                            resolve_target_album_id(&api_client, &album_name, &mut album_id_cache)
+                                .await;
                         let target = SyncTarget {
                             album_name: Some(album_name.clone()),
                             album_id: album_id.clone(),
                         };
 
-                        let decision = match sync_index.lock().unwrap().sync_decision(&path, &target) {
-                            Ok(decision) => decision,
-                            Err(err) => {
-                                scan_errors += 1;
-                                log::warn!(
-                                    "Startup scan could not inspect '{}': {}",
-                                    path.display(),
-                                    err
-                                );
-                                continue;
-                            }
-                        };
+                        let decision =
+                            match sync_index.lock().unwrap().sync_decision(&path, &target) {
+                                Ok(decision) => decision,
+                                Err(err) => {
+                                    scan_errors += 1;
+                                    log::warn!(
+                                        "Startup scan could not inspect '{}': {}",
+                                        path.display(),
+                                        err
+                                    );
+                                    continue;
+                                }
+                            };
 
                         match decision {
                             SyncDecision::UpToDate => {
@@ -111,10 +109,8 @@ pub async fn queue_unsynced_files(
                                 });
                             }
                             SyncDecision::NeedsReassociate => {
-                                let checksum = sync_index
-                                    .lock()
-                                    .unwrap()
-                                    .stored_checksum(&path_str);
+                                let checksum =
+                                    sync_index.lock().unwrap().stored_checksum(&path_str);
                                 candidates.push(ScanCandidate {
                                     path: path_str,
                                     album_id,

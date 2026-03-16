@@ -53,7 +53,10 @@ impl SyncIndex {
 
         let entries = load_entries(&index_file);
 
-        Self { index_file, entries }
+        Self {
+            index_file,
+            entries,
+        }
     }
 
     /// Decide whether a file is already current, needs a new upload, or only needs reassociation.
@@ -66,7 +69,9 @@ impl SyncIndex {
             Some(record) => {
                 if record.size != fingerprint.0 || record.modified_ms != fingerprint.1 {
                     SyncDecision::NeedsUpload
-                } else if record.album_name != target.album_name || record.album_id != target.album_id {
+                } else if record.album_name != target.album_name
+                    || record.album_id != target.album_id
+                {
                     SyncDecision::NeedsReassociate
                 } else {
                     SyncDecision::UpToDate
@@ -144,7 +149,11 @@ fn load_entries(index_file: &Path) -> HashMap<String, SyncedFileRecord> {
         Ok(content) => match serde_json::from_str::<SyncIndexData>(&content) {
             Ok(data) => data.files,
             Err(err) => {
-                log::warn!("Failed to parse sync index '{}': {}", index_file.display(), err);
+                log::warn!(
+                    "Failed to parse sync index '{}': {}",
+                    index_file.display(),
+                    err
+                );
                 HashMap::new()
             }
         },
@@ -218,7 +227,10 @@ mod tests {
             .record_synced(file_path.to_str().unwrap(), "hash1", &target)
             .unwrap();
 
-        let mut file = fs::OpenOptions::new().append(true).open(&file_path).unwrap();
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .open(&file_path)
+            .unwrap();
         file.write_all(b" world").unwrap();
 
         assert!(matches!(

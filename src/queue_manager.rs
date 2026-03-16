@@ -72,7 +72,10 @@ impl QueueManager {
         // Retry state stays in memory during the session to avoid per-failure disk writes.
         let retry_list = Arc::new(std::sync::Mutex::new(Vec::<FileTask>::new()));
         let pending_paths = Arc::new(std::sync::Mutex::new(
-            loaded_retries.iter().map(|task| task.path.clone()).collect(),
+            loaded_retries
+                .iter()
+                .map(|task| task.path.clone())
+                .collect(),
         ));
 
         let qm = Self {
@@ -136,11 +139,11 @@ impl QueueManager {
                                 pending_ref.lock().unwrap().remove(&file_task.path);
 
                                 if let Some(target) = sync_target.as_ref() {
-                                    if let Err(err) = sync_index_ref
-                                        .lock()
-                                        .unwrap()
-                                        .record_synced(&file_task.path, &file_task.checksum, target)
-                                    {
+                                    if let Err(err) = sync_index_ref.lock().unwrap().record_synced(
+                                        &file_task.path,
+                                        &file_task.checksum,
+                                        target,
+                                    ) {
                                         log::warn!(
                                             "Failed to update sync index for '{}': {}",
                                             file_task.path,
@@ -302,12 +305,16 @@ async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> Option<SyncTar
 
     let asset_id = match asset_id {
         None => return None,
-        Some(ref id) if id == "DUPLICATE" => match api.find_existing_asset_id(&task.checksum).await {
+        Some(ref id) if id == "DUPLICATE" => match api.find_existing_asset_id(&task.checksum).await
+        {
             Some(existing) => existing,
             None => {
                 log::info!("Asset already on server: {}", task.path);
                 return Some(SyncTarget {
-                    album_name: task.album_name.clone().or_else(|| infer_album_name(&task.path)),
+                    album_name: task
+                        .album_name
+                        .clone()
+                        .or_else(|| infer_album_name(&task.path)),
                     album_id: task.album_id.clone(),
                 });
             }
@@ -338,15 +345,20 @@ async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> Option<SyncTar
     };
 
     if let Some(album_id) = final_album_id.clone() {
-        if !api.add_assets_to_album(&album_id, std::slice::from_ref(&asset_id)).await {
-            if let Some(album_name) = task.album_name.clone().or_else(|| infer_album_name(&task.path)) {
+        if !api
+            .add_assets_to_album(&album_id, std::slice::from_ref(&asset_id))
+            .await
+        {
+            if let Some(album_name) = task
+                .album_name
+                .clone()
+                .or_else(|| infer_album_name(&task.path))
+            {
                 log::warn!(
                     "Album '{}' may be stale or deleted. Refreshing album resolution.",
                     album_id
                 );
-                final_album_id = api
-                    .resolve_album_by_name(&album_name, true)
-                    .await;
+                final_album_id = api.resolve_album_by_name(&album_name, true).await;
                 if let Some(ref refreshed_id) = final_album_id {
                     if !api
                         .add_assets_to_album(refreshed_id, std::slice::from_ref(&asset_id))
