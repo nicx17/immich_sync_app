@@ -13,13 +13,14 @@ tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/mimick-wiki.XXXXXX")"
 trap 'rm -rf "$tmpdir"' EXIT
 
 origin_url="$(git -C "$repo_root" remote get-url origin)"
+repo_path=""
 
 case "$origin_url" in
   git@github.com:*.git)
-    wiki_url="${origin_url%.git}.wiki.git"
+    repo_path="${origin_url#git@github.com:}"
     ;;
   https://github.com/*.git)
-    wiki_url="${origin_url%.git}.wiki.git"
+    repo_path="${origin_url#https://github.com/}"
     ;;
   *)
     echo "Unsupported origin URL format: $origin_url" >&2
@@ -27,9 +28,13 @@ case "$origin_url" in
     ;;
 esac
 
+repo_path="${repo_path%.git}"
+wiki_url="${WIKI_REMOTE_URL:-https://github.com/${repo_path}.wiki.git}"
+
 if ! git clone "$wiki_url" "$tmpdir"; then
   echo "Failed to clone $wiki_url." >&2
   echo "Make sure the GitHub wiki is enabled for this repository and that your git credentials can access it." >&2
+  echo "You can also override the remote with WIKI_REMOTE_URL=..." >&2
   exit 1
 fi
 
@@ -45,4 +50,9 @@ if git diff --cached --quiet; then
 fi
 
 git commit -m "Refresh project wiki"
-git push origin master
+if ! git push origin master; then
+  echo "Failed to push the wiki changes to GitHub." >&2
+  echo "If you use HTTPS remotes, make sure a git credential helper or token-based auth is configured." >&2
+  echo "If you prefer SSH, fix your local SSH config permissions and run with WIKI_REMOTE_URL=git@github.com:${repo_path}.wiki.git" >&2
+  exit 1
+fi
