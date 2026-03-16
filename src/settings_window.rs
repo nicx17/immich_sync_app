@@ -1,3 +1,5 @@
+//! GTK4/Libadwaita settings window and status dashboard.
+
 use crate::autostart;
 use crate::config::WatchPathEntry;
 use adw::prelude::*;
@@ -20,6 +22,7 @@ use crate::restart::request_restart;
 use crate::state_manager::AppState;
 use crate::watch_path_display::{display_watch_path, watch_path_subtitle};
 
+/// GTK widgets kept around for a single watch-folder row in the settings list.
 struct FolderRowData {
     pub path: String,
     pub dropdown: DropDown,
@@ -27,12 +30,13 @@ struct FolderRowData {
     pub custom_entry: Entry,
 }
 
+/// Build the main settings window and wire it to the shared app state.
 pub fn build_settings_window(
     app: &adw::Application,
     shared_state: Arc<Mutex<AppState>>,
     api_client: Option<Arc<ImmichApiClient>>,
 ) {
-    // Use adw::ApplicationWindow to avoid double titlebar
+    // Use an ApplicationWindow so Libadwaita manages the titlebar and window lifecycle.
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Mimick Settings")

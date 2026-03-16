@@ -1,0 +1,36 @@
+# Sync Behavior
+
+Mimick uses two sync paths: a startup catch-up scan and live filesystem monitoring.
+
+## Startup Catch-Up
+
+When Mimick launches, it scans the configured watch folders for supported media files.
+
+It keeps a local sync index in `~/.cache/mimick/synced_index.json` so it can:
+
+- skip unchanged files that are already known to be synced
+- detect files whose content changed and requeue them
+- detect when a watch folder's target album changed
+
+## Live Monitoring
+
+While the app is running, Mimick watches the selected folders for new or modified files.
+
+Before upload, it:
+
+1. waits for file writes to settle
+2. computes a SHA-1 checksum
+3. uploads the file to Immich
+4. adds the asset to the target album
+
+## Album Reassociation
+
+If you retarget a watch folder to a different Immich album, Mimick can reassociate unchanged files on a later startup without forcing a full reupload.
+
+If the old album was deleted or the stored album ID is stale, Mimick refreshes album resolution and retries using the current configured album name.
+
+## Retry and Duplicate Handling
+
+- Failed uploads are stored in `~/.cache/mimick/retries.json` and retried on the next run.
+- Duplicate detection uses SHA-1 checksums and Immich's upload-check behavior.
+- Existing assets can be looked up and reused instead of uploading the file bytes again.

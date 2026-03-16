@@ -1,3 +1,5 @@
+//! Live filesystem monitoring, file-settling checks, and checksum generation.
+
 use crate::watch_path_display::display_watch_path;
 use notify::{Config as NotifyConfig, EventKind, PollWatcher, RecursiveMode, Watcher};
 use sha1::{Digest, Sha1};
@@ -8,7 +10,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-/// Whitelisted media extensions (matches Python ALLOWED_EXTENSIONS)
+/// Whitelisted media extensions accepted for upload.
 pub(crate) const MEDIA_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "heic", "mp4", "mov", "gif", "webp", "tiff", "tif", "raw", "arw", "dng",
 ];
@@ -28,7 +30,7 @@ impl Monitor {
         Self { watch_paths }
     }
 
-    /// Start the watcher. Emits `(path, sha1_hex)` tuples on the channel.
+    /// Start the watcher thread and emit `(path, sha1_hex)` tuples for ready files.
     pub fn start(&self, tx: mpsc::Sender<(String, String)>) {
         let watch_paths = self.watch_paths.clone();
         let handle = tokio::runtime::Handle::current();
@@ -189,8 +191,7 @@ fn is_flatpak_sandbox() -> bool {
     Path::new("/.flatpak-info").exists()
 }
 
-/// Wait for a file's size to remain unchanged for REQUIRED_STABLE_COUNTS checks.
-/// Mirrors Python's `wait_for_file_completion`.
+/// Wait for a file's size to stop changing before treating it as upload-ready.
 async fn wait_for_file_completion(path: &str) -> bool {
     let mut last_size: i64 = -1;
     let mut stable_count: u32 = 0;
@@ -229,7 +230,7 @@ async fn wait_for_file_completion(path: &str) -> bool {
     }
 }
 
-/// Compute SHA-1 in 64KB chunks — handles large files without loading all into RAM.
+/// Compute SHA-1 in chunks so large media files never need to be read fully into memory.
 pub(crate) fn compute_sha1_chunked(path: &str) -> io::Result<String> {
     const BUF_SIZE: usize = 65536;
     let file = fs::File::open(path)?;
@@ -246,6 +247,7 @@ pub(crate) fn compute_sha1_chunked(path: &str) -> io::Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// Return whether a path points to a supported media file rather than a directory.
 pub(crate) fn is_supported_media_path(path: &Path) -> bool {
     if path.is_dir() {
         return false;

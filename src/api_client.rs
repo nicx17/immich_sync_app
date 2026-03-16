@@ -1,3 +1,5 @@
+//! Immich API integration, connectivity failover, and album/cache helpers.
+
 use reqwest::Client;
 use std::collections::HashMap;
 use std::path::Path;
@@ -9,9 +11,9 @@ pub struct ImmichApiClient {
     pub internal_url: String,
     pub external_url: String,
     pub api_key: String,
-    /// The currently active URL determined by check_connection()
+    /// The currently active base URL selected by the last successful connectivity check.
     pub active_url: Mutex<Option<String>>,
-    /// Album name → id cache
+    /// Album name to album ID cache to avoid repeated list/create calls.
     album_cache: Mutex<HashMap<String, String>>,
     albums_fetched: Mutex<bool>,
 }
@@ -45,7 +47,7 @@ impl ImmichApiClient {
         }
     }
 
-    /// Determine which URL to use (internal first). Returns true if connected.
+    /// Determine which base URL to use, preferring the internal address when reachable.
     pub async fn check_connection(&self) -> bool {
         log::info!("Checking connectivity...");
 
@@ -69,7 +71,7 @@ impl ImmichApiClient {
         false
     }
 
-    /// Ping a specific URL at /api/server/ping. Validates "pong" response.
+    /// Ping a specific Immich base URL and validate that it returns a real `pong` response.
     pub async fn ping_url(&self, url: &str) -> bool {
         if url.is_empty() {
             return false;
@@ -110,7 +112,7 @@ impl ImmichApiClient {
         }
     }
 
-    /// Get the active URL, connecting first if necessary.
+    /// Return the cached active base URL, resolving connectivity first if needed.
     async fn get_active_url(&self) -> Option<String> {
         {
             let active = self.active_url.lock().await;
@@ -125,8 +127,10 @@ impl ImmichApiClient {
         None
     }
 
-    /// Upload an asset to Immich. Returns asset ID or None on failure.
-    /// Returns "DUPLICATE" string if the server reports a 409 (file already exists).
+    /// Upload an asset to Immich.
+    ///
+    /// Returns the created asset ID on success, `None` on failure, or `"DUPLICATE"`
+    /// when the server reports that the content already exists.
     pub async fn upload_asset(&self, file_path: &str, checksum: &str) -> Option<String> {
         let base_url = match self.get_active_url().await {
             Some(u) => u,
@@ -166,7 +170,7 @@ impl ImmichApiClient {
             created_at
         );
 
-        // Stream the file instead of loading it entirely into RAM
+        // Stream the file body so large videos do not get buffered into memory.
         let file = match tokio::fs::File::open(path).await {
             Ok(f) => f,
             Err(e) => {

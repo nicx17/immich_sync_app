@@ -1,3 +1,5 @@
+//! Startup catch-up scan for files that were missed while Mimick was not running.
+
 use crate::api_client::ImmichApiClient;
 use crate::config::WatchPathEntry;
 use crate::monitor::{compute_sha1_chunked, is_supported_media_path};
@@ -7,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+/// A file discovered during the startup scan and staged for queue submission.
 #[derive(Clone)]
 struct ScanCandidate {
     path: String,
@@ -16,6 +19,7 @@ struct ScanCandidate {
     checksum: Option<String>,
 }
 
+/// Scan watch folders at startup and queue new, changed, or retargeted files.
 pub async fn queue_unsynced_files(
     watch_paths: Vec<WatchPathEntry>,
     queue_manager: Arc<QueueManager>,
@@ -194,6 +198,7 @@ pub async fn queue_unsynced_files(
     log::info!("Startup scan queued {} unsynced file(s).", queued);
 }
 
+/// Resolve the effective album name for a file using per-folder configuration.
 fn effective_album_name(entry: &WatchPathEntry, path: &Path) -> String {
     match entry.album_name() {
         Some(name) if !name.is_empty() && name != "Default (Folder Name)" => name.to_string(),
@@ -205,6 +210,7 @@ fn effective_album_name(entry: &WatchPathEntry, path: &Path) -> String {
     }
 }
 
+/// Resolve and memoize target album IDs so repeated files in the same folder reuse the lookup.
 async fn resolve_target_album_id(
     api_client: &ImmichApiClient,
     album_name: &str,

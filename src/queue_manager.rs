@@ -1,3 +1,5 @@
+//! Upload queue orchestration, retry persistence, and sync-index updates.
+
 use crate::api_client::ImmichApiClient;
 use crate::notifications;
 use crate::state_manager::AppState;
@@ -8,31 +10,32 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
 
-/// A file task with path, checksum, and optional album association (from per-path config).
+/// A unit of work for the upload queue.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FileTask {
     pub path: String,
     pub checksum: String,
-    /// Optional album ID (if already resolved)
+    /// Optional album ID if it has already been resolved.
     #[serde(default)]
     pub album_id: Option<String>,
-    /// Album name to look up or create
+    /// Album name to look up or create.
     #[serde(default)]
     pub album_name: Option<String>,
-    /// True when the file content is already known to exist and only album reassociation is needed.
+    /// True when the file already exists on the server and only album reassociation is needed.
     #[serde(default)]
     pub reassociate_only: bool,
 }
 
 pub struct QueueManager {
     sender: mpsc::Sender<FileTask>,
-    /// Shared in-memory state — updated directly by workers, read by the UI.
-    /// No disk I/O during uploads; disk is only written on graceful shutdown.
+    /// Shared in-memory state that both workers and the UI read/update directly.
     shared_state: Arc<std::sync::Mutex<AppState>>,
-    /// In-memory retry list — no per-failure disk writes.
+    /// Failed tasks accumulated in memory and flushed on graceful shutdown.
     retry_list: Arc<std::sync::Mutex<Vec<FileTask>>>,
-    /// Paths already queued or awaiting retry. Prevents duplicate queue entries
-    /// when the startup scan and live watcher see the same file.
+    /// Paths already queued or awaiting retry.
+    ///
+    /// This prevents duplicate entries when the startup scan and live watcher both
+    /// notice the same file in a short time window.
     pending_paths: Arc<std::sync::Mutex<HashSet<String>>>,
     retry_path: PathBuf,
 }
@@ -55,8 +58,7 @@ impl QueueManager {
             p
         };
 
-        // Load persisted retries from disk and immediately clear the file.
-        // Items are re-added only if they fail again this session.
+        // Load persisted retries and clear the file so only current-session failures are kept.
         let loaded_retries = load_retries(&retry_path);
         if !loaded_retries.is_empty() {
             log::info!(
@@ -67,7 +69,7 @@ impl QueueManager {
             shared_state.lock().unwrap().failed_count = loaded_retries.len();
         }
 
-        // In-memory retry list: no disk writes during a session.
+        // Retry state stays in memory during the session to avoid per-failure disk writes.
         let retry_list = Arc::new(std::sync::Mutex::new(Vec::<FileTask>::new()));
         let pending_paths = Arc::new(std::sync::Mutex::new(
             loaded_retries.iter().map(|task| task.path.clone()).collect(),
@@ -100,7 +102,7 @@ impl QueueManager {
 
                     match task {
                         Some(file_task) => {
-                            // Mark active; snapshot counters — single lock, no ordering risk.
+                            // Update the shared progress snapshot before handing off to the API.
                             let (pc, tq) = {
                                 let mut s = state_ref.lock().unwrap();
                                 s.active_workers += 1;
@@ -147,7 +149,7 @@ impl QueueManager {
                                     }
                                 }
 
-                                // Atomically drain the in-memory retry list (fast, no I/O).
+                                // Drain retries and requeue them once connectivity is working again.
                                 let retries: Vec<FileTask> = {
                                     let mut rl = retry_ref.lock().unwrap();
                                     std::mem::take(&mut *rl)
@@ -174,7 +176,7 @@ impl QueueManager {
                                     file_task.path,
                                     elapsed
                                 );
-                                // Push to in-memory list only — zero disk I/O per failure.
+                                // Keep failed tasks in memory until the next graceful shutdown.
                                 retry_ref.lock().unwrap().push(file_task);
                                 let mut s = state_ref.lock().unwrap();
                                 s.failed_count += 1;
@@ -226,7 +228,7 @@ impl QueueManager {
             });
         }
 
-        // Re-queue persisted retries after a short delay (let the daemon settle first).
+        // Re-queue persisted retries after startup so the main daemon can settle first.
         let sender_clone = qm.sender.clone();
         let state_ref2 = shared_state.clone();
         tokio::spawn(async move {
@@ -248,7 +250,7 @@ impl QueueManager {
         qm
     }
 
-    /// Add a file task to the upload queue.
+    /// Add a file task to the upload queue and return whether it was accepted.
     pub async fn add_to_queue(&self, task: FileTask) -> bool {
         log::debug!("Queuing: {}", task.path);
         {
@@ -274,7 +276,7 @@ impl QueueManager {
         true
     }
 
-    /// Persist any remaining in-memory retry items to disk (call on graceful shutdown).
+    /// Persist any in-memory retry items so they survive a clean shutdown.
     pub fn flush_retries(&self) {
         let retries = self.retry_list.lock().unwrap();
         if !retries.is_empty() {
@@ -287,7 +289,7 @@ impl QueueManager {
     }
 }
 
-/// Upload a file and add it to the appropriate album.
+/// Upload or reassociate a file, then ensure the resulting asset is present in the target album.
 async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> Option<SyncTarget> {
     let asset_id = if task.reassociate_only {
         match api.find_existing_asset_id(&task.checksum).await {
@@ -313,7 +315,7 @@ async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> Option<SyncTar
         Some(id) => id,
     };
 
-    // Determine album name (fall back to parent directory name like Python does)
+    // Fall back to the parent directory name when no explicit album name is configured.
     let album_name = match (&task.album_name, &task.album_id) {
         (Some(name), _) if !name.is_empty() && name != "Default (Folder Name)" => name.clone(),
         _ => std::path::Path::new(&task.path)

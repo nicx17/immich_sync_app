@@ -1,3 +1,5 @@
+//! Application bootstrap, single-instance wiring, and daemon startup flow.
+
 use gtk::prelude::*;
 use libadwaita as adw;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,14 +33,14 @@ use tray_icon::build_tray;
 
 use flexi_logger::{FileSpec, Logger, WriteMode, colored_detailed_format, detailed_format};
 
-/// Holds the primary instance's QueueManager so the shutdown path can flush retries to disk.
+/// Queue manager handle retained so the graceful shutdown path can flush pending retries.
 static QM_HANDLE: std::sync::OnceLock<Arc<QueueManager>> = std::sync::OnceLock::new();
-/// Shared API client — created once, reused by the settings window on every open.
+/// Shared API client reused by the settings window and startup scan.
 static API_CLIENT_HANDLE: std::sync::OnceLock<Arc<ImmichApiClient>> = std::sync::OnceLock::new();
 
 #[tokio::main]
 async fn main() {
-    // Configure flexi_logger to write to both stdout and ~/.cache/mimick/mimick.log
+    // Mirror logs to stdout and to a rotating cache file for easier support/debugging.
     let log_dir = dirs::cache_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
         .join("mimick");
@@ -68,9 +70,8 @@ async fn main() {
     let is_primary_instance = Arc::new(AtomicBool::new(false));
     let is_primary_instance_clone = is_primary_instance.clone();
 
-    // Shared in-memory state — workers write directly, UI reads directly.
-    // No disk I/O during normal operation; disk is only read on startup (crash recovery)
-    // and written on graceful shutdown.
+    // Workers update state in memory and the UI reads the same shared snapshot.
+    // Disk-backed status is only used for startup recovery and graceful shutdown.
     let shared_state: Arc<Mutex<AppState>> = Arc::new(Mutex::new({
         let saved = StateManager::new().read_state();
         // Reset volatile fields that shouldn't survive a restart
@@ -84,15 +85,14 @@ async fn main() {
     let shared_state_startup = shared_state.clone();
     let shared_state_cmdline = shared_state.clone();
 
-    // The startup signal runs ONLY in the primary instance once it has successfully
-    // acquired the D-Bus name. We initialize the daemon processes here to prevent
-    // secondary instances from spawning dummy trays and file monitors before exiting.
+    // Only the primary instance should initialize background services.
+    // Secondary launches remote-control the primary through GTK's single-instance support.
     app.connect_startup(move |app| {
         is_primary_instance_clone.store(true, Ordering::SeqCst);
 
         log::info!("Mimick primary instance initializing");
 
-        // Keep the app alive even when no windows are open (daemon / tray mode).
+        // Keep the process alive when the settings window is hidden.
         Box::leak(Box::new(app.hold()));
 
         // Load config
@@ -121,7 +121,7 @@ async fn main() {
             sync_index.clone(),
         ));
 
-        // Start file monitor using plain path strings
+        // Start the live filesystem watcher immediately.
         let (tx, mut rx) = mpsc::channel(32);
         let watch_paths = config.watch_path_strings();
         let monitor = Monitor::new(watch_paths);
@@ -169,9 +169,10 @@ async fn main() {
         let startup_paths = config.data.watch_paths.clone();
         let startup_sync_index = sync_index.clone();
 
-        // Store in the global handle so main() can call flush_retries() on graceful shutdown.
+        // Retain the queue manager so the shutdown path can flush retries to disk.
         let _ = QM_HANDLE.set(qm);
 
+        // The startup scan backfills anything that arrived while Mimick was not running.
         tokio::spawn(async move {
             let startup_api = API_CLIENT_HANDLE
                 .get()

@@ -1,8 +1,13 @@
+//! Persistent configuration loading plus desktop keyring access helpers.
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-/// A watch path entry — can be a plain string or a dict with album config.
-/// Matches Python's backwards-compatible watch_paths normalisation.
+
+/// A watch path entry stored in config.
+///
+/// Older configs may contain plain strings, while newer entries can also store per-folder
+/// album targeting metadata.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum WatchPathEntry {
@@ -83,6 +88,7 @@ pub struct Config {
 }
 
 impl Config {
+    /// Load the config from the standard Mimick config path, creating a default file if missing.
     pub fn new() -> Self {
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("~/.config"))
@@ -137,9 +143,9 @@ impl Config {
         }
     }
 
-    /// Get the API key from the system keyring using secret-tool.
+    /// Look up the API key from the desktop keyring via `secret-tool`.
     pub fn get_api_key(&self) -> Option<String> {
-        // Use secret-tool directly to avoid keyring-rs volatile session bugs on some DEs
+        // Use secret-tool directly to avoid desktop-environment-specific keyring issues.
         match std::process::Command::new("secret-tool")
             .arg("lookup")
             .arg("service")
@@ -161,7 +167,7 @@ impl Config {
         None
     }
 
-    /// Save the API key to the system keyring using secret-tool.
+    /// Store the API key in the desktop keyring via `secret-tool`.
     pub fn set_api_key(&self, key: &str) -> bool {
         use std::io::Write;
         let mut cmd = std::process::Command::new("secret-tool");
@@ -191,7 +197,7 @@ impl Config {
         false
     }
 
-    /// Return all configured watch paths as plain strings (for the Monitor).
+    /// Return all configured watch paths as plain strings for the live monitor.
     pub fn watch_path_strings(&self) -> Vec<String> {
         self.data
             .watch_paths

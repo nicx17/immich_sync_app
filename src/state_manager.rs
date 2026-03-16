@@ -1,8 +1,11 @@
+//! Persistent status snapshots used to restore basic UI state across launches.
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+/// Shared progress counters exposed to the settings window.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppState {
     pub queue_size: usize,
@@ -40,6 +43,7 @@ pub struct StateManager {
 }
 
 impl StateManager {
+    /// Point at the standard `status.json` cache path used by Mimick.
     pub fn new() -> Self {
         // Match Python: ~/.cache/mimick/status.json
         let cache_dir = dirs::cache_dir()
@@ -50,6 +54,7 @@ impl StateManager {
         Self { state_file }
     }
 
+    /// Persist a status snapshot using a write-then-rename pattern.
     pub fn write_state(&self, mut state: AppState) {
         state.timestamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -88,6 +93,7 @@ impl StateManager {
         }
     }
 
+    /// Load the last saved state or return defaults when no cache exists.
     pub fn read_state(&self) -> AppState {
         match fs::read_to_string(&self.state_file) {
             Ok(content) => match serde_json::from_str(&content) {

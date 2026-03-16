@@ -1,7 +1,10 @@
+//! StatusNotifier tray integration and its GTK-facing control signals.
+
 use ksni;
 use ksni::TrayMethods;
 use tokio::sync::watch;
 
+/// Tray state shared with the ksni menu callbacks.
 #[derive(Debug)]
 pub struct MimickTray {
     /// Sender used to signal the GTK main loop to open the settings window.
@@ -49,7 +52,7 @@ impl ksni::Tray for MimickTray {
     }
 }
 
-/// Launch the system tray and return watch receivers for settings-open and quit signals.
+/// Launch the tray and return receivers for settings-open and quit requests.
 pub async fn build_tray() -> Result<
     (
         ksni::Handle<MimickTray>,
@@ -65,6 +68,8 @@ pub async fn build_tray() -> Result<
         quit_tx,
     };
     let handle = if ashpd::is_sandboxed() {
+        // Flatpak sessions already broker the item through the watcher, so we avoid owning
+        // an additional D-Bus name and keep the permission request narrower.
         tray.disable_dbus_name(true).spawn().await?
     } else {
         tray.spawn().await?

@@ -1,3 +1,5 @@
+//! Autostart integration for native installs and sandboxed Flatpak builds.
+
 use ashpd::WindowIdentifier;
 use ashpd::desktop::background::Background;
 use gtk::prelude::*;
@@ -96,6 +98,7 @@ fn autostart_entry_paths() -> Result<Vec<PathBuf>, String> {
     Ok(paths)
 }
 
+/// Map a sandboxed `~/.var/app/<app-id>/config` path back to the host `~/.config` path.
 fn flatpak_host_config_dir_from(config_dir: &Path) -> Option<PathBuf> {
     let app_dir = config_dir.parent()?;
     let app_parent = app_dir.parent()?;
@@ -118,6 +121,7 @@ fn flatpak_host_config_dir_from(config_dir: &Path) -> Option<PathBuf> {
     Some(host_home.join(".config"))
 }
 
+/// Escape an executable path for the `Exec=` field of a desktop entry.
 fn escape_desktop_exec_arg(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for ch in value.chars() {

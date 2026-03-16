@@ -1,3 +1,5 @@
+//! Persistent index of previously synced files used by startup rescans.
+
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -5,6 +7,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// On-disk record for a synced file and the album target it was last associated with.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct SyncedFileRecord {
     pub size: u64,
@@ -16,12 +19,14 @@ pub struct SyncedFileRecord {
     pub album_id: Option<String>,
 }
 
+/// The current target album a file should belong to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SyncTarget {
     pub album_name: Option<String>,
     pub album_id: Option<String>,
 }
 
+/// Result of comparing a file on disk against the saved sync index.
 pub enum SyncDecision {
     UpToDate,
     NeedsUpload,
@@ -39,6 +44,7 @@ pub struct SyncIndex {
 }
 
 impl SyncIndex {
+    /// Load the sync index from the default Mimick cache path.
     pub fn new() -> Self {
         let index_file = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
@@ -50,6 +56,7 @@ impl SyncIndex {
         Self { index_file, entries }
     }
 
+    /// Decide whether a file is already current, needs a new upload, or only needs reassociation.
     pub fn sync_decision(&self, path: &Path, target: &SyncTarget) -> io::Result<SyncDecision> {
         let metadata = fs::metadata(path)?;
         let fingerprint = fingerprint_from_metadata(&metadata);
@@ -69,6 +76,7 @@ impl SyncIndex {
         })
     }
 
+    /// Save the latest synced fingerprint and album target for a file.
     pub fn record_synced(
         &mut self,
         path: &str,
@@ -90,6 +98,7 @@ impl SyncIndex {
         self.save()
     }
 
+    /// Drop records for files that no longer exist under any configured watch path.
     pub fn prune_missing(&mut self, seen_paths: &HashSet<String>) -> io::Result<()> {
         let before = self.entries.len();
         self.entries.retain(|path, _| seen_paths.contains(path));
@@ -101,6 +110,7 @@ impl SyncIndex {
         Ok(())
     }
 
+    /// Reuse the previous checksum when a file only needs album reassociation.
     pub fn stored_checksum(&self, path: &str) -> Option<String> {
         self.entries.get(path).map(|record| record.checksum.clone())
     }
@@ -128,6 +138,7 @@ impl SyncIndex {
     }
 }
 
+/// Load the saved index file, falling back to an empty index if it is missing or invalid.
 fn load_entries(index_file: &Path) -> HashMap<String, SyncedFileRecord> {
     match fs::read_to_string(index_file) {
         Ok(content) => match serde_json::from_str::<SyncIndexData>(&content) {
@@ -141,6 +152,7 @@ fn load_entries(index_file: &Path) -> HashMap<String, SyncedFileRecord> {
     }
 }
 
+/// Reduce file metadata to the fields Mimick uses to detect local changes cheaply.
 fn fingerprint_from_metadata(metadata: &fs::Metadata) -> (u64, u64) {
     let modified_ms = metadata
         .modified()
