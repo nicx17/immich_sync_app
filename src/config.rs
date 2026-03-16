@@ -185,11 +185,11 @@ impl Config {
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(key.as_bytes());
             }
-            if let Ok(status) = child.wait() {
-                if status.success() {
-                    log::info!("API key saved via secret-tool.");
-                    return true;
-                }
+            if let Ok(status) = child.wait()
+                && status.success()
+            {
+                log::info!("API key saved via secret-tool.");
+                return true;
             }
         }
 

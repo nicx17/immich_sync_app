@@ -368,10 +368,10 @@ pub fn build_settings_window(
             for row_data in tracked_rows_async.borrow().iter() {
                 let current_selected = row_data.dropdown.selected();
                 let mut current_text = None;
-                if current_selected < row_data.string_list.n_items() {
-                    if let Some(s) = row_data.string_list.string(current_selected) {
-                        current_text = Some(s.to_string());
-                    }
+                if current_selected < row_data.string_list.n_items()
+                    && let Some(s) = row_data.string_list.string(current_selected)
+                {
+                    current_text = Some(s.to_string());
                 }
 
                 row_data.string_list.splice(
@@ -389,12 +389,12 @@ pub fn build_settings_window(
                 if let Some(text) = current_text {
                     let mut found = false;
                     for i in 0..row_data.string_list.n_items() {
-                        if let Some(s) = row_data.string_list.string(i) {
-                            if s.as_str() == text {
-                                row_data.dropdown.set_selected(i);
-                                found = true;
-                                break;
-                            }
+                        if let Some(s) = row_data.string_list.string(i)
+                            && s.as_str() == text
+                        {
+                            row_data.dropdown.set_selected(i);
+                            found = true;
+                            break;
                         }
                     }
                     if !found {
@@ -443,20 +443,20 @@ pub fn build_settings_window(
             Some(&window_clone),
             gtk::gio::Cancellable::NONE,
             move |res| {
-                if let Ok(file) = res {
-                    if let Some(path) = file.path() {
-                        let path_str = path.to_string_lossy().to_string();
-                        if tracked_clone.borrow().iter().any(|r| r.path == path_str) {
-                            return;
-                        }
-                        #[allow(deprecated)]
-                        add_folder_row(
-                            &list_clone,
-                            &WatchPathEntry::Simple(path_str),
-                            &albums_ref.borrow(),
-                            &tracked_clone,
-                        );
+                if let Ok(file) = res
+                    && let Some(path) = file.path()
+                {
+                    let path_str = path.to_string_lossy().to_string();
+                    if tracked_clone.borrow().iter().any(|r| r.path == path_str) {
+                        return;
                     }
+                    #[allow(deprecated)]
+                    add_folder_row(
+                        &list_clone,
+                        &WatchPathEntry::Simple(path_str),
+                        &albums_ref.borrow(),
+                        &tracked_clone,
+                    );
                 }
             },
         );
@@ -799,23 +799,23 @@ fn add_folder_row(
         .visible(false)
         .build();
 
-    if let Some(name) = entry.album_name() {
-        if name != "Default (Folder Name)" {
-            let mut found = false;
-            for i in 0..string_list.n_items() {
-                if let Some(s) = string_list.string(i) {
-                    if s.as_str() == name {
-                        dropdown.set_selected(i);
-                        found = true;
-                        break;
-                    }
-                }
+    if let Some(name) = entry.album_name()
+        && name != "Default (Folder Name)"
+    {
+        let mut found = false;
+        for i in 0..string_list.n_items() {
+            if let Some(s) = string_list.string(i)
+                && s.as_str() == name
+            {
+                dropdown.set_selected(i);
+                found = true;
+                break;
             }
-            if !found {
-                dropdown.set_selected(string_list.n_items() - 1); // "Custom Album..."
-                custom_entry.set_text(name);
-                custom_entry.set_visible(true);
-            }
+        }
+        if !found {
+            dropdown.set_selected(string_list.n_items() - 1); // "Custom Album..."
+            custom_entry.set_text(name);
+            custom_entry.set_visible(true);
         }
     }
 

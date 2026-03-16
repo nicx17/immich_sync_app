@@ -138,18 +138,18 @@ impl QueueManager {
                                 log::info!("Upload SUCCESS: {} ({:.2}s)", file_task.path, elapsed);
                                 pending_ref.lock().unwrap().remove(&file_task.path);
 
-                                if let Some(target) = sync_target.as_ref() {
-                                    if let Err(err) = sync_index_ref.lock().unwrap().record_synced(
+                                if let Some(target) = sync_target.as_ref()
+                                    && let Err(err) = sync_index_ref.lock().unwrap().record_synced(
                                         &file_task.path,
                                         &file_task.checksum,
                                         target,
-                                    ) {
-                                        log::warn!(
-                                            "Failed to update sync index for '{}': {}",
-                                            file_task.path,
-                                            err
-                                        );
-                                    }
+                                    )
+                                {
+                                    log::warn!(
+                                        "Failed to update sync index for '{}': {}",
+                                        file_task.path,
+                                        err
+                                    );
                                 }
 
                                 // Drain retries and requeue them once connectivity is working again.
@@ -407,11 +407,11 @@ fn save_retries(path: &PathBuf, tasks: &[FileTask]) {
                 .as_nanos()
         );
         let tmp = path.with_extension(unique_ext);
-        if fs::write(&tmp, content).is_ok() {
-            if let Err(e) = fs::rename(&tmp, path) {
-                let _ = fs::remove_file(&tmp);
-                log::warn!("Failed to save retries: {}", e);
-            }
+        if fs::write(&tmp, content).is_ok()
+            && let Err(e) = fs::rename(&tmp, path)
+        {
+            let _ = fs::remove_file(&tmp);
+            log::warn!("Failed to save retries: {}", e);
         }
     }
 }

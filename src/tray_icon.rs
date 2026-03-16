@@ -1,6 +1,5 @@
 //! StatusNotifier tray integration and its GTK-facing control signals.
 
-use ksni;
 use ksni::TrayMethods;
 use tokio::sync::watch;
 

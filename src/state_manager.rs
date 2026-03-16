@@ -96,16 +96,9 @@ impl StateManager {
     /// Load the last saved state or return defaults when no cache exists.
     pub fn read_state(&self) -> AppState {
         match fs::read_to_string(&self.state_file) {
-            Ok(content) => match serde_json::from_str(&content) {
+            Ok(content) => match serde_json::from_str::<AppState>(&content) {
                 Ok(state) => {
-                    log::debug!(
-                        "State read: status={}",
-                        {
-                            let s: &AppState = &state;
-                            s.status.as_str()
-                        }
-                        .to_string()
-                    );
+                    log::debug!("State read: status={}", state.status);
                     state
                 }
                 Err(e) => {
@@ -141,9 +134,11 @@ mod tests {
             state_file: file_path.clone(),
         };
 
-        let mut state = AppState::default();
-        state.status = "syncing".to_string();
-        state.progress = 50;
+        let state = AppState {
+            status: "syncing".to_string(),
+            progress: 50,
+            ..AppState::default()
+        };
 
         manager.write_state(state.clone());
 

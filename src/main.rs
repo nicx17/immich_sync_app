@@ -144,12 +144,11 @@ async fn main() {
                         album_id: aid,
                         album_name: aname,
                     } = entry
+                        && path.starts_with(base.as_str())
                     {
-                        if path.starts_with(base.as_str()) {
-                            album_id = aid.clone();
-                            album_name = aname.clone();
-                            break;
-                        }
+                        album_id = aid.clone();
+                        album_name = aname.clone();
+                        break;
                     }
                 }
 
@@ -301,10 +300,10 @@ async fn main() {
         log::info!("Mimick exiting");
     }
 
-    if take_restart_request() {
-        if let Err(err) = launch_replacement(true) {
-            log::error!("{err}");
-        }
+    if take_restart_request()
+        && let Err(err) = launch_replacement(true)
+    {
+        log::error!("{err}");
     }
 }
 
