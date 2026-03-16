@@ -68,6 +68,24 @@ flatpak remote-add --user --if-not-exists mimick-repo [https://nicx17.github.io/
 ```bash
 flatpak install --user mimick-repo io.github.nicx17.mimick
 ```
+
+### Verify the Flatpak Repo Key
+
+The published Flatpak repository embeds this signing-key fingerprint:
+
+`04E2 9556 E951 B2EA 15D3 A8EE 632E 1BC5 D956 579C`
+
+You can inspect the currently published key with:
+
+```bash
+curl -fsSL https://nicx17.github.io/mimick/mimick.flatpakrepo \
+  | sed -n 's/^GPGKey=//p' \
+  | base64 -d > /tmp/mimick-repo-public.gpg
+
+gpg --show-keys --fingerprint /tmp/mimick-repo-public.gpg
+```
+
+Compare the printed fingerprint to the value above. The email address alone is not the trust anchor; the fingerprint is.
 ---
 
 ## Usage & Configuration
@@ -178,6 +196,20 @@ flatpak run io.github.nicx17.mimick
 ## Documentation
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [User Guide](docs/USER_GUIDE.md)
+- [Security Policy](SECURITY.md)
+
+## Trust and Verification
+
+Mimick currently publishes a few concrete trust signals:
+
+- signed Flatpak repository metadata
+- GitHub release assets with checksums
+- CodeQL analysis in GitHub Actions
+- CI checks for formatting, linting, tests, and dependency audits
+
+If you install via Flatpak, verify the published signing fingerprint before trusting the repo:
+
+`04E2 9556 E951 B2EA 15D3 A8EE 632E 1BC5 D956 579C`
 
 ## Contributing
 

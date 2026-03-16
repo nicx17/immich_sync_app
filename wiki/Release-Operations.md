@@ -21,6 +21,10 @@ Mimick publishes:
 
 Both publication flows use the Flatpak signing key configured in GitHub Actions secrets.
 
+Current published Flatpak repo signing fingerprint:
+
+`04E2 9556 E951 B2EA 15D3 A8EE 632E 1BC5 D956 579C`
+
 ## Required Secrets
 
 - `FLATPAK_GPG_PRIVATE_KEY`
@@ -45,4 +49,9 @@ If a workflow issue needs a tag rerun:
 
 ## Key Rotation
 
-If the Flatpak signing key changes, update the GitHub secrets and confirm the generated `.flatpakrepo` publishes the new public key material.
+If the Flatpak signing key changes:
+
+1. update the GitHub secrets
+2. confirm the generated `.flatpakrepo` publishes the new public key material
+3. update the published fingerprint in `README.md` and the wiki installation/release pages
+4. call out the key rotation in release notes so users know the change was intentional

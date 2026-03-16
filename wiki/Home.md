@@ -24,3 +24,4 @@ Mimick is a Linux background app that watches selected folders and syncs photos 
 - Mimick is a one-way sync tool. It uploads local media to Immich and does not modify local files.
 - The app stores API keys in the desktop keyring and keeps operational state in `~/.cache/mimick/`.
 - Startup rescans use a local sync index so already-synced unchanged files are skipped quickly.
+- Flatpak distribution is signed; verify the published fingerprint before trusting a new repo setup.
