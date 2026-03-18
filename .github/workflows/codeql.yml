@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: '30 2 * * 1'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NODE_OPTIONS: "--no-deprecation"
+
 jobs:
   analyze:
     name: Analyze (Rust)
