@@ -70,10 +70,15 @@ async fn main() {
     let is_primary_instance = Arc::new(AtomicBool::new(false));
     let is_primary_instance_clone = is_primary_instance.clone();
 
-    // Workers update state in memory and the UI reads the same shared snapshot.
-    // Disk-backed status is only used for startup recovery and graceful shutdown.
     let shared_state: Arc<Mutex<AppState>> = Arc::new(Mutex::new({
-        let saved = StateManager::new().read_state();
+        let mut saved = StateManager::new().read_state();
+        // Any items left in the channel during shutdown were dropped, so we must
+        // sync total_queued down to processed_count to clear the stuck queue state.
+        saved.total_queued = saved.processed_count;
+        saved.queue_size = 0;
+        saved.failed_count = 0; // Will be repopulated from retries.json if any
+        saved.current_file = None;
+
         // Reset volatile fields that shouldn't survive a restart
         AppState {
             status: "idle".to_string(),

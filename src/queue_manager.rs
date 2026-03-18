@@ -273,6 +273,11 @@ impl QueueManager {
         if let Err(e) = self.sender.send(task).await {
             log::error!("Failed to send task to queue: {}", e);
             self.pending_paths.lock().unwrap().remove(&e.0.path);
+            
+            // Revert the total_queued increment since it will never be processed.
+            let mut s = self.shared_state.lock().unwrap();
+            s.total_queued = s.total_queued.saturating_sub(1);
+            s.queue_size = s.total_queued.saturating_sub(s.processed_count);
             return false;
         }
 
