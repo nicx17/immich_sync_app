@@ -23,12 +23,15 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential libsecret-1-dev gnupg
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential libsecret-1-dev gnupg
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
 
       - name: Verify tag matches crate version
         shell: bash
@@ -36,11 +39,8 @@ jobs:
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d '"' -f 2)
 
-          echo "Tag version:   ${TAG_VERSION}"
-          echo "Cargo version: ${CARGO_VERSION}"
-
           if [[ "${TAG_VERSION}" != "${CARGO_VERSION}" ]]; then
-            echo "Tag version does not match Cargo.toml"
+            echo "Tag version ($TAG_VERSION) does not match Cargo.toml ($CARGO_VERSION)"
             exit 1
           fi
 
@@ -53,11 +53,6 @@ jobs:
           FLATPAK_GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
           FLATPAK_GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
         run: |
-          if [ -z "$FLATPAK_GPG_PRIVATE_KEY" ] || [ -z "$FLATPAK_GPG_KEY_ID" ]; then
-            echo "Missing FLATPAK_GPG_PRIVATE_KEY or FLATPAK_GPG_KEY_ID secret"
-            exit 1
-          fi
-
           export GNUPGHOME="$RUNNER_TEMP/gnupg"
           mkdir -p "$GNUPGHOME"
           chmod 700 "$GNUPGHOME"
@@ -65,9 +60,7 @@ jobs:
           printf '%s' "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --import
           gpg --batch --export "$FLATPAK_GPG_KEY_ID" > "$RUNNER_TEMP/mimick-repo-public.gpg"
 
-          {
-            echo "public_key_b64=$(base64 --wrap=0 "$RUNNER_TEMP/mimick-repo-public.gpg")"
-          } >> "$GITHUB_OUTPUT"
+          echo "public_key_b64=$(base64 --wrap=0 "$RUNNER_TEMP/mimick-repo-public.gpg")" >> "$GITHUB_OUTPUT"
 
       - name: Build release assets
         env:
@@ -88,30 +81,20 @@ jobs:
 
           sha256sum dist/mimick.flatpakrepo > dist/SHA256SUMS.txt
 
-      - name: Extract release notes from changelog
+      - name: Extract release notes
         shell: bash
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-
           awk -v version="$TAG_VERSION" '
             $0 ~ "^## \\[" version "\\]" { capture=1; next }
             capture && /^## \[/ { exit }
             capture { print }
           ' CHANGELOG.md | sed '/./,$!d' > dist/release-notes.md
 
-          if [ ! -s dist/release-notes.md ]; then
-            echo "Failed to extract release notes for version ${TAG_VERSION}"
-            exit 1
-          fi
-
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          draft: false
-          prerelease: false
           body_path: dist/release-notes.md
           files: |
             dist/mimick.flatpakrepo
             dist/SHA256SUMS.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
