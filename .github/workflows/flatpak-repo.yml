@@ -97,8 +97,6 @@ jobs:
           manifest-path: io.github.nicx17.mimick.local.yml
           build-bundle: false
           upload-artifact: false
-          repo-dir: repo
-          state-dir: .flatpak-builder
           cache-key: flatpak-builder-gnome49-${{ hashFiles('io.github.nicx17.mimick.local.yml', 'Cargo.lock', 'cargo-sources.json') }}
           gpg-sign: ${{ steps.signing_key.outputs.gpg_key_id }}
           verbose: true
