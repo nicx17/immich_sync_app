@@ -886,7 +886,7 @@ fn show_about_dialog(parent: &adw::ApplicationWindow) {
 
     about.add_credit_section(
         Some("Icon Design"),
-        &["Round Icons (https://unsplash.com/illustrations/a-white-and-orange-flower-on-a-white-background-IkQ_WrJzZOM)"],
+        &["Round Icons https://unsplash.com/illustrations/a-white-and-orange-flower-on-a-white-background-IkQ_WrJzZOM"],
     );
 
     about.present();
