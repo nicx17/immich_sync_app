@@ -41,7 +41,7 @@ jobs:
       - name: Install Flatpak & Builder
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder gnupg
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder gnupg appstream-compose
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Import Flatpak signing key
