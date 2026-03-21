@@ -15,6 +15,9 @@ env:
 jobs:
   create-release:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout code
@@ -45,7 +48,7 @@ jobs:
           fi
 
       - name: Run tests
-        run: cargo test
+        run: cargo test --locked
 
       - name: Import Flatpak signing key
         id: signing_key

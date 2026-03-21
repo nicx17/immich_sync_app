@@ -3,6 +3,13 @@ name: Build and Deploy Flatpak Repo
 on:
   push:
     branches: [ "main" ] # Runs every time you push to main
+    paths-ignore:
+      - "docs/**"
+      - "wiki/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "roadmap.md"
   workflow_dispatch: # Allows you to run it manually from the Actions tab
 
 concurrency:
@@ -21,7 +28,7 @@ env:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -32,7 +39,7 @@ jobs:
       - name: Install Flatpak & Builder
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder gnupg
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder gnupg
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Import Flatpak signing key

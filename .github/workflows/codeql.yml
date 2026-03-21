@@ -3,10 +3,28 @@ name: "CodeQL Analysis"
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - "docs/**"
+      - "wiki/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "roadmap.md"
   pull_request:
     branches: [ "main" ]
+    paths-ignore:
+      - "docs/**"
+      - "wiki/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "roadmap.md"
   schedule:
     - cron: '30 2 * * 1'
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -15,7 +33,7 @@ env:
 jobs:
   analyze:
     name: Analyze (Rust)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       security-events: write
       packages: read

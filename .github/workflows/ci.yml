@@ -3,8 +3,26 @@ name: CI
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - "docs/**"
+      - "wiki/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "roadmap.md"
   pull_request:
     branches: ["main"]
+    paths-ignore:
+      - "docs/**"
+      - "wiki/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "roadmap.md"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -22,12 +40,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        # Added --no-install-recommends to speed up package installation
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential libsecret-1-dev
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -40,11 +52,16 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential libsecret-1-dev
+
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Run tests
-        run: cargo test
+        run: cargo test --locked
 
   cargo-audit:
     name: Dependency Audit
@@ -65,4 +82,4 @@ jobs:
         uses: taiki-e/install-action@cargo-audit
 
       - name: Run cargo audit
-        run: cargo audit
+        run: cargo audit --deny warnings
