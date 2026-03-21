@@ -47,6 +47,15 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="7.0.0" date="2026-03-22">
+      <description>
+        <ul>
+          <li>Added queue inspection, retry controls, pause and resume actions, manual sync, diagnostics export, and per-folder upload rules.</li>
+          <li>Uploads can now defer automatically on metered connections or while the system is running on battery power.</li>
+          <li>Refined the settings window with separate Setup and Controls pages plus a persistent footer for the main actions.</li>
+        </ul>
+      </description>
+    </release>
     <release version="6.0.0" date="2026-03-15">
       <description>
         <ul>
