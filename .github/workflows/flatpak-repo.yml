@@ -28,7 +28,9 @@ env:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-24.04
+    # AppStream compose currently fails on newer runner images for this build,
+    # while the 22.04 image still completes the Flatpak export reliably.
+    runs-on: ubuntu-22.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
