@@ -2,7 +2,7 @@ name: Build and Deploy Flatpak Repo
 
 on:
   push:
-    branches: [ "main" ] # Runs every time you push to main
+    branches: ["main"]
     paths-ignore:
       - "docs/**"
       - "wiki/**"
@@ -10,13 +10,12 @@ on:
       - "CONTRIBUTING.md"
       - "SECURITY.md"
       - "roadmap.md"
-  workflow_dispatch: # Allows you to run it manually from the Actions tab
+  workflow_dispatch:
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
-# Grants permissions to deploy to GitHub Pages
 permissions:
   contents: read
   pages: write
@@ -27,22 +26,21 @@ env:
   NODE_OPTIONS: "--no-deprecation"
 
 jobs:
-  build-and-deploy:
-    # AppStream compose currently fails on newer runner images for this build,
-    # while the 22.04 image still completes the Flatpak export reliably.
-    runs-on: ubuntu-22.04
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build-repo:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
+      options: --privileged
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Flatpak & Builder
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder gnupg appstream-compose
-          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+      - name: Validate desktop entry
+        run: desktop-file-validate setup/io.github.nicx17.mimick.desktop
+
+      - name: Validate AppStream metadata
+        run: appstreamcli validate --no-net setup/metainfo/io.github.nicx17.mimick.metainfo.xml
 
       - name: Import Flatpak signing key
         id: signing_key
@@ -65,9 +63,21 @@ jobs:
           printf '%s' "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --import
 
           if [ -n "$FLATPAK_GPG_PASSPHRASE" ]; then
+            GPG_PRESET_PASSPHRASE="$(command -v gpg-preset-passphrase || true)"
+            if [ -z "$GPG_PRESET_PASSPHRASE" ] && [ -x /usr/lib/gnupg/gpg-preset-passphrase ]; then
+              GPG_PRESET_PASSPHRASE=/usr/lib/gnupg/gpg-preset-passphrase
+            fi
+            if [ -z "$GPG_PRESET_PASSPHRASE" ] && [ -x /usr/libexec/gpg-preset-passphrase ]; then
+              GPG_PRESET_PASSPHRASE=/usr/libexec/gpg-preset-passphrase
+            fi
+            if [ -z "$GPG_PRESET_PASSPHRASE" ]; then
+              echo "Unable to find gpg-preset-passphrase in the Flatpak build container"
+              exit 1
+            fi
+
             KEYGRIP=$(gpg --batch --with-keygrip --list-secret-keys "$FLATPAK_GPG_KEY_ID" | awk '/Keygrip/ { print $3; exit }')
             gpg-connect-agent reloadagent /bye
-            /usr/lib/gnupg/gpg-preset-passphrase --preset --passphrase "$FLATPAK_GPG_PASSPHRASE" "$KEYGRIP"
+            "$GPG_PRESET_PASSPHRASE" --preset --passphrase "$FLATPAK_GPG_PASSPHRASE" "$KEYGRIP"
           fi
 
           gpg --batch --export "$FLATPAK_GPG_KEY_ID" > "$RUNNER_TEMP/mimick-repo-public.gpg"
@@ -79,25 +89,30 @@ jobs:
             echo "public_key_b64=$(base64 --wrap=0 "$RUNNER_TEMP/mimick-repo-public.gpg")"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build Flatpak Repository
+      - name: Build Flatpak repository
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        env:
+          GNUPGHOME: ${{ steps.signing_key.outputs.gpg_homedir }}
+        with:
+          manifest-path: io.github.nicx17.mimick.local.yml
+          build-bundle: false
+          upload-artifact: false
+          repo-dir: repo
+          state-dir: .flatpak-builder
+          cache-key: flatpak-builder-gnome49-${{ hashFiles('io.github.nicx17.mimick.local.yml', 'Cargo.lock', 'cargo-sources.json') }}
+          gpg-sign: ${{ steps.signing_key.outputs.gpg_key_id }}
+          verbose: true
+
+      - name: Generate static deltas
         env:
           GNUPGHOME: ${{ steps.signing_key.outputs.gpg_homedir }}
         run: |
-          # Build the app and output it to a folder named 'repo'
-          flatpak-builder \
-            --user \
-            --repo=repo \
-            --force-clean \
-            --install-deps-from=flathub \
-            --gpg-sign="${{ steps.signing_key.outputs.gpg_key_id }}" \
-            --gpg-homedir="${{ steps.signing_key.outputs.gpg_homedir }}" \
-            build-dir io.github.nicx17.mimick.local.yml
           flatpak build-update-repo repo \
             --generate-static-deltas \
             --gpg-sign="${{ steps.signing_key.outputs.gpg_key_id }}" \
             --gpg-homedir="${{ steps.signing_key.outputs.gpg_homedir }}" \
             --gpg-import="${{ steps.signing_key.outputs.public_key_file }}"
-    
+
       - name: Generate .flatpakrepo file
         env:
           REPO_GPG_KEY: ${{ steps.signing_key.outputs.public_key_b64 }}
@@ -112,20 +127,28 @@ jobs:
           Icon=https://nicx17.github.io/mimick/icon.png
           GPGKey=$REPO_GPG_KEY
           EOF
-          
+
       - name: Copy landing page assets
         run: |
           cp site/index.html repo/index.html
           cp site/styles.css repo/styles.css
           cp site/icon.png repo/icon.png
 
-      - name: Setup GitHub Pages
-        uses: actions/configure-pages@v4
-
-      - name: Upload Artifact
+      - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'repo' # Uploads the compiled Flatpak repo
+          path: repo
+
+  deploy-pages:
+    needs: build-repo
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v4
 
       - name: Deploy to GitHub Pages
         id: deployment
