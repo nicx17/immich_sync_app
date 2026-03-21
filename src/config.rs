@@ -111,6 +111,20 @@ impl WatchPathEntry {
     }
 }
 
+/// Find the most specific configured watch entry that contains `path`.
+///
+/// Matching is path-aware rather than string-prefix-based so sibling paths like
+/// `/home/user/Pictures` and `/home/user/Pictures-backup` are treated correctly.
+pub fn best_matching_watch_entry<'a>(
+    path: &Path,
+    entries: &'a [WatchPathEntry],
+) -> Option<&'a WatchPathEntry> {
+    entries
+        .iter()
+        .filter(|entry| path.starts_with(Path::new(entry.path())))
+        .max_by_key(|entry| entry.path().len())
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ConfigData {
     #[serde(default)]
@@ -284,6 +298,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_watch_path_entry_parsing_simple() {
@@ -383,5 +398,36 @@ mod tests {
         };
 
         assert_eq!(rules.normalized_extensions(), vec!["jpg", "png"]);
+    }
+
+    #[test]
+    fn test_best_matching_watch_entry_prefers_most_specific_path() {
+        let entries = vec![
+            WatchPathEntry::Simple("/home/user/Pictures".into()),
+            WatchPathEntry::WithConfig {
+                path: "/home/user/Pictures/Trips".into(),
+                album_id: Some("album-1".into()),
+                album_name: Some("Trips".into()),
+                rules: FolderRules::default(),
+            },
+        ];
+
+        let matched = best_matching_watch_entry(
+            Path::new("/home/user/Pictures/Trips/day1/photo.jpg"),
+            &entries,
+        )
+        .unwrap();
+        assert_eq!(matched.path(), "/home/user/Pictures/Trips");
+        assert_eq!(matched.album_name(), Some("Trips"));
+    }
+
+    #[test]
+    fn test_best_matching_watch_entry_does_not_match_string_prefix_siblings() {
+        let entries = vec![WatchPathEntry::Simple("/home/user/Pictures".into())];
+
+        assert!(
+            best_matching_watch_entry(Path::new("/home/user/Pictures-backup/photo.jpg"), &entries)
+                .is_none()
+        );
     }
 }

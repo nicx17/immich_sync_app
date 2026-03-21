@@ -636,7 +636,41 @@ fn load_retries(path: &PathBuf) -> Vec<FileTask> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state_manager::AppState;
+    use std::collections::HashSet;
+    use std::sync::{Arc, Mutex};
     use tempfile::tempdir;
+    use tokio::sync::mpsc;
+
+    type TestQueueManagerParts = (
+        QueueManager,
+        mpsc::Receiver<FileTask>,
+        Arc<Mutex<AppState>>,
+        Arc<Mutex<Vec<FileTask>>>,
+        Arc<Mutex<HashSet<String>>>,
+    );
+
+    fn test_queue_manager(buffer: usize) -> TestQueueManagerParts {
+        let (tx, rx) = mpsc::channel(buffer);
+        let shared_state = Arc::new(Mutex::new(AppState::default()));
+        let retry_list = Arc::new(Mutex::new(Vec::<FileTask>::new()));
+        let pending_paths = Arc::new(Mutex::new(HashSet::<String>::new()));
+        let retry_path = tempdir().unwrap().path().join("retries.json");
+
+        (
+            QueueManager {
+                sender: tx,
+                shared_state: shared_state.clone(),
+                retry_list: retry_list.clone(),
+                pending_paths: pending_paths.clone(),
+                retry_path,
+            },
+            rx,
+            shared_state,
+            retry_list,
+            pending_paths,
+        )
+    }
 
     #[test]
     fn test_filetask_serialization() {
@@ -673,5 +707,77 @@ mod tests {
         let loaded = load_retries(&retry_path);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].path, "/a/1.jpg");
+    }
+
+    #[tokio::test]
+    async fn test_add_to_queue_rejects_duplicate_pending_path() {
+        let (qm, mut rx, shared_state, _retry_list, pending_paths) = test_queue_manager(4);
+        let task = FileTask {
+            path: "/a/1.jpg".to_string(),
+            checksum: "hash1".to_string(),
+            album_id: None,
+            album_name: Some("Album".into()),
+            reassociate_only: false,
+        };
+
+        assert!(qm.add_to_queue(task.clone()).await);
+        assert!(!qm.add_to_queue(task.clone()).await);
+
+        let queued = rx.recv().await.unwrap();
+        assert_eq!(queued.path, task.path);
+        assert!(pending_paths.lock().unwrap().contains("/a/1.jpg"));
+        assert_eq!(shared_state.lock().unwrap().total_queued, 1);
+    }
+
+    #[tokio::test]
+    async fn test_retry_failed_path_requeues_and_updates_state() {
+        let (qm, mut rx, shared_state, retry_list, pending_paths) = test_queue_manager(4);
+        let task = FileTask {
+            path: "/a/failed.jpg".to_string(),
+            checksum: "hash1".to_string(),
+            album_id: None,
+            album_name: None,
+            reassociate_only: false,
+        };
+
+        retry_list.lock().unwrap().push(task.clone());
+        pending_paths.lock().unwrap().insert(task.path.clone());
+        shared_state.lock().unwrap().failed_count = 1;
+
+        assert!(qm.retry_failed_path(&task.path).await);
+
+        let requeued = rx.recv().await.unwrap();
+        assert_eq!(requeued.path, task.path);
+        assert!(retry_list.lock().unwrap().is_empty());
+
+        let state = shared_state.lock().unwrap();
+        assert_eq!(state.failed_count, 0);
+        assert_eq!(state.total_queued, 1);
+        assert_eq!(state.recent_events[0].status, "pending");
+        assert_eq!(state.recent_events[0].attempts, 2);
+    }
+
+    #[test]
+    fn test_clear_failed_removes_retry_entries_and_pending_paths() {
+        let (qm, _rx, shared_state, retry_list, pending_paths) = test_queue_manager(4);
+        let task = FileTask {
+            path: "/a/failed.jpg".to_string(),
+            checksum: "hash1".to_string(),
+            album_id: None,
+            album_name: None,
+            reassociate_only: false,
+        };
+
+        retry_list.lock().unwrap().push(task.clone());
+        pending_paths.lock().unwrap().insert(task.path.clone());
+        shared_state.lock().unwrap().failed_count = 1;
+
+        assert_eq!(qm.clear_failed(), 1);
+        assert!(retry_list.lock().unwrap().is_empty());
+        assert!(!pending_paths.lock().unwrap().contains(&task.path));
+
+        let state = shared_state.lock().unwrap();
+        assert_eq!(state.failed_count, 0);
+        assert_eq!(state.recent_events[0].status, "cleared");
     }
 }

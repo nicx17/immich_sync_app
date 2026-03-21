@@ -1,6 +1,6 @@
 //! Live filesystem monitoring, file-settling checks, and checksum generation.
 
-use crate::config::WatchPathEntry;
+use crate::config::{WatchPathEntry, best_matching_watch_entry};
 use crate::watch_path_display::display_watch_path;
 use notify::{Config as NotifyConfig, EventKind, PollWatcher, RecursiveMode, Watcher};
 use sha1::{Digest, Sha1};
@@ -100,7 +100,7 @@ impl Monitor {
 
                                 let path_str = path.to_string_lossy().into_owned();
                                 if is_temporary_file(&path)
-                                    || !matching_entry_for_path(&path_str, &watch_paths)
+                                    || !best_matching_watch_entry(&path, &watch_paths)
                                         .map(|entry| entry.rules().matches(&path))
                                         .unwrap_or(true)
                                 {
@@ -277,16 +277,6 @@ pub(crate) fn is_temporary_file(path: &Path) -> bool {
                 || name.ends_with('~')
         })
         .unwrap_or(false)
-}
-
-fn matching_entry_for_path<'a>(
-    path: &str,
-    entries: &'a [WatchPathEntry],
-) -> Option<&'a WatchPathEntry> {
-    entries
-        .iter()
-        .filter(|entry| path.starts_with(entry.path()))
-        .max_by_key(|entry| entry.path().len())
 }
 
 #[cfg(test)]

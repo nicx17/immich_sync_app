@@ -23,7 +23,7 @@ mod tray_icon;
 mod watch_path_display;
 
 use api_client::ImmichApiClient;
-use config::Config;
+use config::{Config, best_matching_watch_entry};
 use monitor::Monitor;
 use queue_manager::{EnvironmentPolicy, FileTask, QueueManager};
 use restart::{launch_replacement, take_restart_request};
@@ -148,23 +148,17 @@ async fn main() {
             while let Some((path, checksum)) = rx.recv().await {
                 log::info!("Queuing: {} (sha1={})", path, checksum);
 
-                let mut album_id = None;
-                let mut album_name = None;
-                for entry in &path_configs {
-                    use config::WatchPathEntry;
-                    if let WatchPathEntry::WithConfig {
-                        path: base,
-                        album_id: aid,
-                        album_name: aname,
-                        ..
-                    } = entry
-                        && path.starts_with(base.as_str())
-                    {
-                        album_id = aid.clone();
-                        album_name = aname.clone();
-                        break;
-                    }
-                }
+                let (album_id, album_name) =
+                    best_matching_watch_entry(std::path::Path::new(&path), &path_configs)
+                        .and_then(|entry| match entry {
+                            config::WatchPathEntry::WithConfig {
+                                album_id,
+                                album_name,
+                                ..
+                            } => Some((album_id.clone(), album_name.clone())),
+                            config::WatchPathEntry::Simple(_) => None,
+                        })
+                        .unwrap_or((None, None));
 
                 let _ = qm_clone
                     .add_to_queue(FileTask {
@@ -419,5 +413,38 @@ fn open_settings_if_needed(
     } else {
         log::debug!("Opening settings window");
         build_settings_window(app, shared_state, api_client, queue_manager, sync_now_tx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{FolderRules, WatchPathEntry};
+
+    #[test]
+    fn test_live_queue_matching_prefers_most_specific_watch_path() {
+        let entries = vec![
+            WatchPathEntry::WithConfig {
+                path: "/home/user/Pictures".into(),
+                album_id: Some("root-album".into()),
+                album_name: Some("Pictures".into()),
+                rules: FolderRules::default(),
+            },
+            WatchPathEntry::WithConfig {
+                path: "/home/user/Pictures/Trips".into(),
+                album_id: Some("trips-album".into()),
+                album_name: Some("Trips".into()),
+                rules: FolderRules::default(),
+            },
+        ];
+
+        let matched = best_matching_watch_entry(
+            std::path::Path::new("/home/user/Pictures/Trips/day1/photo.jpg"),
+            &entries,
+        )
+        .unwrap();
+
+        assert_eq!(matched.album_id(), Some("trips-album"));
+        assert_eq!(matched.album_name(), Some("Trips"));
     }
 }
