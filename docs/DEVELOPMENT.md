@@ -87,7 +87,7 @@ flatpak-builder --user --install --force-clean build-dir io.github.nicx17.mimick
 ```
 
 Once installed, you can run it via your application menu or `flatpak run io.github.nicx17.mimick`.
-Note that modifying `Cargo.toml` dependencies requires you to re-run `python3 flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json` to inform the flatpak builder of new crates.
+Note that modifying `Cargo.toml` or `Cargo.lock` requires you to re-run `uv run flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json` so the Flatpak offline vendor set stays in sync.
 
 ## Contributing Workflow
 
