@@ -2,6 +2,7 @@
 
 use crate::api_client::ImmichApiClient;
 use crate::notifications;
+use crate::runtime_env;
 use crate::state_manager::AppState;
 use crate::sync_index::{SyncIndex, SyncTarget};
 use std::collections::HashSet;
@@ -40,12 +41,19 @@ pub struct QueueManager {
     retry_path: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct EnvironmentPolicy {
+    pub pause_on_metered_network: bool,
+    pub pause_on_battery_power: bool,
+}
+
 impl QueueManager {
     pub fn new(
         api_client: Arc<ImmichApiClient>,
         workers: usize,
         shared_state: Arc<std::sync::Mutex<AppState>>,
         sync_index: Arc<std::sync::Mutex<SyncIndex>>,
+        policy: EnvironmentPolicy,
     ) -> Self {
         let (tx, rx) = mpsc::channel::<FileTask>(64);
         let rx = Arc::new(Mutex::new(rx));
@@ -105,11 +113,14 @@ impl QueueManager {
 
                     match task {
                         Some(file_task) => {
+                            wait_until_allowed(&state_ref, policy).await;
+
                             // Update the shared progress snapshot before handing off to the API.
                             let (pc, tq) = {
                                 let mut s = state_ref.lock().unwrap();
                                 s.active_workers += 1;
                                 s.status = "uploading".to_string();
+                                s.pause_reason = None;
                                 s.current_file = Some(file_task.path.clone());
                                 s.queue_size = s.total_queued.saturating_sub(s.processed_count);
                                 s.progress = if s.total_queued > 0 {
@@ -118,6 +129,8 @@ impl QueueManager {
                                 } else {
                                     0
                                 };
+                                let attempts = current_attempt_count(&s, &file_task.path);
+                                s.record_event(file_task.path.clone(), "uploading", None, attempts);
                                 (s.processed_count, s.total_queued)
                             };
 
@@ -173,6 +186,17 @@ impl QueueManager {
                                         let _ = tx_clone.send(t).await;
                                     }
                                 }
+
+                                let mut s = state_ref.lock().unwrap();
+                                let attempts = current_attempt_count(&s, &file_task.path);
+                                s.last_completed_file = Some(file_task.path.clone());
+                                s.last_error = None;
+                                s.record_event(
+                                    file_task.path.clone(),
+                                    "completed",
+                                    Some(format!("Finished in {:.2}s", elapsed)),
+                                    attempts,
+                                );
                             } else {
                                 log::warn!(
                                     "Upload FAILED: {} ({:.2}s). Adding to retry queue.",
@@ -180,9 +204,18 @@ impl QueueManager {
                                     elapsed
                                 );
                                 // Keep failed tasks in memory until the next graceful shutdown.
-                                retry_ref.lock().unwrap().push(file_task);
+                                retry_ref.lock().unwrap().push(file_task.clone());
                                 let mut s = state_ref.lock().unwrap();
                                 s.failed_count += 1;
+                                s.last_error =
+                                    Some(format!("Upload failed for {}", file_task.path));
+                                let attempts = current_attempt_count(&s, &file_task.path);
+                                s.record_event(
+                                    file_task.path.clone(),
+                                    "failed",
+                                    Some("Queued for retry".to_string()),
+                                    attempts,
+                                );
                             }
 
                             // Update processed count and determine idle state.
@@ -194,7 +227,11 @@ impl QueueManager {
 
                                 if s.processed_count >= s.total_queued && s.active_workers == 0 {
                                     s.queue_size = 0;
-                                    s.status = "idle".to_string();
+                                    s.status = if s.paused {
+                                        "paused".to_string()
+                                    } else {
+                                        "idle".to_string()
+                                    };
                                     s.progress = 100;
                                     log::info!("All {} file(s) processed. Idle.", s.total_queued);
                                     Some(format!(
@@ -269,6 +306,15 @@ impl QueueManager {
             let mut s = self.shared_state.lock().unwrap();
             s.total_queued += 1;
             s.queue_size = s.total_queued.saturating_sub(s.processed_count);
+            let attempts = current_attempt_count(&s, &task.path);
+            s.record_event(
+                task.path.clone(),
+                "pending",
+                task.album_name
+                    .clone()
+                    .map(|name| format!("Target album: {}", name)),
+                attempts,
+            );
         }
         if let Err(e) = self.sender.send(task).await {
             log::error!("Failed to send task to queue: {}", e);
@@ -284,6 +330,86 @@ impl QueueManager {
         true
     }
 
+    pub fn set_paused(&self, paused: bool, reason: Option<String>) {
+        let mut state = self.shared_state.lock().unwrap();
+        state.paused = paused;
+        state.pause_reason = reason;
+        state.status = if paused {
+            "paused".to_string()
+        } else if state.active_workers > 0 {
+            "uploading".to_string()
+        } else {
+            "idle".to_string()
+        };
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.shared_state.lock().unwrap().paused
+    }
+
+    pub fn recent_events(&self) -> Vec<crate::state_manager::QueueEvent> {
+        self.shared_state.lock().unwrap().recent_events.clone()
+    }
+
+    pub fn failed_tasks(&self) -> Vec<FileTask> {
+        self.retry_list.lock().unwrap().clone()
+    }
+
+    pub fn clear_failed(&self) -> usize {
+        let tasks = {
+            let mut retries = self.retry_list.lock().unwrap();
+            std::mem::take(&mut *retries)
+        };
+        if tasks.is_empty() {
+            return 0;
+        }
+
+        {
+            let mut pending = self.pending_paths.lock().unwrap();
+            for task in &tasks {
+                pending.remove(&task.path);
+            }
+        }
+
+        let mut state = self.shared_state.lock().unwrap();
+        state.failed_count = state.failed_count.saturating_sub(tasks.len());
+        for task in &tasks {
+            let attempts = current_attempt_count(&state, &task.path);
+            state.record_event(
+                task.path.clone(),
+                "cleared",
+                Some("Removed from retry queue".to_string()),
+                attempts,
+            );
+        }
+
+        tasks.len()
+    }
+
+    pub async fn retry_all_failed(&self) -> usize {
+        let tasks = {
+            let mut retries = self.retry_list.lock().unwrap();
+            std::mem::take(&mut *retries)
+        };
+        self.requeue_failed(tasks, "Manual retry".to_string()).await
+    }
+
+    pub async fn retry_failed_path(&self, path: &str) -> bool {
+        let task = {
+            let mut retries = self.retry_list.lock().unwrap();
+            let index = retries.iter().position(|task| task.path == path);
+            index.map(|index| retries.remove(index))
+        };
+
+        if let Some(task) = task {
+            self.requeue_failed(vec![task], "Manual retry".to_string())
+                .await
+                > 0
+        } else {
+            false
+        }
+    }
+
     /// Persist any in-memory retry items so they survive a clean shutdown.
     pub fn flush_retries(&self) {
         let retries = self.retry_list.lock().unwrap();
@@ -294,6 +420,79 @@ impl QueueManager {
                 retries.len()
             );
         }
+    }
+
+    async fn requeue_failed(&self, tasks: Vec<FileTask>, detail: String) -> usize {
+        if tasks.is_empty() {
+            return 0;
+        }
+
+        {
+            let mut state = self.shared_state.lock().unwrap();
+            state.failed_count = state.failed_count.saturating_sub(tasks.len());
+            state.total_queued += tasks.len();
+            state.queue_size = state.total_queued.saturating_sub(state.processed_count);
+            for task in &tasks {
+                let attempts = current_attempt_count(&state, &task.path).saturating_add(1);
+                state.record_event(task.path.clone(), "pending", Some(detail.clone()), attempts);
+            }
+        }
+
+        let mut queued = 0usize;
+        for task in tasks {
+            if self.sender.send(task).await.is_ok() {
+                queued += 1;
+            }
+        }
+        queued
+    }
+}
+
+fn current_attempt_count(state: &AppState, path: &str) -> u32 {
+    state
+        .recent_events
+        .iter()
+        .find(|event| event.path == path)
+        .map(|event| event.attempts)
+        .unwrap_or(1)
+}
+
+async fn wait_until_allowed(
+    state_ref: &Arc<std::sync::Mutex<AppState>>,
+    policy: EnvironmentPolicy,
+) {
+    loop {
+        let defer_reason = if state_ref.lock().unwrap().paused {
+            state_ref
+                .lock()
+                .unwrap()
+                .pause_reason
+                .clone()
+                .or_else(|| Some("Paused by user".to_string()))
+        } else if policy.pause_on_metered_network && runtime_env::is_metered_connection() {
+            Some("Deferred on metered network".to_string())
+        } else if policy.pause_on_battery_power && runtime_env::is_on_battery_power() {
+            Some("Deferred while on battery power".to_string())
+        } else {
+            None
+        };
+
+        if let Some(reason) = defer_reason {
+            {
+                let mut state = state_ref.lock().unwrap();
+                state.status = "paused".to_string();
+                state.pause_reason = Some(reason);
+            }
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            continue;
+        }
+
+        let mut state = state_ref.lock().unwrap();
+        if state.status == "paused" && !state.paused {
+            state.status = "idle".to_string();
+            state.pause_reason = None;
+        }
+        break;
     }
 }
 

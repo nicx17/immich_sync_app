@@ -46,6 +46,14 @@ This guide is for developers who want to contribute to `mimick`.
     cargo run -- --settings # Run and immediately open the settings window
     ```
 
+6. **Lint and Test Before Opening a PR:**
+
+    ```bash
+    cargo fmt --all -- --check
+    cargo clippy --all-targets --all-features -- -D warnings
+    cargo test
+    ```
+
 ## Logging and Debugging
 
 The application uses `flexi_logger`. 
@@ -60,10 +68,9 @@ RUST_LOG=debug cargo run
 
 ## Running Tests
 
-The project uses Rust's built-in testing framework. Most business logic (queue parsing, SHA1 calculators, path handlers) can be tested.
+The project uses Rust's built-in testing framework for configuration parsing, folder rules, queue-state bookkeeping, diagnostics export, monitor filtering, runtime environment parsing, and other non-UI behavior.
 
 ```bash
-# Run all unit tests
 cargo test
 ```
 
@@ -75,25 +82,38 @@ Unlike traditional Python/PySide loops, `mimick` is built on GTK4 and multi-thre
 2. `settings_window.rs`: Uses declarative GTK Builder pattern to construct the UI. The UI reads status via a shared `Arc<Mutex<AppState>>` memory lock rather than disk polling.
 3. GTK restricts all UI modifications to the main thread. To update the UI from async workers, use generic channels or `glib::timeout_add_local`.
 
+Recent operational features are spread across a few focused modules:
+
+- `queue_manager.rs`: upload workers, retry controls, pause/resume state, queue event recording
+- `state_manager.rs`: persisted app state plus recent queue-event history
+- `runtime_env.rs`: best-effort metered-network and battery-power detection
+- `diagnostics.rs`: support bundle export that omits secrets
+- `settings_window.rs`: queue inspector, diagnostics export, per-folder rule editing, and manual sync controls
+
 ## Packaging
 
 To test the final executable bundle via Flatpak:
 
 ```bash
-# Clean the build directory
-rm -rf build-dir
-# Build the flatpak
-flatpak-builder --user --install --force-clean build-dir io.github.nicx17.mimick.yml
+flatpak-builder --user --install --force-clean build-dir io.github.nicx17.mimick.local.yml
 ```
 
 Once installed, you can run it via your application menu or `flatpak run io.github.nicx17.mimick`.
 Note that modifying `Cargo.toml` or `Cargo.lock` requires you to re-run `uv run flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json` so the Flatpak offline vendor set stays in sync.
+
+GitHub Actions currently mirrors the same native quality gate with:
+
+- `cargo fmt --all -- --check`
+- `cargo clippy --locked --all-targets --all-features -- -D warnings`
+- `cargo test --locked`
+
+The published Flatpak repository is built in a containerized Flatpak workflow rather than by installing Flatpak tooling directly on the host runner.
 
 ## Contributing Workflow
 
 1. **Fork** the repository.
 2. **Clone** your fork.
 3. Create a **feature branch**: `git checkout -b feature/my-new-feature`.
-4. Run `cargo clippy` to ensure your code matches Rust idioms.
+4. Run formatting, clippy, and tests locally.
 5. Commit your changes.
 6. Submit a **Pull Request**.

@@ -1,5 +1,6 @@
 //! Live filesystem monitoring, file-settling checks, and checksum generation.
 
+use crate::config::WatchPathEntry;
 use crate::watch_path_display::display_watch_path;
 use notify::{Config as NotifyConfig, EventKind, PollWatcher, RecursiveMode, Watcher};
 use sha1::{Digest, Sha1};
@@ -22,11 +23,11 @@ const IDLE_TIMEOUT_SECS: u64 = 300;
 const FLATPAK_POLL_INTERVAL_MS: u64 = 2000;
 
 pub struct Monitor {
-    watch_paths: Vec<String>,
+    watch_paths: Vec<WatchPathEntry>,
 }
 
 impl Monitor {
-    pub fn new(watch_paths: Vec<String>) -> Self {
+    pub fn new(watch_paths: Vec<WatchPathEntry>) -> Self {
         Self { watch_paths }
     }
 
@@ -46,18 +47,18 @@ impl Monitor {
             };
 
             let mut any_watching = false;
-            for path in &watch_paths {
-                let p = Path::new(path);
+            for entry in &watch_paths {
+                let p = Path::new(entry.path());
                 if p.exists() {
                     match watcher.watch(p, RecursiveMode::Recursive) {
                         Ok(_) => {
-                            log::info!("Watching: {}", display_watch_path(path));
+                            log::info!("Watching: {}", display_watch_path(entry.path()));
                             any_watching = true;
                         }
-                        Err(e) => log::warn!("Failed to watch '{}': {:?}", path, e),
+                        Err(e) => log::warn!("Failed to watch '{}': {:?}", entry.path(), e),
                     }
                 } else {
-                    log::warn!("Watch path does not exist, skipping: {}", path);
+                    log::warn!("Watch path does not exist, skipping: {}", entry.path());
                 }
             }
 
@@ -98,6 +99,13 @@ impl Monitor {
                                 }
 
                                 let path_str = path.to_string_lossy().into_owned();
+                                if is_temporary_file(&path)
+                                    || !matching_entry_for_path(&path_str, &watch_paths)
+                                        .map(|entry| entry.rules().matches(&path))
+                                        .unwrap_or(true)
+                                {
+                                    continue;
+                                }
 
                                 // Bail immediately if we're already waiting on this file to finish.
                                 if active_tasks.lock().unwrap().contains(&path_str) {
@@ -258,10 +266,34 @@ pub(crate) fn is_supported_media_path(path: &Path) -> bool {
     MEDIA_EXTENSIONS.contains(&ext_str)
 }
 
+pub(crate) fn is_temporary_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| {
+            let name = name.to_ascii_lowercase();
+            name.ends_with(".tmp")
+                || name.ends_with(".part")
+                || name.ends_with(".crdownload")
+                || name.ends_with('~')
+        })
+        .unwrap_or(false)
+}
+
+fn matching_entry_for_path<'a>(
+    path: &str,
+    entries: &'a [WatchPathEntry],
+) -> Option<&'a WatchPathEntry> {
+    entries
+        .iter()
+        .filter(|entry| path.starts_with(entry.path()))
+        .max_by_key(|entry| entry.path().len())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{compute_sha1_chunked, is_flatpak_sandbox};
+    use super::{compute_sha1_chunked, is_flatpak_sandbox, is_temporary_file};
     use std::io::Write;
+    use std::path::Path;
     use tempfile::NamedTempFile;
 
     #[test]
@@ -277,5 +309,13 @@ mod tests {
     #[test]
     fn test_flatpak_detection_is_false_in_unit_tests() {
         assert!(!is_flatpak_sandbox());
+    }
+
+    #[test]
+    fn test_temporary_file_detection() {
+        assert!(is_temporary_file(Path::new("/tmp/video.mp4.part")));
+        assert!(is_temporary_file(Path::new("/tmp/upload.jpg.tmp")));
+        assert!(is_temporary_file(Path::new("/tmp/image.png~")));
+        assert!(!is_temporary_file(Path::new("/tmp/final.jpg")));
     }
 }

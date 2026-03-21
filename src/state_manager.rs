@@ -5,6 +5,18 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+/// Rolling queue/event status used by the settings window inspector.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct QueueEvent {
+    pub path: String,
+    pub status: String,
+    #[serde(default)]
+    pub detail: Option<String>,
+    #[serde(default)]
+    pub attempts: u32,
+    pub timestamp: f64,
+}
+
 /// Shared progress counters exposed to the settings window.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppState {
@@ -20,6 +32,18 @@ pub struct AppState {
     pub status: String,
     pub progress: u8,
     pub timestamp: f64,
+    #[serde(default)]
+    pub paused: bool,
+    #[serde(default)]
+    pub pause_reason: Option<String>,
+    #[serde(default)]
+    pub last_error: Option<String>,
+    #[serde(default)]
+    pub last_completed_file: Option<String>,
+    #[serde(default)]
+    pub diagnostics_exports: usize,
+    #[serde(default)]
+    pub recent_events: Vec<QueueEvent>,
 }
 
 impl Default for AppState {
@@ -34,7 +58,51 @@ impl Default for AppState {
             status: "idle".to_string(),
             progress: 0,
             timestamp: 0.0,
+            paused: false,
+            pause_reason: None,
+            last_error: None,
+            last_completed_file: None,
+            diagnostics_exports: 0,
+            recent_events: Vec::new(),
         }
+    }
+}
+
+impl AppState {
+    const MAX_EVENTS: usize = 80;
+
+    pub fn record_event(
+        &mut self,
+        path: impl Into<String>,
+        status: impl Into<String>,
+        detail: Option<String>,
+        attempts: u32,
+    ) {
+        let path = path.into();
+        let status = status.into();
+        let timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs_f64();
+
+        if let Some(existing) = self.recent_events.iter_mut().find(|evt| evt.path == path) {
+            existing.status = status;
+            existing.detail = detail;
+            existing.attempts = attempts;
+            existing.timestamp = timestamp;
+        } else {
+            self.recent_events.push(QueueEvent {
+                path,
+                status,
+                detail,
+                attempts,
+                timestamp,
+            });
+        }
+
+        self.recent_events
+            .sort_by(|a, b| b.timestamp.total_cmp(&a.timestamp));
+        self.recent_events.truncate(Self::MAX_EVENTS);
     }
 }
 
@@ -147,5 +215,27 @@ mod tests {
         let read_state = manager.read_state();
         assert_eq!(read_state.status, "syncing");
         assert_eq!(read_state.progress, 50);
+    }
+
+    #[test]
+    fn test_record_event_updates_existing_entry() {
+        let mut state = AppState::default();
+        state.record_event("/tmp/a.jpg", "pending", Some("queued".into()), 1);
+        state.record_event("/tmp/a.jpg", "failed", Some("retry".into()), 2);
+
+        assert_eq!(state.recent_events.len(), 1);
+        assert_eq!(state.recent_events[0].status, "failed");
+        assert_eq!(state.recent_events[0].attempts, 2);
+        assert_eq!(state.recent_events[0].detail.as_deref(), Some("retry"));
+    }
+
+    #[test]
+    fn test_record_event_truncates_history() {
+        let mut state = AppState::default();
+        for i in 0..100 {
+            state.record_event(format!("/tmp/{i}.jpg"), "pending", None, 1);
+        }
+
+        assert_eq!(state.recent_events.len(), 80);
     }
 }

@@ -24,6 +24,21 @@ If Immich re-uploads existing files:
 If you are running on a server without a desktop session (e.g., via SSH only), `secret-tool` might fail to unlock the login keyring.
 - **Solution:** Use `dbus-run-session` or configure `pam_gnome_keyring` to unlock on login.
 
+### 5. Mimick Stays Paused
+If uploads do not resume on their own:
+- Open the settings window and check the current status text. Mimick now records the pause reason.
+- If you manually paused it, use **Pause / Resume** from the tray or settings window.
+- If **Pause on Metered Network** is enabled, Mimick may pause while `nmcli` reports a metered or guessed-metered connection.
+- If **Pause on Battery Power** is enabled, Mimick may pause while the system appears to be running on battery according to `/sys/class/power_supply`.
+
+### 6. Files Never Enter the Queue
+If a file seems to be ignored completely:
+- Check the per-folder rules for that watch path.
+- Hidden files and files inside hidden directories can now be excluded intentionally.
+- Large files can be skipped by the max-size rule.
+- Extension allowlists only accept matching file extensions after normalization.
+- Temporary files are ignored until the final media filename appears.
+
 ## Logs & Diagnostics
 
 ### Clearing the Upload Queue (Local Cache)
@@ -44,6 +59,17 @@ The application writes rotating debug logs to `.cache`. If something breaks with
 tail -f ~/.cache/mimick/mimick.log
 ```
 Each log line includes a timestamp, level, and source module.
+
+### Export a Diagnostics Bundle
+If you need to file a bug or inspect the app state in one place, use **Export Diagnostics** from the settings window. The export creates a `mimick-diagnostics-*` folder containing:
+- `summary.txt`
+- `config.json`
+- `status.json`
+- `retries.json`
+- `synced_index.json`
+- `mimick.log`
+
+The generated summary omits the API key on purpose.
 
 ### Manual Debugging
 Run the application directly in a terminal to see `stdout` logs:

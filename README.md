@@ -37,7 +37,12 @@ Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files
 - **SHA-1 Checksumming**: Deduplication via checksum before upload — exact same logic as the Immich mobile apps.
 - **Concurrent Uploads**: 10 parallel worker tasks stream files directly from disk, keeping RAM usage constant.
 - **Offline Reliability**: Failed uploads are persisted to `~/.cache/mimick/retries.json` and replayed automatically on next launch.
+- **Queue Inspector & Retry Tools**: Inspect recent queue activity, retry one failed file, retry all failed uploads, or clear the failed queue from the settings window.
+- **Sync Controls**: Pause or resume uploads and trigger a manual `Sync Now` pass from either the tray or the settings window.
 - **Connectivity**: Automatically switches between **Internal (LAN)** and **External (WAN)** URLs based on availability. At least one must be enabled (enforced by the UI).
+- **Per-Folder Rules**: Each watched folder can optionally ignore hidden paths, cap file size, or allow only selected file extensions.
+- **Diagnostics Export**: Generate a support bundle with logs, queue state, sync index, and a human-readable summary without exposing your API key.
+- **Network / Power Awareness**: Optionally defer uploads while on a metered connection or running on battery power.
 - **Custom Album Mapping**: Select an existing remote album, type a custom name, or let the app create an album from the local folder name (e.g., `~/Pictures/Vacation 2024` → Album `Vacation 2024`).
 - **One-Way Sync**: Uploads media without modifying local files.
 - **Security**: API Key stored in the system keyring via `secret-tool` (libsecret).
@@ -94,13 +99,24 @@ Compare the printed fingerprint to the value above. The email address alone is n
 
 Launch Mimick from your Application Launcher. The settings window opens automatically on first launch.
 
+The window is split into two pages:
+
+* **Setup** for server details, behavior switches, watch folders, and folder rules
+* **Controls** for status, queue actions, manual sync, pause/resume, and diagnostics export
+
 1. **Internal URL** — LAN address (e.g., `http://192.168.1.50:2283`).
 2. **External URL** — WAN/Public address (e.g., `https://photos.example.com`). *At least one must be enabled.*
 3. **API Key** — Generate in Immich Web UI under Account Settings > API Keys. Needs **Asset** and **Album** read/create permissions.
 4. **Watch Paths** — Add folders to monitor with the built-in folder picker. Each folder can be assigned a target Immich album.
 5. **Run on Startup** — Enable this in the **Behavior** section to start Mimick automatically when you log in.
-6. **Save & Restart** — Applies your settings and relaunches Mimick automatically.
-7. **Close / Quit** — `Close` hides the settings window and leaves Mimick running; `Quit` fully exits the app.
+6. **Folder Rules** — Each watched folder can open a rules dialog to ignore hidden paths, set a max size in MB, or restrict uploads to specific extensions.
+7. **Sync Controls** — Use **Pause**, **Resume**, or **Sync Now** from the settings window or tray menu when you want manual control.
+8. **Queue Inspector** — Review recent queue events, inspect failed uploads, retry individual files, retry all failures, or clear the failed queue.
+9. **Export Diagnostics** — Create a support bundle from the settings window when troubleshooting sync issues.
+10. **Save & Restart** — Applies your settings and relaunches Mimick automatically.
+11. **Close / Quit** — `Close` hides the settings window and leaves Mimick running; `Quit` fully exits the app.
+
+The bottom footer keeps **Close**, **Quit**, and **Save & Restart** visible even when the page content needs scrolling.
 
 ### Autostart
 
@@ -132,6 +148,29 @@ Mimick is a background app, so closing the settings window does not quit it.
 
 * Use **Close** in the settings window or the window close button to hide the window and keep Mimick running in the tray.
 * Use **Quit** from the tray menu, the settings window, or the launcher action to stop the app completely.
+
+### Queue and Diagnostics Tools
+
+Mimick now includes a small control center for active troubleshooting and recovery.
+
+On the **Controls** page:
+
+* **Sync Now** reruns the watched-folder scan immediately.
+* **Pause** toggles upload activity without quitting Mimick.
+* **Queue Inspector** shows failed items and recent queue activity from the current session.
+* **Retry All Failed** requeues everything currently stored in the failed list.
+* **Retry** on a single failed row requeues only that item.
+* **Clear Failed Queue** removes persisted failed items you no longer want Mimick to retry.
+* **Export Diagnostics** writes a bundle with `summary.txt`, `config.json`, `status.json`, `retries.json`, `synced_index.json`, and `mimick.log` when those files are available.
+
+### Network and Power-Aware Behavior
+
+If enabled in the **Behavior** section, Mimick can pause uploads automatically:
+
+* on metered connections, detected best-effort via `nmcli`
+* while running on battery power, detected best-effort from `/sys/class/power_supply`
+
+These options defer uploads rather than changing your watch configuration, so syncing resumes when conditions improve or when you manually resume.
 
 ---
 
@@ -196,6 +235,9 @@ flatpak run io.github.nicx17.mimick
 ## Documentation
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [User Guide](docs/USER_GUIDE.md)
+- [Configuration Guide](docs/CONFIGURATION.md)
+- [Development Guide](docs/DEVELOPMENT.md)
+- [Testing Guide](docs/TESTING.md)
 - [Security Policy](SECURITY.md)
 
 ## Trust and Verification

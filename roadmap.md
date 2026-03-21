@@ -55,18 +55,44 @@
 
 ## Planned
 
-### Next Up
+### Priority Now
 
-- [ ] **Fix bug** multiple settings window spawning. lock to single window
-- [ ] **Headless Operation** should operate without window being visible.. background process
+- [x] **Queue Inspector** — Failed items and recent queue activity are visible from the Controls page, with retry tools for recovery.
+- [x] **Retry Controls** — `Retry all`, single-item `Retry`, and `Clear failed queue` are available from the queue inspector.
+- [x] **Pause / Resume Sync** — Global pause works from the tray and settings window, with visible paused status and reason.
+- [x] **Sync Now** — Manual rescan is available from the Controls page and tray menu.
+- [x] **Per-Folder Rules** — Hidden-path filtering, extension allowlists, temp-file ignores, and optional max file size limits are supported.
+- [x] **Diagnostics Bundle** — Logs, config/state snapshots, and recent queue details can be exported into one support-friendly bundle.
+- [x] **Network / Power Awareness** — Uploads can defer on metered connections or while running on battery power.
 
-- [ ] **Flatpak manifest** — Flathub-ready packaging with `xdg-desktop-portal` filesystem constraints.
-- [ ] **Complete folder sync** — Two-way sync mode: toggle to sync remote deletions/additions back to local.
+### Next Wave
+
+- [ ] **Upload Limits** — User-configurable concurrency limit, bandwidth cap, and quiet hours.
+- [ ] **Notifications That Matter** — Summaries for sync success/failure, connectivity loss, permission loss, and album recreation events.
+- [ ] **Health Dashboard** — Show last successful sync, current server route, watched folder count, pending queue size, retry count, and latest error.
+- [ ] **Permission Health Checks** — Detect broken Flatpak portal access or lost folder permissions and guide the user to reauthorize them.
+- [ ] **Safer Startup Catch-Up Controls** — Let users choose full catch-up, recent-only catch-up, or new-files-only behavior.
+- [ ] **Per-Folder Status** — Track last sync time, pending count, target album, and last error per watch path.
+
+### UX Improvements
+
+- [ ] **First-Run Wizard** — Guided setup for server test, API key, first watch folder, and startup behavior.
+- [ ] **Better Album Picker** — Searchable album list, recent albums, inline create-new, and a clearer `use folder name` option.
+- [x] **Split Setup / Controls Window** — Separate configuration from live actions and keep footer actions visible while scrolling.
+- [ ] **Status in Tray** — Surface idle / syncing / paused / offline / error state directly in the tray menu and tooltip.
+- [ ] **Actionable Errors** — Translate generic failures into concrete guidance like invalid API key, missing album, network timeout, or folder access loss.
+- [ ] **Dry Run / Preview Mode** — Show what would be uploaded before enabling a new folder or changing rules.
+- [ ] **Verify Existing Remote State** — Audit a folder against the local sync index and highlight drift or mismatches.
+
+### Platform & Packaging
+
+- [ ] **Flatpak manifest hardening** — Keep improving portal-first packaging and release reliability for the hosted Flatpak repo.
 - [ ] **Arch AUR submission** — Publish PKGBUILD to AUR as `mimick`.
-
-### Future
-- [ ] **Exponential backoff** on retries (currently immediate re-queue on next launch).
-- [ ] **Progress notification** — Native desktop notification with upload count, not just log.
-- [ ] **Tray icon dynamic states** — Distinct icons for idle / uploading / error.
-- [ ] **Selective sync** — File type filter toggles per watch folder in the UI.
 - [ ] **ARM64 AppImage** — Cross-compile and package for Raspberry Pi / ARM desktops.
+
+### Longer-Term Product Ideas
+
+- [ ] **Complete folder sync** — Optional two-way sync mode that can reflect remote additions or deletions locally.
+- [ ] **Exponential backoff** — Smarter retry scheduling instead of immediate replay on restart.
+- [ ] **Progress notifications** — Desktop notifications with counts and outcomes, not just logs.
+- [ ] **Tray icon dynamic states** — Distinct icons for idle, syncing, paused, and error conditions.

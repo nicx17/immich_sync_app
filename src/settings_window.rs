@@ -1,23 +1,27 @@
 //! GTK4/Libadwaita settings window and status dashboard.
 
 use crate::autostart;
-use crate::config::WatchPathEntry;
+use crate::config::{FolderRules, WatchPathEntry};
+use crate::diagnostics;
 use adw::prelude::*;
 use glib::clone;
 use gtk::prelude::*;
 use gtk::{
     Box, Button, DropDown, Entry, FileDialog, ListBox, Orientation, PasswordEntry, ProgressBar,
-    ScrolledWindow, StringList, Switch,
+    ScrolledWindow, Stack, StringList, Switch,
 };
 use libadwaita as adw;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::api_client::ImmichApiClient;
 use crate::config::Config;
+use crate::queue_manager::QueueManager;
 use crate::restart::request_restart;
 use crate::state_manager::AppState;
 use crate::watch_path_display::{display_watch_path, watch_path_subtitle};
@@ -28,6 +32,7 @@ struct FolderRowData {
     pub dropdown: DropDown,
     pub string_list: StringList,
     pub custom_entry: Entry,
+    pub rules: Rc<RefCell<FolderRules>>,
 }
 
 /// Build the main settings window and wire it to the shared app state.
@@ -35,13 +40,15 @@ pub fn build_settings_window(
     app: &adw::Application,
     shared_state: Arc<Mutex<AppState>>,
     api_client: Option<Arc<ImmichApiClient>>,
+    queue_manager: Option<Arc<QueueManager>>,
+    sync_now_tx: Option<UnboundedSender<()>>,
 ) {
     // Use an ApplicationWindow so Libadwaita manages the titlebar and window lifecycle.
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Mimick Settings")
-        .default_width(680)
-        .default_height(820)
+        .default_width(660)
+        .default_height(840)
         .build();
     let app_clone = app.clone();
 
@@ -59,6 +66,15 @@ pub fn build_settings_window(
     let header_bar = adw::HeaderBar::new();
     vbox.append(&header_bar);
 
+    let page_stack = Stack::builder()
+        .hexpand(true)
+        .vexpand(true)
+        .transition_type(gtk::StackTransitionType::SlideLeftRight)
+        .build();
+    let stack_switcher = gtk::StackSwitcher::new();
+    stack_switcher.set_stack(Some(&page_stack));
+    header_bar.set_title_widget(Some(&stack_switcher));
+
     // About Button
     let about_btn = Button::builder()
         .icon_name("help-about-symbolic")
@@ -70,36 +86,56 @@ pub fn build_settings_window(
     });
     header_bar.pack_start(&about_btn);
 
-    // Main scrollable area
-    let scroll = ScrolledWindow::builder()
+    let setup_scroll = ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
         .vexpand(true)
         .build();
-    vbox.append(&scroll);
-
-    // Clamp
-    let clamp = adw::Clamp::builder()
-        .maximum_size(680)
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(12)
-        .margin_end(12)
+    let controls_scroll = ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .vexpand(true)
         .build();
-    scroll.set_child(Some(&clamp));
+    page_stack.add_titled(&setup_scroll, Some("setup"), "Setup");
+    page_stack.add_titled(&controls_scroll, Some("controls"), "Controls");
+    page_stack.set_visible_child_name("setup");
+    vbox.append(&page_stack);
 
-    // Main Page Box
-    let page_box = Box::builder()
+    let setup_clamp = adw::Clamp::builder()
+        .maximum_size(640)
+        .margin_top(8)
+        .margin_bottom(8)
+        .margin_start(10)
+        .margin_end(10)
+        .build();
+    setup_scroll.set_child(Some(&setup_clamp));
+
+    let controls_clamp = adw::Clamp::builder()
+        .maximum_size(640)
+        .margin_top(8)
+        .margin_bottom(8)
+        .margin_start(10)
+        .margin_end(10)
+        .build();
+    controls_scroll.set_child(Some(&controls_clamp));
+
+    let setup_page_box = Box::builder()
         .orientation(Orientation::Vertical)
-        .spacing(24)
+        .spacing(18)
         .build();
-    clamp.set_child(Some(&page_box));
+    setup_clamp.set_child(Some(&setup_page_box));
+
+    let controls_page_box = Box::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(18)
+        .build();
+    controls_clamp.set_child(Some(&controls_page_box));
 
     // --- PROGRESS GROUP ---
     let progress_group = adw::PreferencesGroup::builder()
         .title("Sync Status")
         .build();
-    page_box.append(&progress_group);
+    controls_page_box.append(&progress_group);
 
     let status_row = adw::ActionRow::builder()
         .title("Idle")
@@ -120,7 +156,7 @@ pub fn build_settings_window(
     let conn_group = adw::PreferencesGroup::builder()
         .title("Connectivity")
         .build();
-    page_box.append(&conn_group);
+    setup_page_box.append(&conn_group);
 
     // Internal URL
     let internal_row = adw::ActionRow::builder()
@@ -319,7 +355,7 @@ pub fn build_settings_window(
     ));
 
     let behavior_group = adw::PreferencesGroup::builder().title("Behavior").build();
-    page_box.append(&behavior_group);
+    setup_page_box.append(&behavior_group);
 
     let startup_row = adw::SwitchRow::builder()
         .title("Run on Startup")
@@ -327,12 +363,24 @@ pub fn build_settings_window(
         .build();
     behavior_group.add(&startup_row);
 
+    let metered_row = adw::SwitchRow::builder()
+        .title("Pause on Metered Network")
+        .subtitle("Defer uploads while the active connection is marked as metered.")
+        .build();
+    behavior_group.add(&metered_row);
+
+    let battery_row = adw::SwitchRow::builder()
+        .title("Pause on Battery Power")
+        .subtitle("Defer uploads while the system appears to be running on battery.")
+        .build();
+    behavior_group.add(&battery_row);
+
     // --- WATCH FOLDERS GROUP ---
     let folders_group = adw::PreferencesGroup::builder()
         .title("Watch Folders")
         .description("Add folders with the picker so Mimick can keep access to them.")
         .build();
-    page_box.append(&folders_group);
+    setup_page_box.append(&folders_group);
 
     let config = Config::new();
     let startup_initial = config.data.run_on_startup;
@@ -462,41 +510,185 @@ pub fn build_settings_window(
         );
     });
 
-    // Window actions
-    let actions_group = adw::PreferencesGroup::new();
-    page_box.append(&actions_group);
+    let controls_group = adw::PreferencesGroup::builder().title("Actions").build();
+    controls_page_box.append(&controls_group);
 
-    let actions_box = Box::builder()
-        .orientation(Orientation::Horizontal)
-        .spacing(12)
-        .halign(gtk::Align::End)
+    let controls_box = Box::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(10)
         .margin_top(6)
         .margin_bottom(6)
         .margin_start(6)
         .margin_end(6)
         .build();
-    actions_group.add(&actions_box);
+    controls_group.add(&controls_box);
+
+    let primary_actions_row = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(10)
+        .build();
+    controls_box.append(&primary_actions_row);
+
+    let secondary_actions_row = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(10)
+        .build();
+    controls_box.append(&secondary_actions_row);
+
+    let sync_now_btn = Button::builder()
+        .label("Sync Now")
+        .css_classes(vec!["suggested-action".to_string()])
+        .hexpand(true)
+        .build();
+    primary_actions_row.append(&sync_now_btn);
+
+    let pause_btn = Button::builder().label("Pause").hexpand(true).build();
+    primary_actions_row.append(&pause_btn);
+
+    let queue_btn = Button::builder()
+        .label("Queue Inspector")
+        .hexpand(true)
+        .build();
+    secondary_actions_row.append(&queue_btn);
+
+    let export_btn = Button::builder()
+        .label("Export Diagnostics")
+        .hexpand(true)
+        .build();
+    secondary_actions_row.append(&export_btn);
+
+    let footer_separator = gtk::Separator::new(Orientation::Horizontal);
+    vbox.append(&footer_separator);
+
+    let footer_box = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(12)
+        .margin_top(10)
+        .margin_bottom(10)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    let footer_spacer = Box::builder().hexpand(true).build();
+    footer_box.append(&footer_spacer);
 
     let close_btn = Button::builder().label("Close").build();
-    actions_box.append(&close_btn);
+    footer_box.append(&close_btn);
 
     let quit_btn = Button::builder()
         .label("Quit")
         .css_classes(vec!["destructive-action".to_string()])
         .build();
-    actions_box.append(&quit_btn);
+    footer_box.append(&quit_btn);
 
     let save_btn = Button::builder()
         .label("Save & Restart")
         .css_classes(vec!["suggested-action".to_string()])
         .build();
-    actions_box.append(&save_btn);
+    footer_box.append(&save_btn);
+    vbox.append(&footer_box);
 
     close_btn.connect_clicked(clone!(
         #[weak]
         window,
         move |_| {
             window.set_visible(false);
+        }
+    ));
+
+    if let Some(qm) = queue_manager.clone() {
+        let qm_for_inspector = qm.clone();
+        queue_btn.connect_clicked(clone!(
+            #[weak]
+            window,
+            move |_| {
+                show_queue_inspector(&window, qm_for_inspector.clone());
+            }
+        ));
+
+        let qm_for_pause = qm.clone();
+        pause_btn.connect_clicked(clone!(
+            #[weak]
+            pause_btn,
+            move |_| {
+                let paused = !qm_for_pause.is_paused();
+                qm_for_pause.set_paused(paused, paused.then(|| "Paused by user".to_string()));
+                pause_btn.set_label(if paused { "Resume" } else { "Pause" });
+            }
+        ));
+    } else {
+        queue_btn.set_sensitive(false);
+        pause_btn.set_sensitive(false);
+    }
+
+    if let Some(sync_now_tx) = sync_now_tx.clone() {
+        sync_now_btn.connect_clicked(move |_| {
+            let _ = sync_now_tx.send(());
+        });
+    } else {
+        sync_now_btn.set_sensitive(false);
+    }
+
+    export_btn.connect_clicked(clone!(
+        #[weak]
+        window,
+        #[strong]
+        shared_state,
+        move |_| {
+            let dialog = FileDialog::builder()
+                .title("Choose Diagnostics Export Folder")
+                .build();
+            let state = shared_state.clone();
+            dialog.select_folder(
+                Some(&window),
+                gtk::gio::Cancellable::NONE,
+                clone!(
+                    #[weak]
+                    window,
+                    move |res| {
+                        if let Ok(folder) = res
+                            && let Some(path) = folder.path()
+                        {
+                            let state_snapshot = state.lock().unwrap().clone();
+                            glib::MainContext::default().spawn_local(clone!(
+                                #[weak]
+                                window,
+                                async move {
+                                    let export_result = tokio::task::spawn_blocking(move || {
+                                        diagnostics::export_bundle(&path, &state_snapshot)
+                                    })
+                                    .await;
+
+                                    let (heading, body) = match export_result {
+                                        Ok(Ok(bundle_dir)) => (
+                                            "Diagnostics Exported",
+                                            format!(
+                                                "Saved diagnostics bundle to {}",
+                                                bundle_dir.display()
+                                            ),
+                                        ),
+                                        Ok(Err(err)) => (
+                                            "Diagnostics Export Failed",
+                                            format!("Could not write diagnostics bundle: {}", err),
+                                        ),
+                                        Err(err) => (
+                                            "Diagnostics Export Failed",
+                                            format!("Diagnostics task could not complete: {}", err),
+                                        ),
+                                    };
+
+                                    let dialog = adw::MessageDialog::builder()
+                                        .transient_for(&window)
+                                        .heading(heading)
+                                        .body(&body)
+                                        .build();
+                                    dialog.add_response("ok", "OK");
+                                    dialog.present();
+                                }
+                            ));
+                        }
+                    }
+                ),
+            );
         }
     ));
 
@@ -524,6 +716,10 @@ pub fn build_settings_window(
         #[weak]
         startup_row,
         #[weak]
+        metered_row,
+        #[weak]
+        battery_row,
+        #[weak]
         save_btn,
         #[strong]
         app_clone,
@@ -539,12 +735,16 @@ pub fn build_settings_window(
             let internal_url = internal_entry.text().to_string();
             let external_url = external_entry.text().to_string();
             let run_on_startup = startup_row.is_active();
+            let pause_on_metered_network = metered_row.is_active();
+            let pause_on_battery_power = battery_row.is_active();
             let mut watch_paths = Vec::new();
             let albums_map: HashMap<String, String> = albums.borrow().iter().cloned().collect();
 
             for row_data in tracked_rows.borrow().iter() {
                 let folder = row_data.path.clone();
                 let selected_idx = row_data.dropdown.selected();
+                let rules = row_data.rules.borrow().clone();
+                let has_rules = rules != FolderRules::default();
 
                 let album_name = if selected_idx == row_data.string_list.n_items() - 1 {
                     row_data.custom_entry.text().to_string()
@@ -554,14 +754,21 @@ pub fn build_settings_window(
                     "Default (Folder Name)".to_string()
                 };
 
-                if album_name.is_empty() || album_name == "Default (Folder Name)" {
+                if (album_name.is_empty() || album_name == "Default (Folder Name)") && !has_rules {
                     watch_paths.push(WatchPathEntry::Simple(folder));
                 } else {
                     let album_id = albums_map.get(&album_name).cloned();
                     watch_paths.push(WatchPathEntry::WithConfig {
                         path: folder,
                         album_id,
-                        album_name: Some(album_name),
+                        album_name: if album_name.is_empty()
+                            || album_name == "Default (Folder Name)"
+                        {
+                            None
+                        } else {
+                            Some(album_name)
+                        },
+                        rules,
                     });
                 }
             }
@@ -618,6 +825,8 @@ pub fn build_settings_window(
                     new_config.data.external_url = external_url;
                     new_config.data.watch_paths = watch_paths;
                     new_config.data.run_on_startup = run_on_startup;
+                    new_config.data.pause_on_metered_network = pause_on_metered_network;
+                    new_config.data.pause_on_battery_power = pause_on_battery_power;
 
                     if !api_key.is_empty() {
                         new_config.set_api_key(&api_key);
@@ -651,6 +860,8 @@ pub fn build_settings_window(
     internal_entry.set_sensitive(config.data.internal_url_enabled);
     external_entry.set_sensitive(config.data.external_url_enabled);
     startup_row.set_active(config.data.run_on_startup);
+    metered_row.set_active(config.data.pause_on_metered_network);
+    battery_row.set_active(config.data.pause_on_battery_power);
 
     if let Some(key) = config.get_api_key() {
         api_key_entry.set_text(&key);
@@ -711,10 +922,21 @@ pub fn build_settings_window(
             status_row,
             #[weak]
             progress_bar,
+            #[weak]
+            pause_btn,
             #[upgrade_or]
             glib::ControlFlow::Break,
             move || {
-                let (status, progress, processed, total, failed, current_file) = {
+                let (
+                    status,
+                    progress,
+                    processed,
+                    total,
+                    failed,
+                    current_file,
+                    paused,
+                    pause_reason,
+                ) = {
                     let s = shared_state.lock().unwrap();
                     (
                         s.status.clone(),
@@ -723,10 +945,22 @@ pub fn build_settings_window(
                         s.total_queued,
                         s.failed_count,
                         s.current_file.clone().unwrap_or_else(|| "...".to_string()),
+                        s.paused,
+                        s.pause_reason.clone(),
                     )
                 }; // lock released here
 
-                if status == "idle" {
+                pause_btn.set_label(if paused { "Resume" } else { "Pause" });
+
+                if status == "paused" || paused {
+                    status_row.set_title("Paused");
+                    status_row.set_subtitle(
+                        pause_reason
+                            .as_deref()
+                            .unwrap_or("Sync has been temporarily paused."),
+                    );
+                    progress_bar.set_fraction((progress as f64) / 100.0);
+                } else if status == "idle" {
                     if failed > 0 {
                         status_row.set_title("Offline / Waiting");
                         status_row.set_subtitle(&format!("{} item(s) pending network", failed));
@@ -798,6 +1032,7 @@ fn add_folder_row(
         .valign(gtk::Align::Center)
         .visible(false)
         .build();
+    let rules = Rc::new(RefCell::new(entry.rules()));
 
     if let Some(name) = entry.album_name()
         && name != "Default (Folder Name)"
@@ -840,10 +1075,30 @@ fn add_folder_row(
         .valign(gtk::Align::Center)
         .css_classes(vec!["destructive-action".to_string()])
         .build();
+    let rules_btn = Button::builder()
+        .label("Rules")
+        .tooltip_text("Edit folder rules")
+        .valign(gtk::Align::Center)
+        .build();
 
     let list_clone = list.clone();
     let tracked_clone = tracked_rows.clone();
     let path_clone = path.clone();
+    let rules_clone = rules.clone();
+    let path_for_rules = path.clone();
+
+    rules_btn.connect_clicked(clone!(
+        #[weak]
+        row,
+        move |_| {
+            if let Some(window) = row
+                .root()
+                .and_then(|root| root.downcast::<adw::ApplicationWindow>().ok())
+            {
+                show_folder_rules_dialog(&window, &path_for_rules, rules_clone.clone());
+            }
+        }
+    ));
 
     remove_btn.connect_clicked(clone!(
         #[weak]
@@ -853,6 +1108,7 @@ fn add_folder_row(
             tracked_clone.borrow_mut().retain(|r| r.path != path_clone);
         }
     ));
+    row.add_suffix(&rules_btn);
     row.add_suffix(&remove_btn);
 
     list.append(&row);
@@ -861,7 +1117,249 @@ fn add_folder_row(
         dropdown,
         string_list,
         custom_entry,
+        rules,
     });
+}
+
+fn show_folder_rules_dialog(
+    parent: &adw::ApplicationWindow,
+    folder_path: &str,
+    rules_state: Rc<RefCell<FolderRules>>,
+) {
+    let dialog = adw::Window::builder()
+        .transient_for(parent)
+        .modal(true)
+        .title("Folder Rules")
+        .default_width(420)
+        .build();
+    let content = Box::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(12)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    dialog.set_content(Some(&content));
+
+    let title = gtk::Label::builder()
+        .label(format!("Rules for {}", display_watch_path(folder_path)))
+        .halign(gtk::Align::Start)
+        .wrap(true)
+        .build();
+    content.append(&title);
+
+    let current = rules_state.borrow().clone();
+
+    let ignore_hidden = adw::SwitchRow::builder()
+        .title("Ignore Hidden Files / Folders")
+        .subtitle("Skip paths that contain hidden components such as .cache or .thumbnails.")
+        .active(current.ignore_hidden)
+        .build();
+    content.append(&ignore_hidden);
+
+    let max_size_entry = Entry::builder()
+        .placeholder_text("Max file size in MB, leave blank for no limit")
+        .text(
+            current
+                .max_file_size_mb
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+        )
+        .build();
+    content.append(&max_size_entry);
+
+    let extensions_entry = Entry::builder()
+        .placeholder_text("Allowed extensions, comma separated, leave blank for default media list")
+        .text(current.allowed_extensions.join(", "))
+        .build();
+    content.append(&extensions_entry);
+
+    let actions = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk::Align::End)
+        .build();
+    let cancel_btn = Button::builder().label("Cancel").build();
+    let save_btn = Button::builder()
+        .label("Save")
+        .css_classes(vec!["suggested-action".to_string()])
+        .build();
+    actions.append(&cancel_btn);
+    actions.append(&save_btn);
+    content.append(&actions);
+
+    cancel_btn.connect_clicked(clone!(
+        #[weak]
+        dialog,
+        move |_| {
+            dialog.close();
+        }
+    ));
+
+    save_btn.connect_clicked(clone!(
+        #[weak]
+        dialog,
+        move |_| {
+            let max_file_size_mb = max_size_entry.text().trim().parse::<u64>().ok();
+            let allowed_extensions = extensions_entry
+                .text()
+                .split(',')
+                .map(|part| part.trim().trim_start_matches('.').to_ascii_lowercase())
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>();
+
+            *rules_state.borrow_mut() = FolderRules {
+                ignore_hidden: ignore_hidden.is_active(),
+                max_file_size_mb,
+                allowed_extensions,
+            };
+            dialog.close();
+        }
+    ));
+
+    dialog.present();
+}
+
+fn show_queue_inspector(parent: &adw::ApplicationWindow, queue_manager: Arc<QueueManager>) {
+    let dialog = adw::Window::builder()
+        .transient_for(parent)
+        .modal(true)
+        .title("Queue Inspector")
+        .default_width(760)
+        .default_height(560)
+        .build();
+    let content = Box::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(12)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    dialog.set_content(Some(&content));
+
+    let actions = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk::Align::End)
+        .build();
+    content.append(&actions);
+
+    let retry_all_btn = Button::builder().label("Retry All Failed").build();
+    let clear_failed_btn = Button::builder().label("Clear Failed Queue").build();
+    actions.append(&retry_all_btn);
+    actions.append(&clear_failed_btn);
+
+    let failed_group = adw::PreferencesGroup::builder()
+        .title("Failed Retry Queue")
+        .build();
+    content.append(&failed_group);
+
+    let failed_tasks = queue_manager.failed_tasks();
+    if failed_tasks.is_empty() {
+        failed_group.add(
+            &adw::ActionRow::builder()
+                .title("No failed items")
+                .subtitle("The retry queue is currently empty.")
+                .build(),
+        );
+    } else {
+        for task in failed_tasks {
+            let row = adw::ActionRow::builder()
+                .title(
+                    Path::new(&task.path)
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or(task.path.as_str()),
+                )
+                .subtitle(&task.path)
+                .build();
+            let retry_btn = Button::builder().label("Retry").build();
+            let task_path = task.path.clone();
+            let qm = queue_manager.clone();
+            retry_btn.connect_clicked(move |btn| {
+                btn.set_sensitive(false);
+                let qm = qm.clone();
+                let task_path = task_path.clone();
+                glib::MainContext::default().spawn_local(async move {
+                    let _ = qm.retry_failed_path(&task_path).await;
+                });
+            });
+            row.add_suffix(&retry_btn);
+            failed_group.add(&row);
+        }
+    }
+
+    let events_group = adw::PreferencesGroup::builder()
+        .title("Recent Queue Activity")
+        .build();
+    content.append(&events_group);
+
+    let events_scroll = ScrolledWindow::builder()
+        .min_content_height(280)
+        .vexpand(true)
+        .build();
+    let events_list = ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .css_classes(vec!["boxed-list".to_string()])
+        .build();
+    events_scroll.set_child(Some(&events_list));
+    events_group.add(&events_scroll);
+
+    for event in queue_manager.recent_events() {
+        let row = adw::ActionRow::builder()
+            .title(
+                Path::new(&event.path)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or(event.path.as_str()),
+            )
+            .subtitle(format!(
+                "{} | attempts={}{}",
+                event.status,
+                event.attempts,
+                event
+                    .detail
+                    .as_ref()
+                    .map(|detail| format!(" | {}", detail))
+                    .unwrap_or_default()
+            ))
+            .build();
+        row.add_prefix(
+            &gtk::Label::builder()
+                .label(display_watch_path(&event.path))
+                .wrap(true)
+                .halign(gtk::Align::Start)
+                .build(),
+        );
+        events_list.append(&row);
+    }
+
+    let qm_retry_all = queue_manager.clone();
+    retry_all_btn.connect_clicked(move |btn| {
+        btn.set_sensitive(false);
+        let qm = qm_retry_all.clone();
+        glib::MainContext::default().spawn_local(async move {
+            let _ = qm.retry_all_failed().await;
+        });
+    });
+
+    let qm_clear = queue_manager.clone();
+    clear_failed_btn.connect_clicked(move |_| {
+        let _ = qm_clear.clear_failed();
+    });
+
+    let close_btn = Button::builder().label("Close").build();
+    close_btn.connect_clicked(clone!(
+        #[weak]
+        dialog,
+        move |_| {
+            dialog.close();
+        }
+    ));
+    content.append(&close_btn);
+    dialog.present();
 }
 
 fn show_about_dialog(parent: &adw::ApplicationWindow) {
