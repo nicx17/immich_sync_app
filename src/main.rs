@@ -9,10 +9,12 @@ use tokio::sync::mpsc;
 mod api_client;
 mod autostart;
 mod config;
+mod diagnostics;
 mod monitor;
 mod notifications;
 mod queue_manager;
 mod restart;
+mod runtime_env;
 mod settings_window;
 mod startup_scan;
 mod state_manager;
@@ -23,7 +25,7 @@ mod watch_path_display;
 use api_client::ImmichApiClient;
 use config::Config;
 use monitor::Monitor;
-use queue_manager::{FileTask, QueueManager};
+use queue_manager::{EnvironmentPolicy, FileTask, QueueManager};
 use restart::{launch_replacement, take_restart_request};
 use settings_window::build_settings_window;
 use startup_scan::queue_unsynced_files;
@@ -37,6 +39,9 @@ use flexi_logger::{FileSpec, Logger, WriteMode, colored_detailed_format, detaile
 static QM_HANDLE: std::sync::OnceLock<Arc<QueueManager>> = std::sync::OnceLock::new();
 /// Shared API client reused by the settings window and startup scan.
 static API_CLIENT_HANDLE: std::sync::OnceLock<Arc<ImmichApiClient>> = std::sync::OnceLock::new();
+/// Requests an immediate startup-style catch-up scan from UI or tray controls.
+static MANUAL_SYNC_TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<()>> =
+    std::sync::OnceLock::new();
 
 #[tokio::main]
 async fn main() {
@@ -124,12 +129,15 @@ async fn main() {
             3,
             shared_state_startup.clone(),
             sync_index.clone(),
+            EnvironmentPolicy {
+                pause_on_metered_network: config.data.pause_on_metered_network,
+                pause_on_battery_power: config.data.pause_on_battery_power,
+            },
         ));
 
         // Start the live filesystem watcher immediately.
         let (tx, mut rx) = mpsc::channel(32);
-        let watch_paths = config.watch_path_strings();
-        let monitor = Monitor::new(watch_paths);
+        let monitor = Monitor::new(config.data.watch_paths.clone());
         monitor.start(tx);
         log::info!("File monitor started");
 
@@ -148,6 +156,7 @@ async fn main() {
                         path: base,
                         album_id: aid,
                         album_name: aname,
+                        ..
                     } = entry
                         && path.starts_with(base.as_str())
                     {
@@ -174,7 +183,7 @@ async fn main() {
         let startup_sync_index = sync_index.clone();
 
         // Retain the queue manager so the shutdown path can flush retries to disk.
-        let _ = QM_HANDLE.set(qm);
+        let _ = QM_HANDLE.set(qm.clone());
 
         // The startup scan backfills anything that arrived while Mimick was not running.
         tokio::spawn(async move {
@@ -183,6 +192,27 @@ async fn main() {
                 .cloned()
                 .expect("API client should be initialized before startup scan");
             queue_unsynced_files(startup_paths, startup_qm, startup_sync_index, startup_api).await;
+        });
+
+        let (manual_sync_tx, mut manual_sync_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+        let _ = MANUAL_SYNC_TX.set(manual_sync_tx);
+        let manual_qm = qm.clone();
+        let manual_sync_index = sync_index.clone();
+        tokio::spawn(async move {
+            while manual_sync_rx.recv().await.is_some() {
+                let config = Config::new();
+                let api = API_CLIENT_HANDLE
+                    .get()
+                    .cloned()
+                    .expect("API client should be initialized before manual sync");
+                queue_unsynced_files(
+                    config.data.watch_paths.clone(),
+                    manual_qm.clone(),
+                    manual_sync_index.clone(),
+                    api,
+                )
+                .await;
+            }
         });
 
         let app_clone2 = app.clone();
@@ -195,6 +225,10 @@ async fn main() {
         let settings_flag_writer = settings_flag.clone(); // moves into tokio::spawn (Send ✓)
         let quit_flag = Arc::new(std::sync::Mutex::new(false));
         let quit_flag_writer = quit_flag.clone(); // moves into tokio::spawn (Send ✓)
+        let pause_flag = Arc::new(std::sync::Mutex::new(false));
+        let pause_flag_writer = pause_flag.clone();
+        let sync_now_flag = Arc::new(std::sync::Mutex::new(false));
+        let sync_now_flag_writer = sync_now_flag.clone();
 
         // GTK-side: poll the flag every 250ms on the main thread.
         // app_clone2 / shared_state2 are !Send — they stay here, never enter spawns.
@@ -210,7 +244,15 @@ async fn main() {
             };
             if settings_triggered {
                 let client = API_CLIENT_HANDLE.get().cloned();
-                open_settings_if_needed(&app_clone2, shared_state2.clone(), client);
+                let qm = QM_HANDLE.get().cloned();
+                let sync_now_tx = MANUAL_SYNC_TX.get().cloned();
+                open_settings_if_needed(
+                    &app_clone2,
+                    shared_state2.clone(),
+                    client,
+                    qm,
+                    sync_now_tx,
+                );
             }
 
             let quit_triggered = {
@@ -227,6 +269,38 @@ async fn main() {
                 return glib::ControlFlow::Break;
             }
 
+            let pause_triggered = {
+                let mut f = pause_flag.lock().unwrap();
+                if *f {
+                    *f = false;
+                    true
+                } else {
+                    false
+                }
+            };
+            if pause_triggered && let Some(qm) = QM_HANDLE.get() {
+                let paused = !qm.is_paused();
+                let reason = if paused {
+                    Some("Paused by user".to_string())
+                } else {
+                    None
+                };
+                qm.set_paused(paused, reason);
+            }
+
+            let sync_now_triggered = {
+                let mut f = sync_now_flag.lock().unwrap();
+                if *f {
+                    *f = false;
+                    true
+                } else {
+                    false
+                }
+            };
+            if sync_now_triggered && let Some(tx) = MANUAL_SYNC_TX.get() {
+                let _ = tx.send(());
+            }
+
             glib::ControlFlow::Continue
         });
 
@@ -235,26 +309,44 @@ async fn main() {
         tokio::spawn(async move {
             log::info!("Starting system tray");
             match build_tray().await {
-                Ok((_handle, mut settings_rx, mut quit_rx)) => loop {
-                    tokio::select! {
-                        res = settings_rx.changed() => {
-                            if res.is_err() {
-                                break;
+                Ok((_handle, mut settings_rx, mut quit_rx, mut pause_rx, mut sync_now_rx)) => {
+                    loop {
+                        tokio::select! {
+                            res = settings_rx.changed() => {
+                                if res.is_err() {
+                                    break;
+                                }
+                                if *settings_rx.borrow() {
+                                    *settings_flag_writer.lock().unwrap() = true;
+                                }
                             }
-                            if *settings_rx.borrow() {
-                                *settings_flag_writer.lock().unwrap() = true;
+                            res = quit_rx.changed() => {
+                                if res.is_err() {
+                                    break;
+                                }
+                                if *quit_rx.borrow() {
+                                    *quit_flag_writer.lock().unwrap() = true;
+                                }
                             }
-                        }
-                        res = quit_rx.changed() => {
-                            if res.is_err() {
-                                break;
+                            res = pause_rx.changed() => {
+                                if res.is_err() {
+                                    break;
+                                }
+                                if *pause_rx.borrow() {
+                                    *pause_flag_writer.lock().unwrap() = true;
+                                }
                             }
-                            if *quit_rx.borrow() {
-                                *quit_flag_writer.lock().unwrap() = true;
+                            res = sync_now_rx.changed() => {
+                                if res.is_err() {
+                                    break;
+                                }
+                                if *sync_now_rx.borrow() {
+                                    *sync_now_flag_writer.lock().unwrap() = true;
+                                }
                             }
                         }
                     }
-                },
+                }
                 Err(e) => log::warn!("System tray failed to start: {:?}", e),
             }
         });
@@ -281,7 +373,9 @@ async fn main() {
 
         if open_settings {
             let client = API_CLIENT_HANDLE.get().cloned();
-            open_settings_if_needed(app, shared_state_cmdline.clone(), client);
+            let qm = QM_HANDLE.get().cloned();
+            let sync_now_tx = MANUAL_SYNC_TX.get().cloned();
+            open_settings_if_needed(app, shared_state_cmdline.clone(), client, qm, sync_now_tx);
         }
 
         app.activate();
@@ -317,11 +411,13 @@ fn open_settings_if_needed(
     app: &adw::Application,
     shared_state: Arc<Mutex<AppState>>,
     api_client: Option<Arc<ImmichApiClient>>,
+    queue_manager: Option<Arc<QueueManager>>,
+    sync_now_tx: Option<tokio::sync::mpsc::UnboundedSender<()>>,
 ) {
     if let Some(win) = app.windows().first() {
         win.present();
     } else {
         log::debug!("Opening settings window");
-        build_settings_window(app, shared_state, api_client);
+        build_settings_window(app, shared_state, api_client, queue_manager, sync_now_tx);
     }
 }

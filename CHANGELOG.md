@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- A queue inspector in the settings window with recent queue activity, failed-item visibility, per-item retry actions, `Retry All Failed`, and `Clear Failed Queue`.
+- Manual sync controls in both the settings window and tray menu with `Pause / Resume` and `Sync Now` actions.
+- Per-folder sync rules for ignoring hidden files, limiting maximum file size, and restricting allowed file extensions.
+- A diagnostics export bundle that writes a support-friendly snapshot containing a summary, config copy, status cache, retry queue, sync index, and log file without including the API key.
+- Best-effort environment-aware pausing for metered-network and battery-power operation.
+
+### Changed
+- Startup scans and live monitoring now apply the same per-folder rule checks and temporary-file filtering before queueing uploads.
+- Shared runtime state now records recent queue events, pause reasons, the last completed file, and diagnostics export counts for better visibility and supportability.
+- The settings window now separates `Setup` and `Controls`, uses a slimmer layout, and keeps `Close`, `Quit`, and `Save & Restart` pinned in a footer.
+- Documentation now covers the new sync controls, diagnostics workflow, per-folder rules, and current test/packaging flow.
+- CI and Flatpak publishing documentation now match the current `cargo fmt`, `cargo clippy --locked`, `cargo test --locked`, and containerized Flatpak build setup.
+
 ## [6.0.0] - 2026-03-15
 
 ### Added

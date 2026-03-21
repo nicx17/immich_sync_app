@@ -6,15 +6,25 @@ This document covers all configurable aspects of `mimick`.
 
 The most convenient way to configure the application is via the built-in Settings Window.
 
+The window is divided into two pages:
+
+- **Setup** for configuration fields and watch-folder management
+- **Controls** for operational actions like sync, pause, queue inspection, and diagnostics export
+
 1. Right-click the **System Tray Icon**.
 2. Select **Settings**.
 3. Modify your Internal/External URLs and API key.
 4. Add or remove watch directories with the built-in folder picker.
-5. Toggle **Run on Startup** if you want Mimick to launch automatically after login.
-6. Click **Save & Restart**.
-7. Use **Close** to hide the window or **Quit** to exit the app entirely.
+5. Configure per-folder rules if you want to ignore hidden paths, cap upload size, or restrict extensions.
+6. Toggle **Run on Startup**, **Pause on Metered Network**, or **Pause on Battery Power** in the **Behavior** section.
+7. Use **Queue Inspector** to inspect failures and retry work without restarting.
+8. Use **Sync Now**, **Pause**, and **Export Diagnostics** for manual control and troubleshooting.
+9. Click **Save & Restart**.
+10. Use **Close** to hide the window or **Quit** to exit the app entirely.
 
 `Save & Restart` now relaunches Mimick after writing the updated configuration so new folder watches and connectivity settings take effect immediately.
+
+The footer keeps **Close**, **Quit**, and **Save & Restart** visible on both pages even when the content scrolls.
 
 The settings window close button behaves like **Close** and keeps the background daemon running.
 
@@ -34,13 +44,23 @@ The configuration is stored in a JSON file located at:
 {
     "watch_paths": [
         "/home/user/Pictures",
-        "/home/user/DCIM" 
+        {
+            "path": "/home/user/DCIM",
+            "album_name": "Phone Uploads",
+            "rules": {
+                "ignore_hidden": true,
+                "max_file_size_mb": 500,
+                "allowed_extensions": ["jpg", "png", "mp4"]
+            }
+        }
     ],
     "internal_url": "http://192.168.1.10:2283",
     "external_url": "https://immich.example.com",
     "internal_url_enabled": true,
     "external_url_enabled": true,
-    "run_on_startup": false
+    "run_on_startup": false,
+    "pause_on_metered_network": false,
+    "pause_on_battery_power": false
 }
 ```
 
@@ -48,12 +68,27 @@ The configuration is stored in a JSON file located at:
 
 | Key | Description | Example |
 | :--- | :--- | :--- |
-| `watch_paths` | A list of selected directories to monitor recursively. In Flatpak builds, these should be added from the settings window so portal access is granted; they may be stored as portal-backed paths under `/run/user/.../doc/...`. | `["/home/user/Screenshots"]` |
+| `watch_paths` | A list of selected directories to monitor recursively. Entries may be plain strings for older configs or objects containing `path`, optional album targeting fields, and `rules`. In Flatpak builds, add them from the settings window so portal access is granted; they may be stored as portal-backed paths under `/run/user/.../doc/...`. | `["/home/user/Screenshots"]` |
 | `internal_url` | The LAN IP/Hostname of your Immich instance. Used when local connectivity is detected. | `http://192.168.1.10:2283` |
 | `external_url` | The WAN/Public URL (reverse proxy). Used when away from home. | `https://photos.mydomain.com` |
 | `internal_url_enabled` | Toggle allowing the Daemon to attempt LAN connectivity. | `true` |
 | `external_url_enabled` | Toggle allowing the Daemon to attempt WAN connectivity. | `true` |
 | `run_on_startup` | Whether Mimick should register itself for automatic login startup. | `false` |
+| `pause_on_metered_network` | Whether uploads should pause while the active network connection appears metered. | `false` |
+| `pause_on_battery_power` | Whether uploads should pause while the system appears to be running on battery. | `false` |
+
+### `watch_paths` Object Form
+
+When a watch path is stored as an object, these fields can appear:
+
+| Key | Description |
+| :--- | :--- |
+| `path` | Absolute or portal-backed directory path being watched. |
+| `album_id` | Optional cached Immich album ID. |
+| `album_name` | Optional album name or user-entered target label. |
+| `rules.ignore_hidden` | Skip any file inside a hidden path component such as `.cache` or `.stfolder`. |
+| `rules.max_file_size_mb` | Optional maximum file size in megabytes. Files larger than this are skipped before queueing. |
+| `rules.allowed_extensions` | Optional allowlist of extensions. Values are normalized case-insensitively and leading dots are ignored. |
 
 ## Local State and Cache Files
 
@@ -62,6 +97,9 @@ In addition to `config.json`, Mimick stores runtime state in the user cache dire
 - `~/.cache/mimick/mimick.log`: rotating application logs with timestamps, levels, and source modules.
 - `~/.cache/mimick/retries.json`: queued retry items that could not be uploaded before shutdown.
 - `~/.cache/mimick/synced_index.json`: the local sync index used by startup rescans to skip already-synced unchanged files and detect album-target changes.
+- `~/.cache/mimick/status.json`: last saved application status written during graceful shutdown.
+
+Diagnostics exports copy these files into a timestamped `mimick-diagnostics-*` directory together with a generated `summary.txt` support report when the source files exist.
 
 ## API Key Security
 

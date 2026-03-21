@@ -11,6 +11,10 @@ pub struct MimickTray {
     pub settings_tx: watch::Sender<bool>,
     /// Sender used to request a graceful application quit from the GTK main loop.
     pub quit_tx: watch::Sender<bool>,
+    /// Sender used to toggle paused state from the tray.
+    pub pause_tx: watch::Sender<bool>,
+    /// Sender used to request an immediate catch-up scan.
+    pub sync_now_tx: watch::Sender<bool>,
 }
 
 impl ksni::Tray for MimickTray {
@@ -38,6 +42,22 @@ impl ksni::Tray for MimickTray {
                 ..Default::default()
             }
             .into(),
+            StandardItem {
+                label: "Pause / Resume".into(),
+                activate: Box::new(|tray: &mut Self| {
+                    let _ = tray.pause_tx.send(true);
+                }),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
+                label: "Sync Now".into(),
+                activate: Box::new(|tray: &mut Self| {
+                    let _ = tray.sync_now_tx.send(true);
+                }),
+                ..Default::default()
+            }
+            .into(),
             MenuItem::Separator,
             StandardItem {
                 label: "Quit".into(),
@@ -57,14 +77,20 @@ pub async fn build_tray() -> Result<
         ksni::Handle<MimickTray>,
         watch::Receiver<bool>,
         watch::Receiver<bool>,
+        watch::Receiver<bool>,
+        watch::Receiver<bool>,
     ),
     ksni::Error,
 > {
     let (settings_tx, settings_rx) = watch::channel(false);
     let (quit_tx, quit_rx) = watch::channel(false);
+    let (pause_tx, pause_rx) = watch::channel(false);
+    let (sync_now_tx, sync_now_rx) = watch::channel(false);
     let tray = MimickTray {
         settings_tx,
         quit_tx,
+        pause_tx,
+        sync_now_tx,
     };
     let handle = if ashpd::is_sandboxed() {
         // Flatpak sessions already broker the item through the watcher, so we avoid owning
@@ -73,5 +99,5 @@ pub async fn build_tray() -> Result<
     } else {
         tray.spawn().await?
     };
-    Ok((handle, settings_rx, quit_rx))
+    Ok((handle, settings_rx, quit_rx, pause_rx, sync_now_rx))
 }

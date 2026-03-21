@@ -2,7 +2,7 @@
 
 use crate::api_client::ImmichApiClient;
 use crate::config::WatchPathEntry;
-use crate::monitor::{compute_sha1_chunked, is_supported_media_path};
+use crate::monitor::{compute_sha1_chunked, is_supported_media_path, is_temporary_file};
 use crate::queue_manager::{FileTask, QueueManager};
 use crate::sync_index::{SyncDecision, SyncIndex, SyncTarget};
 use std::collections::{HashMap, HashSet};
@@ -67,6 +67,9 @@ pub async fn queue_unsynced_files(
                         }
 
                         if !is_supported_media_path(&path) {
+                            continue;
+                        }
+                        if is_temporary_file(&path) || !entry.rules().matches(&path) {
                             continue;
                         }
 

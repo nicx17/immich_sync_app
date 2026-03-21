@@ -20,6 +20,14 @@ To run the entire test suite simply execute:
 cargo test
 ```
 
+To mirror the main CI quality gate locally:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+```
+
 ### Checking Specific Modules
 You can target specific modules or functions:
 ```bash
@@ -38,19 +46,22 @@ Tests in Rust are written inline within identical files to the logic they test, 
 
 | Source File | Test Location | Description |
 | :--- | :--- | :--- |
-| `src/monitor.rs` | `mod tests` | Tests chunked SHA-1 generation (`compute_sha1_chunked`) for reliable and memory-safe deduplication. |
-| `src/config.rs` | `mod tests` | Tests JSON serde serialization/deserialization and default path resolutions. |
-| `src/queue_manager.rs` | N/A | Tests pending refactor for Tokio channel boundaries. |
+| `src/config.rs` | `mod tests` | Tests JSON serde behavior plus folder-rule matching, hidden-path filtering, and extension normalization. |
+| `src/monitor.rs` | `mod tests` | Tests monitor-side filtering such as temporary-file detection before queueing. |
+| `src/runtime_env.rs` | `mod tests` | Tests metered-network parsing and battery-power decision logic without depending on the host system. |
+| `src/diagnostics.rs` | `mod tests` | Tests support-summary generation and diagnostics bundle export contents. |
+| `src/state_manager.rs` | `mod tests` | Tests queue-event updates and event-history truncation rules. |
 
 ---
 
 ## 4. Current Coverage Gaps
 
-While core data structures and parsers are tested, the following areas currently have **limited coverage** and rely heavily on manual UI testing during development:
+While core data structures and support logic are tested, the following areas still have **limited coverage** and rely heavily on manual UI or integration testing during development:
 
-1.  **`src/settings_window.rs`**: GTK4 GUI views. Automated testing for GTK widgets requires specialized runners (like `xvfb`) and GTK main-loop integrations.
-2.  **`src/api_client.rs`**: Network endpoints. Testing requires mocking `reqwest` clients or firing against a live Immich sandbox instance.
-3.  **`src/main.rs` / `src/tray_icon.rs`**: Daemon lifecycle and D-Bus trait integrations. 
+1. **`src/settings_window.rs`**: GTK4/libadwaita UI interactions such as dialogs, queue inspector rendering, and per-folder rules editing.
+2. **`src/api_client.rs`**: Network endpoints still need deeper mocked or sandboxed Immich coverage.
+3. **`src/main.rs` / `src/tray_icon.rs`**: Full daemon lifecycle, tray signaling, and application-instance behavior remain mostly manual/integration tested.
+4. **`src/queue_manager.rs`**: Core behavior is exercised indirectly, but more direct async worker tests would still be valuable.
 
 ## 5. Writing New Tests
 
@@ -60,3 +71,4 @@ When adding a new feature, always consider creating a corresponding inline `#[te
 *   **Never hit the real network:** Use a mock HTTP responder if testing API consumers.
 *   **Never modify the real disk:** Use the `tempfile` crate (already in `[dev-dependencies]`) to create temporary, auto-cleaning directories for file I/O tests.
 *   **Keep them fast:** Do not inject artificial `tokio::time::sleep()` delays unless absolutely necessary for channel sync tests.
+*   **Prefer pure helpers for environment-sensitive logic:** Parse command output or power-supply state via helper functions so the behavior can be tested deterministically.

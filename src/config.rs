@@ -2,7 +2,66 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
+
+/// Per-folder filters and guardrails applied before a file is queued for upload.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct FolderRules {
+    #[serde(default)]
+    pub ignore_hidden: bool,
+    #[serde(default)]
+    pub max_file_size_mb: Option<u64>,
+    #[serde(default)]
+    pub allowed_extensions: Vec<String>,
+}
+
+impl FolderRules {
+    pub fn normalized_extensions(&self) -> Vec<String> {
+        self.allowed_extensions
+            .iter()
+            .map(|ext| ext.trim().trim_start_matches('.').to_ascii_lowercase())
+            .filter(|ext| !ext.is_empty())
+            .collect()
+    }
+
+    pub fn matches(&self, path: &Path) -> bool {
+        if self.ignore_hidden
+            && path.components().any(|component| {
+                component
+                    .as_os_str()
+                    .to_str()
+                    .map(|part| part.starts_with('.') && part.len() > 1)
+                    .unwrap_or(false)
+            })
+        {
+            return false;
+        }
+
+        if let Some(limit_mb) = self.max_file_size_mb
+            && let Ok(metadata) = std::fs::metadata(path)
+            && metadata.len() > limit_mb.saturating_mul(1024 * 1024)
+        {
+            return false;
+        }
+
+        let normalized = self.normalized_extensions();
+        if !normalized.is_empty() {
+            let ext = path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.to_ascii_lowercase());
+            if ext
+                .as_deref()
+                .is_none_or(|ext| !normalized.iter().any(|allowed| allowed == ext))
+            {
+                return false;
+            }
+        }
+
+        true
+    }
+}
 
 /// A watch path entry stored in config.
 ///
@@ -18,6 +77,8 @@ pub enum WatchPathEntry {
         album_id: Option<String>,
         #[serde(default)]
         album_name: Option<String>,
+        #[serde(default)]
+        rules: FolderRules,
     },
 }
 
@@ -41,6 +102,13 @@ impl WatchPathEntry {
             WatchPathEntry::WithConfig { album_name, .. } => album_name.as_deref(),
         }
     }
+
+    pub fn rules(&self) -> FolderRules {
+        match self {
+            WatchPathEntry::Simple(_) => FolderRules::default(),
+            WatchPathEntry::WithConfig { rules, .. } => rules.clone(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -61,6 +129,10 @@ pub struct ConfigData {
     pub album_sync: bool,
     #[serde(default)]
     pub delete_after_sync: bool,
+    #[serde(default)]
+    pub pause_on_metered_network: bool,
+    #[serde(default)]
+    pub pause_on_battery_power: bool,
 }
 
 impl Default for ConfigData {
@@ -74,6 +146,8 @@ impl Default for ConfigData {
             run_on_startup: false,
             album_sync: false,
             delete_after_sync: false,
+            pause_on_metered_network: false,
+            pause_on_battery_power: false,
         }
     }
 }
@@ -250,6 +324,7 @@ mod tests {
             path: "/b".into(),
             album_id: None,
             album_name: None,
+            rules: FolderRules::default(),
         });
 
         let config = Config {
@@ -259,5 +334,54 @@ mod tests {
 
         let strings = config.watch_path_strings();
         assert_eq!(strings, vec!["/a".to_string(), "/b".to_string()]);
+    }
+
+    #[test]
+    fn test_folder_rules_match_extension_and_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.jpg");
+        fs::write(&path, vec![0u8; 1024]).unwrap();
+
+        let rules = FolderRules {
+            ignore_hidden: false,
+            max_file_size_mb: Some(1),
+            allowed_extensions: vec!["jpg".into(), "png".into()],
+        };
+
+        assert!(rules.matches(&path));
+
+        let restricted = FolderRules {
+            ignore_hidden: false,
+            max_file_size_mb: Some(0),
+            allowed_extensions: vec!["png".into()],
+        };
+
+        assert!(!restricted.matches(&path));
+    }
+
+    #[test]
+    fn test_folder_rules_ignore_hidden_path_components() {
+        let dir = tempfile::tempdir().unwrap();
+        let hidden_dir = dir.path().join(".hidden");
+        fs::create_dir_all(&hidden_dir).unwrap();
+        let hidden_file = hidden_dir.join("photo.jpg");
+        fs::write(&hidden_file, vec![0u8; 16]).unwrap();
+
+        let rules = FolderRules {
+            ignore_hidden: true,
+            ..FolderRules::default()
+        };
+
+        assert!(!rules.matches(&hidden_file));
+    }
+
+    #[test]
+    fn test_normalized_extensions_trims_and_lowercases() {
+        let rules = FolderRules {
+            allowed_extensions: vec![" JPG ".into(), ".PNG".into(), "".into()],
+            ..FolderRules::default()
+        };
+
+        assert_eq!(rules.normalized_extensions(), vec!["jpg", "png"]);
     }
 }
