@@ -61,15 +61,15 @@ tail -f ~/.cache/mimick/mimick.log
 Each log line includes a timestamp, level, and source module.
 
 ### Export a Diagnostics Bundle
-If you need to file a bug or inspect the app state in one place, use **Export Diagnostics** from the settings window. The export creates a `mimick-diagnostics-*` folder containing:
+If you need to file a bug or inspect the app state in one place, use **Export Diagnostics** from the settings window. The export creates a redacted `mimick-diagnostics-*` folder containing:
 - `summary.txt`
-- `config.json`
-- `status.json`
-- `retries.json`
-- `synced_index.json`
-- `mimick.log`
+- `config.redacted.json`
+- `status.redacted.json`
+- `retries.redacted.json`
+- `synced_index.redacted.json`
+- `privacy-note.txt`
 
-The generated summary omits the API key on purpose.
+The bundle intentionally omits API keys, raw logs, full local paths, and raw server URLs.
 
 ### Manual Debugging
 Run the application directly in a terminal to see `stdout` logs:

@@ -1,0 +1,47 @@
+name: Docs Link Check
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "README.md"
+      - "docs/**"
+      - "wiki/**"
+      - ".github/workflows/docs-links.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "README.md"
+      - "docs/**"
+      - "wiki/**"
+      - ".github/workflows/docs-links.yml"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NODE_OPTIONS: "--no-deprecation"
+
+jobs:
+  links:
+    name: Check docs links
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check markdown links
+        uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2
+        with:
+          args: >-
+            --no-progress
+            --verbose
+            --exclude-mail
+            --exclude 'https://img.shields.io/.*'
+            README.md docs wiki
+          fail: true
+          jobSummary: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -22,6 +22,7 @@ Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files
 [![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](docs/USER_GUIDE.md)
 [![Configuration](https://img.shields.io/badge/Configuration-Guide-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](docs/CONFIGURATION.md)
 [![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Help-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
+[![Repo Automation](https://img.shields.io/badge/Repo-Automation-444444?style=for-the-badge&labelColor=444444)](docs/REPOSITORY_AUTOMATION.md)
 [![Project Wiki](https://img.shields.io/badge/Project-Wiki-444444?style=for-the-badge&labelColor=444444)](https://github.com/nicx17/mimick/wiki)
 
 > [!NOTE]
@@ -247,6 +248,7 @@ flatpak run io.github.nicx17.mimick
 [![Development](https://img.shields.io/badge/Development-Guide-B8860B?style=for-the-badge&labelColor=B8860B)](docs/DEVELOPMENT.md)
 [![Testing](https://img.shields.io/badge/Testing-Guide-0E7490?style=for-the-badge&labelColor=0E7490)](docs/TESTING.md)
 [![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Guide-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
+[![Repo Automation](https://img.shields.io/badge/Repo-Automation-444444?style=for-the-badge&labelColor=444444)](docs/REPOSITORY_AUTOMATION.md)
 [![Security](https://img.shields.io/badge/Security-Policy-5B8C5A?style=for-the-badge&labelColor=5B8C5A)](SECURITY.md)
 
 ## Trust and Verification

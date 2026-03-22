@@ -1,19 +1,20 @@
-[Home](Home)
+[Home](https://github.com/nicx17/mimick/wiki)
 
 ### Using Mimick
 
-- [Installation](Installation)
-- [Configuration and First Run](Configuration-and-First-Run)
-- [Sync Behavior](Sync-Behavior)
-- [Flatpak and Permissions](Flatpak-and-Permissions)
-- [Troubleshooting](Troubleshooting)
+- [Installation](https://github.com/nicx17/mimick/wiki/Installation)
+- [Configuration and First Run](https://github.com/nicx17/mimick/wiki/Configuration-and-First-Run)
+- [Sync Behavior](https://github.com/nicx17/mimick/wiki/Sync-Behavior)
+- [Flatpak and Permissions](https://github.com/nicx17/mimick/wiki/Flatpak-and-Permissions)
+- [Troubleshooting](https://github.com/nicx17/mimick/wiki/Troubleshooting)
 
 ### Building Mimick
 
-- [Architecture](Architecture)
-- [Development](Development)
-- [Testing](Testing)
+- [Architecture](https://github.com/nicx17/mimick/wiki/Architecture)
+- [Development](https://github.com/nicx17/mimick/wiki/Development)
+- [Testing](https://github.com/nicx17/mimick/wiki/Testing)
 
 ### Maintaining Mimick
 
-- [Release Operations](Release-Operations)
+- [Repository Automation](https://github.com/nicx17/mimick/wiki/Repository-Automation)
+- [Release Operations](https://github.com/nicx17/mimick/wiki/Release-Operations)

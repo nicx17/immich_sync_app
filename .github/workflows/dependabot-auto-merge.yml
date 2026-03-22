@@ -1,0 +1,31 @@
+name: Dependabot Auto Merge
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NODE_OPTIONS: "--no-deprecation"
+
+jobs:
+  enable-auto-merge:
+    name: Enable auto-merge for approved dependency PRs
+    if: |
+      github.event.review.state == 'approved' &&
+      github.event.review.user.login == 'nicx17' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      !github.event.pull_request.draft &&
+      contains(github.event.pull_request.labels.*.name, 'dependencies')
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Enable native auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"

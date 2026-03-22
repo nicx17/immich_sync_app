@@ -87,7 +87,7 @@ Recent operational features are spread across a few focused modules:
 - `queue_manager.rs`: upload workers, retry controls, pause/resume state, queue event recording
 - `state_manager.rs`: persisted app state plus recent queue-event history
 - `runtime_env.rs`: best-effort metered-network and battery-power detection
-- `diagnostics.rs`: support bundle export that omits secrets
+- `diagnostics.rs`: support bundle export that redacts secrets, raw logs, URLs, and full local paths
 - `settings_window.rs`: queue inspector, diagnostics export, per-folder rule editing, and manual sync controls
 
 ## Packaging
@@ -108,6 +108,8 @@ GitHub Actions currently mirrors the same native quality gate with:
 - `cargo test --locked`
 
 The published Flatpak repository is built in a containerized Flatpak workflow rather than by installing Flatpak tooling directly on the host runner.
+
+Repository automation details such as Dependabot, CODEOWNERS, Release Drafter, docs link checks, and the Flatpak vendor guard are documented in [REPOSITORY_AUTOMATION.md](/home/nick/Documents/Github/immich_sync_app/docs/REPOSITORY_AUTOMATION.md).
 
 ## Contributing Workflow
 

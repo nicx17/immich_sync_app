@@ -1,0 +1,57 @@
+name: Cargo Vendor Guard
+
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NODE_OPTIONS: "--no-deprecation"
+
+jobs:
+  verify-vendoring:
+    name: Verify cargo-sources.json
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Ensure Cargo lock changes update vendored sources
+        shell: bash
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED_FILES="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- Cargo.toml Cargo.lock cargo-sources.json)"
+
+          if [[ -z "$CHANGED_FILES" ]]; then
+            echo "No Cargo or vendored-source changes detected."
+            exit 0
+          fi
+
+          if grep -qx 'cargo-sources.json' <<< "$CHANGED_FILES"; then
+            echo "cargo-sources.json changed. Guard satisfied."
+            exit 0
+          fi
+
+          if ! grep -qx 'Cargo.lock' <<< "$CHANGED_FILES"; then
+            echo "Cargo.lock did not change. No vendored-source refresh required."
+            exit 0
+          fi
+
+          LOCK_NUMSTAT="$(git diff --numstat "$BASE_SHA" "$HEAD_SHA" -- Cargo.lock)"
+          ADDED_LINES="$(awk '{print $1}' <<< "$LOCK_NUMSTAT")"
+          DELETED_LINES="$(awk '{print $2}' <<< "$LOCK_NUMSTAT")"
+
+          if [[ "$ADDED_LINES" == "1" && "$DELETED_LINES" == "1" ]] && \
+             git diff -U1 "$BASE_SHA" "$HEAD_SHA" -- Cargo.lock | grep -q 'name = "mimick"'; then
+            echo "Detected a root package version-only Cargo.lock change. Vendored sources are unchanged."
+            exit 0
+          fi
+
+          echo "::error file=cargo-sources.json::Cargo.lock changed without cargo-sources.json. Run: uv run flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json"
+          exit 1

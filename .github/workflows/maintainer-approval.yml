@@ -1,0 +1,63 @@
+name: Maintainer Approval Gate
+
+on:
+  pull_request_target:
+    branches: ["main"]
+    types: [opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NODE_OPTIONS: "--no-deprecation"
+  REQUIRED_MAINTAINER: "nicx17"
+
+jobs:
+  approval-gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify maintainer approval policy
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const maintainer = process.env.REQUIRED_MAINTAINER;
+            const pr = context.payload.pull_request;
+
+            if (!pr) {
+              core.setFailed("No pull request payload found.");
+              return;
+            }
+
+            if (pr.user.login === maintainer) {
+              core.info(`PR author is ${maintainer}; approval gate passes automatically.`);
+              return;
+            }
+
+            const reviews = await github.paginate(
+              github.rest.pulls.listReviews,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                per_page: 100,
+              }
+            );
+
+            const maintainerReviews = reviews
+              .filter((review) => review.user?.login === maintainer)
+              .sort((a, b) => new Date(a.submitted_at) - new Date(b.submitted_at));
+
+            const latestReview = maintainerReviews.at(-1);
+
+            if (!latestReview || latestReview.state !== "APPROVED") {
+              core.setFailed(
+                `This pull request needs an approval from @${maintainer} before it can merge.`
+              );
+              return;
+            }
+
+            core.info(`Latest review from @${maintainer} is APPROVED.`);

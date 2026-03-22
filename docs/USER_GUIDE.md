@@ -113,16 +113,16 @@ This is useful when a server outage, permission issue, or bad file temporarily b
 
 Use **Export Diagnostics** in the settings window when you need a support snapshot.
 
-The export creates a timestamped `mimick-diagnostics-*` folder containing:
+The export creates a timestamped `mimick-diagnostics-*` folder containing redacted support files:
 
 * `summary.txt`
-* `config.json`
-* `status.json`
-* `retries.json`
-* `synced_index.json`
-* `mimick.log`
+* `config.redacted.json`
+* `status.redacted.json`
+* `retries.redacted.json`
+* `synced_index.redacted.json`
+* `privacy-note.txt`
 
-The summary intentionally omits your API key.
+API keys, raw logs, full local paths, and raw server URLs are intentionally omitted.
 
 ---
 
