@@ -109,7 +109,7 @@ GitHub Actions currently mirrors the same native quality gate with:
 
 The published Flatpak repository is built in a containerized Flatpak workflow rather than by installing Flatpak tooling directly on the host runner.
 
-Repository automation details such as Dependabot, CODEOWNERS, Release Drafter, docs link checks, and the Flatpak vendor guard are documented in [REPOSITORY_AUTOMATION.md](/home/nick/Documents/Github/immich_sync_app/docs/REPOSITORY_AUTOMATION.md).
+Repository automation details such as Dependabot, CODEOWNERS, Release Drafter, docs link checks, and the Flatpak vendor guard are documented in [REPOSITORY_AUTOMATION.md](REPOSITORY_AUTOMATION.md).
 
 ## Contributing Workflow
 

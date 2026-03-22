@@ -18,7 +18,7 @@ This setup aims to improve release safety and repo hygiene without turning the p
 
 ## Dependabot
 
-Dependabot configuration lives in [`.github/dependabot.yml`](/home/nick/Documents/Github/immich_sync_app/.github/dependabot.yml).
+Dependabot configuration lives in [`.github/dependabot.yml`](../.github/dependabot.yml).
 
 It currently updates:
 
@@ -33,7 +33,7 @@ Expected repository labels:
 
 ## CODEOWNERS
 
-Ownership rules live in [`.github/CODEOWNERS`](/home/nick/Documents/Github/immich_sync_app/.github/CODEOWNERS).
+Ownership rules live in [`.github/CODEOWNERS`](../.github/CODEOWNERS).
 
 The default owner is:
 
@@ -55,13 +55,13 @@ This is most useful when combined with branch protection or rulesets that requir
 - required conversation resolution
 - admins are not enforced
 
-Because [`.github/CODEOWNERS`](/home/nick/Documents/Github/immich_sync_app/.github/CODEOWNERS) assigns the repo to `@nicx17`, pull requests opened by other people need your approval before merging.
+Because [`.github/CODEOWNERS`](../.github/CODEOWNERS) assigns the repo to `@nicx17`, pull requests opened by other people need your approval before merging.
 
 Your own pull requests are still practical to merge because admin enforcement is left off.
 
 ## Maintainer Approval Gate
 
-Approval enforcement for pull requests opened by other people is handled by [`.github/workflows/maintainer-approval.yml`](/home/nick/Documents/Github/immich_sync_app/.github/workflows/maintainer-approval.yml).
+Approval enforcement for pull requests opened by other people is handled by [`.github/workflows/maintainer-approval.yml`](../.github/workflows/maintainer-approval.yml).
 
 Behavior:
 
@@ -74,9 +74,9 @@ This workflow is now a defense-in-depth signal. The authoritative merge policy o
 
 ## Cargo Vendor Guard
 
-The Flatpak manifests depend on [cargo-sources.json](/home/nick/Documents/Github/immich_sync_app/cargo-sources.json), so dependency updates are not complete unless the vendored source list stays in sync.
+The Flatpak manifests depend on [cargo-sources.json](../cargo-sources.json), so dependency updates are not complete unless the vendored source list stays in sync.
 
-The guard workflow is [`.github/workflows/cargo-sources-guard.yml`](/home/nick/Documents/Github/immich_sync_app/.github/workflows/cargo-sources-guard.yml).
+The guard workflow is [`.github/workflows/cargo-sources-guard.yml`](../.github/workflows/cargo-sources-guard.yml).
 
 It runs on every pull request to `main`, and it fails when:
 
@@ -93,7 +93,7 @@ The workflow allows a root package version-only `Cargo.lock` change for release 
 
 ## Docs Link Check
 
-Documentation link checks run from [`.github/workflows/docs-links.yml`](/home/nick/Documents/Github/immich_sync_app/.github/workflows/docs-links.yml).
+Documentation link checks run from [`.github/workflows/docs-links.yml`](../.github/workflows/docs-links.yml).
 
 It validates links in:
 
@@ -107,16 +107,16 @@ The workflow excludes `img.shields.io` badge URLs because those are noisy and no
 
 Release Drafter is configured by:
 
-- [`.github/release-drafter.yml`](/home/nick/Documents/Github/immich_sync_app/.github/release-drafter.yml)
-- [`.github/workflows/release-drafter.yml`](/home/nick/Documents/Github/immich_sync_app/.github/workflows/release-drafter.yml)
+- [`.github/release-drafter.yml`](../.github/release-drafter.yml)
+- [`.github/workflows/release-drafter.yml`](../.github/workflows/release-drafter.yml)
 
 It helps maintain a draft GitHub release based on merged PR labels and categories.
 
-This does not replace the manual changelog. Mimick still uses [CHANGELOG.md](/home/nick/Documents/Github/immich_sync_app/CHANGELOG.md) as the canonical release notes source for tagged releases.
+This does not replace the manual changelog. Mimick still uses [CHANGELOG.md](../CHANGELOG.md) as the canonical release notes source for tagged releases.
 
 ## Dependabot Auto Merge
 
-Approved dependency PRs can be armed for native GitHub auto-merge by [`.github/workflows/dependabot-auto-merge.yml`](/home/nick/Documents/Github/immich_sync_app/.github/workflows/dependabot-auto-merge.yml).
+Approved dependency PRs can be armed for native GitHub auto-merge by [`.github/workflows/dependabot-auto-merge.yml`](../.github/workflows/dependabot-auto-merge.yml).
 
 The workflow only targets pull requests that are:
 

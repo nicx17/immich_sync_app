@@ -34,12 +34,12 @@ Admins are not enforced, so your own PRs remain practical to merge when needed.
 
 ## Key Files
 
-- [`.github/dependabot.yml`](https://github.com/nicx17/mimick/blob/main/.github/dependabot.yml)
-- [`.github/CODEOWNERS`](https://github.com/nicx17/mimick/blob/main/.github/CODEOWNERS)
-- [`.github/workflows/maintainer-approval.yml`](https://github.com/nicx17/mimick/blob/main/.github/workflows/maintainer-approval.yml)
-- [`.github/workflows/cargo-sources-guard.yml`](https://github.com/nicx17/mimick/blob/main/.github/workflows/cargo-sources-guard.yml)
-- [`.github/workflows/docs-links.yml`](https://github.com/nicx17/mimick/blob/main/.github/workflows/docs-links.yml)
-- [`.github/workflows/release-drafter.yml`](https://github.com/nicx17/mimick/blob/main/.github/workflows/release-drafter.yml)
-- [`.github/workflows/dependabot-auto-merge.yml`](https://github.com/nicx17/mimick/blob/main/.github/workflows/dependabot-auto-merge.yml)
+- [`.github/dependabot.yml`](../.github/dependabot.yml)
+- [`.github/CODEOWNERS`](../.github/CODEOWNERS)
+- [`.github/workflows/maintainer-approval.yml`](../.github/workflows/maintainer-approval.yml)
+- [`.github/workflows/cargo-sources-guard.yml`](../.github/workflows/cargo-sources-guard.yml)
+- [`.github/workflows/docs-links.yml`](../.github/workflows/docs-links.yml)
+- [`.github/workflows/release-drafter.yml`](../.github/workflows/release-drafter.yml)
+- [`.github/workflows/dependabot-auto-merge.yml`](../.github/workflows/dependabot-auto-merge.yml)
 
-For the fuller maintainer-facing explanation, see [`docs/REPOSITORY_AUTOMATION.md`](https://github.com/nicx17/mimick/blob/main/docs/REPOSITORY_AUTOMATION.md).
+For the fuller maintainer-facing explanation, see [`docs/REPOSITORY_AUTOMATION.md`](../docs/REPOSITORY_AUTOMATION.md).
