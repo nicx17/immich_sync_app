@@ -102,7 +102,9 @@ fn build_summary(config: &Config, state: &AppState) -> String {
         "Pause on battery power: {}",
         config.data.pause_on_battery_power
     ));
-    lines.push("Sensitive data policy: URLs, API key, logs, and full local paths omitted".to_string());
+    lines.push(
+        "Sensitive data policy: URLs, API key, logs, and full local paths omitted".to_string(),
+    );
     lines.push(String::new());
     lines.push("Recent queue events:".to_string());
     for event in &state.recent_events {
@@ -349,7 +351,11 @@ mod tests {
         let summary = build_summary(&config, &state);
         assert!(summary.contains("App status: paused"));
         assert!(summary.contains("Configured watch paths: 1"));
-        assert!(summary.contains("Sensitive data policy: URLs, API key, logs, and full local paths omitted"));
+        assert!(
+            summary.contains(
+                "Sensitive data policy: URLs, API key, logs, and full local paths omitted"
+            )
+        );
         assert!(summary.contains("a.jpg [failed] attempts=2"));
         assert!(!summary.contains("/photos/a.jpg [failed] attempts=2"));
     }

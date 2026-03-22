@@ -38,7 +38,6 @@ jobs:
           args: >-
             --no-progress
             --verbose
-            --exclude-mail
             --exclude 'https://img.shields.io/.*'
             README.md docs wiki
           fail: true
