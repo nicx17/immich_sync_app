@@ -99,7 +99,7 @@ In addition to `config.json`, Mimick stores runtime state in the user cache dire
 - `~/.cache/mimick/synced_index.json`: the local sync index used by startup rescans to skip already-synced unchanged files and detect album-target changes.
 - `~/.cache/mimick/status.json`: last saved application status written during graceful shutdown.
 
-Diagnostics exports copy these files into a timestamped `mimick-diagnostics-*` directory together with a generated `summary.txt` support report when the source files exist.
+Diagnostics exports write a timestamped `mimick-diagnostics-*` directory with a generated `summary.txt` plus redacted config, status, retry, and sync-index reports. Raw logs, API keys, full local paths, and raw server URLs are intentionally omitted.
 
 ## API Key Security
 

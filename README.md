@@ -10,7 +10,7 @@
 ![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 ![GTK4](https://img.shields.io/badge/GTK4-7DF12B?style=for-the-badge&logo=gtk&logoColor=white)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg?style=for-the-badge)](LICENSE)
 
 </div>
 
@@ -22,6 +22,7 @@ Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files
 [![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](docs/USER_GUIDE.md)
 [![Configuration](https://img.shields.io/badge/Configuration-Guide-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](docs/CONFIGURATION.md)
 [![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Help-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
+[![Repo Automation](https://img.shields.io/badge/Repo-Automation-444444?style=for-the-badge&labelColor=444444)](docs/REPOSITORY_AUTOMATION.md)
 [![Project Wiki](https://img.shields.io/badge/Project-Wiki-444444?style=for-the-badge&labelColor=444444)](https://github.com/nicx17/mimick/wiki)
 
 > [!NOTE]
@@ -47,7 +48,7 @@ Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files
 - **Sync Controls**: Pause or resume uploads and trigger a manual `Sync Now` pass from either the tray or the settings window.
 - **Connectivity**: Automatically switches between **Internal (LAN)** and **External (WAN)** URLs based on availability. At least one must be enabled (enforced by the UI).
 - **Per-Folder Rules**: Each watched folder can optionally ignore hidden paths, cap file size, or allow only selected file extensions.
-- **Diagnostics Export**: Generate a support bundle with logs, queue state, sync index, and a human-readable summary without exposing your API key.
+- **Diagnostics Export**: Generate a redacted support bundle with queue state, sync summaries, and a human-readable report without exposing raw logs, URLs, or full local paths.
 - **Network / Power Awareness**: Optionally defer uploads while on a metered connection or running on battery power.
 - **Custom Album Mapping**: Select an existing remote album, type a custom name, or let the app create an album from the local folder name (e.g., `~/Pictures/Vacation 2024` → Album `Vacation 2024`).
 - **One-Way Sync**: Uploads media without modifying local files.
@@ -167,7 +168,7 @@ On the **Controls** page:
 * **Retry All Failed** requeues everything currently stored in the failed list.
 * **Retry** on a single failed row requeues only that item.
 * **Clear Failed Queue** removes persisted failed items you no longer want Mimick to retry.
-* **Export Diagnostics** writes a bundle with `summary.txt`, `config.json`, `status.json`, `retries.json`, `synced_index.json`, and `mimick.log` when those files are available.
+* **Export Diagnostics** writes a bundle with `summary.txt`, `config.redacted.json`, `status.redacted.json`, `retries.redacted.json`, `synced_index.redacted.json`, and `privacy-note.txt`.
 
 ### Network and Power-Aware Behavior
 
@@ -247,6 +248,7 @@ flatpak run io.github.nicx17.mimick
 [![Development](https://img.shields.io/badge/Development-Guide-B8860B?style=for-the-badge&labelColor=B8860B)](docs/DEVELOPMENT.md)
 [![Testing](https://img.shields.io/badge/Testing-Guide-0E7490?style=for-the-badge&labelColor=0E7490)](docs/TESTING.md)
 [![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Guide-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
+[![Repo Automation](https://img.shields.io/badge/Repo-Automation-444444?style=for-the-badge&labelColor=444444)](docs/REPOSITORY_AUTOMATION.md)
 [![Security](https://img.shields.io/badge/Security-Policy-5B8C5A?style=for-the-badge&labelColor=5B8C5A)](SECURITY.md)
 
 ## Trust and Verification
@@ -268,8 +270,8 @@ Pull requests are welcome. See `CONTRIBUTING.md` for commit and style guidelines
 
 ## Acknowledgments
 
-* Application icon illustration by [Round Icons](https://unsplash.com/@roundicons) on Unsplash.
+* Application icon illustration by Round Icons on Unsplash.
 
 ## License
 
-GNU General Public License v3.0 — see [LICENSE](https://github.com/nicx17/mimick/blob/main/LICENSE).
+GNU General Public License v3.0 — see [LICENSE](LICENSE).

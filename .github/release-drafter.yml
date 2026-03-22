@@ -1,0 +1,62 @@
+name-template: '$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+template: |
+  ## Changes
+
+  $CHANGES
+
+  ## Contributors
+
+  $CONTRIBUTORS
+
+categories:
+  - title: 'Features'
+    labels:
+      - 'enhancement'
+  - title: 'Fixes'
+    labels:
+      - 'bug'
+  - title: 'Dependencies'
+    labels:
+      - 'dependencies'
+      - 'rust'
+      - 'github-actions'
+  - title: 'Documentation'
+    labels:
+      - 'documentation'
+
+exclude-labels:
+  - 'skip-changelog'
+
+autolabeler:
+  - label: 'documentation'
+    files:
+      - '*.md'
+      - 'docs/**'
+      - 'wiki/**'
+  - label: 'github-actions'
+    files:
+      - '.github/workflows/**'
+  - label: 'rust'
+    files:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/**'
+
+version-resolver:
+  major:
+    labels:
+      - 'major'
+  minor:
+    labels:
+      - 'enhancement'
+      - 'feature'
+  patch:
+    labels:
+      - 'bug'
+      - 'dependencies'
+      - 'documentation'
+      - 'rust'
+      - 'github-actions'
+  default: patch

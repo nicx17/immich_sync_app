@@ -1,7 +1,9 @@
-//! Export a support-friendly diagnostics bundle without including secrets.
+//! Export a support-friendly diagnostics bundle with sensitive local data redacted.
 
 use crate::config::Config;
+use crate::queue_manager::FileTask;
 use crate::state_manager::AppState;
+use serde::Serialize;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -30,23 +32,26 @@ fn export_bundle_with_paths(
 
     let summary_path = bundle_dir.join("summary.txt");
     fs::write(summary_path, build_summary(config, state))?;
+    fs::write(
+        bundle_dir.join("privacy-note.txt"),
+        "This bundle intentionally omits API keys, raw logs, server URLs, and full local paths.\n",
+    )?;
 
-    copy_if_exists(&config.config_file, &bundle_dir.join("config.json"))?;
-    copy_if_exists(
-        &cache_path(cache_root, "status.json"),
-        &bundle_dir.join("status.json"),
+    write_json_pretty(
+        &bundle_dir.join("config.redacted.json"),
+        &build_config_export(config),
     )?;
-    copy_if_exists(
-        &cache_path(cache_root, "retries.json"),
-        &bundle_dir.join("retries.json"),
+    write_json_pretty(
+        &bundle_dir.join("status.redacted.json"),
+        &build_state_export(state),
     )?;
-    copy_if_exists(
-        &cache_path(cache_root, "synced_index.json"),
-        &bundle_dir.join("synced_index.json"),
+    write_json_pretty(
+        &bundle_dir.join("retries.redacted.json"),
+        &build_retry_export(&cache_path(cache_root, "retries.json"))?,
     )?;
-    copy_if_exists(
-        &cache_path(cache_root, "mimick.log"),
-        &bundle_dir.join("mimick.log"),
+    write_json_pretty(
+        &bundle_dir.join("synced_index.redacted.json"),
+        &build_sync_index_export(&cache_path(cache_root, "synced_index.json"))?,
     )?;
 
     Ok(bundle_dir)
@@ -67,11 +72,19 @@ fn build_summary(config: &Config, state: &AppState) -> String {
     lines.push(format!("Failed count: {}", state.failed_count));
     lines.push(format!(
         "Current file: {}",
-        state.current_file.as_deref().unwrap_or("none")
+        state
+            .current_file
+            .as_deref()
+            .map(redact_path_hint)
+            .unwrap_or_else(|| "none".to_string())
     ));
     lines.push(format!(
         "Last completed file: {}",
-        state.last_completed_file.as_deref().unwrap_or("none")
+        state
+            .last_completed_file
+            .as_deref()
+            .map(redact_path_hint)
+            .unwrap_or_else(|| "none".to_string())
     ));
     lines.push(format!(
         "Last error: {}",
@@ -89,13 +102,15 @@ fn build_summary(config: &Config, state: &AppState) -> String {
         "Pause on battery power: {}",
         config.data.pause_on_battery_power
     ));
-    lines.push("API key: omitted".to_string());
+    lines.push(
+        "Sensitive data policy: URLs, API key, logs, and full local paths omitted".to_string(),
+    );
     lines.push(String::new());
     lines.push("Recent queue events:".to_string());
     for event in &state.recent_events {
         lines.push(format!(
             "- {} [{}] attempts={} detail={}",
-            event.path,
+            redact_path_hint(&event.path),
             event.status,
             event.attempts,
             event.detail.as_deref().unwrap_or("none")
@@ -105,15 +120,198 @@ fn build_summary(config: &Config, state: &AppState) -> String {
     lines.join("\n")
 }
 
-fn copy_if_exists(from: &Path, to: &Path) -> io::Result<()> {
-    if from.exists() {
-        fs::copy(from, to)?;
-    }
-    Ok(())
-}
-
 fn cache_path(cache_root: &Path, name: &str) -> PathBuf {
     cache_root.join(name)
+}
+
+#[derive(Serialize)]
+struct RedactedConfigExport {
+    internal_url_enabled: bool,
+    external_url_enabled: bool,
+    watch_path_count: usize,
+    watch_paths_with_custom_album: usize,
+    watch_paths_with_rules: usize,
+    run_on_startup: bool,
+    album_sync: bool,
+    delete_after_sync: bool,
+    pause_on_metered_network: bool,
+    pause_on_battery_power: bool,
+}
+
+#[derive(Serialize)]
+struct RedactedQueueEvent {
+    path_hint: String,
+    status: String,
+    detail: Option<String>,
+    attempts: u32,
+    timestamp: f64,
+}
+
+#[derive(Serialize)]
+struct RedactedStateExport {
+    status: String,
+    paused: bool,
+    pause_reason: Option<String>,
+    queue_size: usize,
+    total_queued: usize,
+    processed_count: usize,
+    failed_count: usize,
+    progress: u8,
+    current_file: Option<String>,
+    last_completed_file: Option<String>,
+    last_error: Option<String>,
+    diagnostics_exports: usize,
+    recent_events: Vec<RedactedQueueEvent>,
+}
+
+#[derive(Serialize)]
+struct RedactedRetryExport {
+    total_retry_items: usize,
+    reassociate_only_items: usize,
+    album_targeted_items: usize,
+}
+
+#[derive(Serialize)]
+struct RedactedSyncIndexExport {
+    total_entries: usize,
+    album_named_entries: usize,
+    album_id_entries: usize,
+}
+
+fn build_config_export(config: &Config) -> RedactedConfigExport {
+    let watch_paths_with_custom_album = config
+        .data
+        .watch_paths
+        .iter()
+        .filter(|entry| entry.album_name().is_some_and(|name| !name.is_empty()))
+        .count();
+    let watch_paths_with_rules = config
+        .data
+        .watch_paths
+        .iter()
+        .filter(|entry| {
+            let rules = entry.rules();
+            rules.ignore_hidden
+                || rules.max_file_size_mb.is_some()
+                || !rules.allowed_extensions.is_empty()
+        })
+        .count();
+
+    RedactedConfigExport {
+        internal_url_enabled: config.data.internal_url_enabled,
+        external_url_enabled: config.data.external_url_enabled,
+        watch_path_count: config.data.watch_paths.len(),
+        watch_paths_with_custom_album,
+        watch_paths_with_rules,
+        run_on_startup: config.data.run_on_startup,
+        album_sync: config.data.album_sync,
+        delete_after_sync: config.data.delete_after_sync,
+        pause_on_metered_network: config.data.pause_on_metered_network,
+        pause_on_battery_power: config.data.pause_on_battery_power,
+    }
+}
+
+fn build_state_export(state: &AppState) -> RedactedStateExport {
+    RedactedStateExport {
+        status: state.status.clone(),
+        paused: state.paused,
+        pause_reason: state.pause_reason.clone(),
+        queue_size: state.queue_size,
+        total_queued: state.total_queued,
+        processed_count: state.processed_count,
+        failed_count: state.failed_count,
+        progress: state.progress,
+        current_file: state.current_file.as_deref().map(redact_path_hint),
+        last_completed_file: state.last_completed_file.as_deref().map(redact_path_hint),
+        last_error: state.last_error.clone(),
+        diagnostics_exports: state.diagnostics_exports,
+        recent_events: state
+            .recent_events
+            .iter()
+            .map(|event| RedactedQueueEvent {
+                path_hint: redact_path_hint(&event.path),
+                status: event.status.clone(),
+                detail: event.detail.clone(),
+                attempts: event.attempts,
+                timestamp: event.timestamp,
+            })
+            .collect(),
+    }
+}
+
+fn build_retry_export(retry_path: &Path) -> io::Result<RedactedRetryExport> {
+    let tasks = if retry_path.exists() {
+        let content = fs::read_to_string(retry_path)?;
+        serde_json::from_str::<Vec<FileTask>>(&content).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    Ok(RedactedRetryExport {
+        total_retry_items: tasks.len(),
+        reassociate_only_items: tasks.iter().filter(|task| task.reassociate_only).count(),
+        album_targeted_items: tasks
+            .iter()
+            .filter(|task| task.album_id.is_some() || task.album_name.is_some())
+            .count(),
+    })
+}
+
+fn build_sync_index_export(sync_index_path: &Path) -> io::Result<RedactedSyncIndexExport> {
+    if !sync_index_path.exists() {
+        return Ok(RedactedSyncIndexExport {
+            total_entries: 0,
+            album_named_entries: 0,
+            album_id_entries: 0,
+        });
+    }
+
+    let content = fs::read_to_string(sync_index_path)?;
+    let json = serde_json::from_str::<serde_json::Value>(&content).unwrap_or_default();
+    let files = json
+        .get("files")
+        .and_then(|files| files.as_object())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut album_named_entries = 0usize;
+    let mut album_id_entries = 0usize;
+    for record in files.values() {
+        if record
+            .get("album_name")
+            .and_then(|value| value.as_str())
+            .is_some_and(|name| !name.is_empty())
+        {
+            album_named_entries += 1;
+        }
+        if record
+            .get("album_id")
+            .and_then(|value| value.as_str())
+            .is_some_and(|id| !id.is_empty())
+        {
+            album_id_entries += 1;
+        }
+    }
+
+    Ok(RedactedSyncIndexExport {
+        total_entries: files.len(),
+        album_named_entries,
+        album_id_entries,
+    })
+}
+
+fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
+    let content = serde_json::to_string_pretty(value)?;
+    fs::write(path, content)
+}
+
+fn redact_path_hint(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .map(|name| name.to_string())
+        .unwrap_or_else(|| "[path hidden]".to_string())
 }
 
 #[cfg(test)]
@@ -153,12 +351,17 @@ mod tests {
         let summary = build_summary(&config, &state);
         assert!(summary.contains("App status: paused"));
         assert!(summary.contains("Configured watch paths: 1"));
-        assert!(summary.contains("API key: omitted"));
-        assert!(summary.contains("/photos/a.jpg [failed] attempts=2"));
+        assert!(
+            summary.contains(
+                "Sensitive data policy: URLs, API key, logs, and full local paths omitted"
+            )
+        );
+        assert!(summary.contains("a.jpg [failed] attempts=2"));
+        assert!(!summary.contains("/photos/a.jpg [failed] attempts=2"));
     }
 
     #[test]
-    fn test_export_bundle_writes_summary_and_cache_files() {
+    fn test_export_bundle_writes_redacted_files_only() {
         let dir = tempdir().unwrap();
         let dest_root = dir.path().join("exports");
         let cache_root = dir.path().join("cache");
@@ -182,10 +385,22 @@ mod tests {
         let bundle_dir =
             export_bundle_with_paths(&dest_root, &state, &config, &cache_root).unwrap();
         assert!(bundle_dir.join("summary.txt").exists());
-        assert!(bundle_dir.join("config.json").exists());
-        assert!(bundle_dir.join("status.json").exists());
-        assert!(bundle_dir.join("retries.json").exists());
-        assert!(bundle_dir.join("synced_index.json").exists());
-        assert!(bundle_dir.join("mimick.log").exists());
+        assert!(bundle_dir.join("privacy-note.txt").exists());
+        assert!(bundle_dir.join("config.redacted.json").exists());
+        assert!(bundle_dir.join("status.redacted.json").exists());
+        assert!(bundle_dir.join("retries.redacted.json").exists());
+        assert!(bundle_dir.join("synced_index.redacted.json").exists());
+        assert!(!bundle_dir.join("config.json").exists());
+        assert!(!bundle_dir.join("status.json").exists());
+        assert!(!bundle_dir.join("retries.json").exists());
+        assert!(!bundle_dir.join("synced_index.json").exists());
+        assert!(!bundle_dir.join("mimick.log").exists());
+
+        let config_export = fs::read_to_string(bundle_dir.join("config.redacted.json")).unwrap();
+        assert!(config_export.contains("\"watch_path_count\": 0"));
+        assert!(!config_export.contains("http://localhost"));
+
+        let retry_export = fs::read_to_string(bundle_dir.join("retries.redacted.json")).unwrap();
+        assert!(retry_export.contains("\"total_retry_items\": 0"));
     }
 }

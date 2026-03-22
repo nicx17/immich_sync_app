@@ -12,13 +12,6 @@ on:
       - "roadmap.md"
   pull_request:
     branches: ["main"]
-    paths-ignore:
-      - "docs/**"
-      - "wiki/**"
-      - "README.md"
-      - "CONTRIBUTING.md"
-      - "SECURITY.md"
-      - "roadmap.md"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

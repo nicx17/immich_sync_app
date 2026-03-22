@@ -6,18 +6,19 @@ Mimick is a Linux background app that watches selected folders and syncs photos 
 
 ## Start Here
 
-- [Installation](Installation)
-- [Configuration and First Run](Configuration-and-First-Run)
-- [Sync Behavior](Sync-Behavior)
-- [Flatpak and Permissions](Flatpak-and-Permissions)
-- [Troubleshooting](Troubleshooting)
+- [Installation](Installation.md)
+- [Configuration and First Run](Configuration-and-First-Run.md)
+- [Sync Behavior](Sync-Behavior.md)
+- [Flatpak and Permissions](Flatpak-and-Permissions.md)
+- [Troubleshooting](Troubleshooting.md)
 
 ## Maintainers and Contributors
 
-- [Architecture](Architecture)
-- [Development](Development)
-- [Testing](Testing)
-- [Release Operations](Release-Operations)
+- [Architecture](Architecture.md)
+- [Development](Development.md)
+- [Testing](Testing.md)
+- [Repository Automation](Repository-Automation.md)
+- [Release Operations](Release-Operations.md)
 
 ## Project Notes
 

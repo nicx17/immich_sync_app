@@ -1,19 +1,20 @@
-[Home](Home)
+[Home](Home.md)
 
 ### Using Mimick
 
-- [Installation](Installation)
-- [Configuration and First Run](Configuration-and-First-Run)
-- [Sync Behavior](Sync-Behavior)
-- [Flatpak and Permissions](Flatpak-and-Permissions)
-- [Troubleshooting](Troubleshooting)
+- [Installation](Installation.md)
+- [Configuration and First Run](Configuration-and-First-Run.md)
+- [Sync Behavior](Sync-Behavior.md)
+- [Flatpak and Permissions](Flatpak-and-Permissions.md)
+- [Troubleshooting](Troubleshooting.md)
 
 ### Building Mimick
 
-- [Architecture](Architecture)
-- [Development](Development)
-- [Testing](Testing)
+- [Architecture](Architecture.md)
+- [Development](Development.md)
+- [Testing](Testing.md)
 
 ### Maintaining Mimick
 
-- [Release Operations](Release-Operations)
+- [Repository Automation](Repository-Automation.md)
+- [Release Operations](Release-Operations.md)
