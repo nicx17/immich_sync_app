@@ -19,6 +19,21 @@ Check:
 2. the file extension is supported
 3. the file finished writing to disk
 4. the API key and server URLs are valid
+5. folder rules are not excluding the file
+6. Mimick is not paused because of manual control, metered networking, or battery-only behavior
+
+## Diagnostics Bundle
+
+Use `Export Diagnostics` from the Controls page to collect:
+
+- `summary.txt`
+- `config.json`
+- `status.json`
+- `retries.json`
+- `synced_index.json`
+- `mimick.log`
+
+This is the easiest way to gather support details without exposing the API key.
 
 ## Useful Logs
 

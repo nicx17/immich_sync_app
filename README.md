@@ -18,6 +18,12 @@ A daemon-based synchronization tool for uploading media files from a Linux deskt
 
 Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files and automatically uploads them to your Immich instance. It runs securely as a background service and integrates natively with the GNOME desktop environment via a GTK4 / Libadwaita settings window and a StatusNotifier system tray icon.
 
+[![Install Guide](https://img.shields.io/badge/Install-Guide-1F6FEB?style=for-the-badge&labelColor=1F6FEB)](https://github.com/nicx17/mimick/wiki/Installation)
+[![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](docs/USER_GUIDE.md)
+[![Configuration](https://img.shields.io/badge/Configuration-Guide-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](docs/CONFIGURATION.md)
+[![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Help-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
+[![Project Wiki](https://img.shields.io/badge/Project-Wiki-444444?style=for-the-badge&labelColor=444444)](https://github.com/nicx17/mimick/wiki)
+
 > [!NOTE]
 > **This project is in BETA.** Core features are stable and tested. Please report any issues or edge cases you encounter.
 
@@ -65,7 +71,7 @@ Run these commands in your terminal:
 # 1. Add the official Mimick repository
 
 ```bash
-flatpak remote-add --user --if-not-exists mimick-repo [https://nicx17.github.io/mimick/mimick.flatpakrepo](https://nicx17.github.io/mimick/mimick.flatpakrepo)
+flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
 ```
 
 # 2. Install the application
@@ -207,7 +213,7 @@ sudo pacman -S gtk4 libadwaita libsecret pkgconf base-devel
 ### Native Rust Build
 
 ```bash
-git clone [https://github.com/nicx17/mimick.git](https://github.com/nicx17/mimick.git)
+git clone https://github.com/nicx17/mimick.git
 cd mimick
 cargo build --release
 # Copy the desktop file and icons from setup/ to ~/.local/share/applications and ~/.local/share/icons for launcher integration
@@ -223,7 +229,7 @@ Logs written to the terminal and to `~/.cache/mimick/mimick.log` now include tim
 ### Local Flatpak Build
 
 ```bash
-git clone [https://github.com/nicx17/mimick.git](https://github.com/nicx17/mimick.git)
+git clone https://github.com/nicx17/mimick.git
 cd mimick
 flatpak-builder --user --install --force-clean build-dir io.github.nicx17.mimick.local.yml
 flatpak run io.github.nicx17.mimick
@@ -233,12 +239,15 @@ flatpak run io.github.nicx17.mimick
 ---
 
 ## Documentation
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [User Guide](docs/USER_GUIDE.md)
-- [Configuration Guide](docs/CONFIGURATION.md)
-- [Development Guide](docs/DEVELOPMENT.md)
-- [Testing Guide](docs/TESTING.md)
-- [Security Policy](SECURITY.md)
+
+[![Wiki Home](https://img.shields.io/badge/Wiki-Home-444444?style=for-the-badge&labelColor=444444)](https://github.com/nicx17/mimick/wiki)
+[![Installation](https://img.shields.io/badge/Installation-Guide-1F6FEB?style=for-the-badge&labelColor=1F6FEB)](https://github.com/nicx17/mimick/wiki/Installation)
+[![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](docs/USER_GUIDE.md)
+[![Configuration](https://img.shields.io/badge/Configuration-Guide-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](docs/CONFIGURATION.md)
+[![Development](https://img.shields.io/badge/Development-Guide-B8860B?style=for-the-badge&labelColor=B8860B)](docs/DEVELOPMENT.md)
+[![Testing](https://img.shields.io/badge/Testing-Guide-0E7490?style=for-the-badge&labelColor=0E7490)](docs/TESTING.md)
+[![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Guide-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
+[![Security](https://img.shields.io/badge/Security-Policy-5B8C5A?style=for-the-badge&labelColor=5B8C5A)](SECURITY.md)
 
 ## Trust and Verification
 

@@ -23,6 +23,8 @@ Before upload, it:
 3. uploads the file to Immich
 4. adds the asset to the target album
 
+Live monitoring and startup scans both use the most specific matching watch-folder configuration, so nested folders inherit the correct album and rule set instead of falling back to a less-specific parent path.
+
 ## Album Reassociation
 
 If you retarget a watch folder to a different Immich album, Mimick can reassociate unchanged files on a later startup without forcing a full reupload.
@@ -34,3 +36,4 @@ If the old album was deleted or the stored album ID is stale, Mimick refreshes a
 - Failed uploads are stored in `~/.cache/mimick/retries.json` and retried on the next run.
 - Duplicate detection uses SHA-1 checksums and Immich's upload-check behavior.
 - Existing assets can be looked up and reused instead of uploading the file bytes again.
+- The Controls page can pause/resume syncing, trigger `Sync Now`, and expose queue recovery actions while Mimick is already running.

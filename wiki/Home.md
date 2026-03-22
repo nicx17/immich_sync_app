@@ -12,7 +12,7 @@ Mimick is a Linux background app that watches selected folders and syncs photos 
 - [Flatpak and Permissions](Flatpak-and-Permissions)
 - [Troubleshooting](Troubleshooting)
 
-## Developer Docs
+## Maintainers and Contributors
 
 - [Architecture](Architecture)
 - [Development](Development)
@@ -25,3 +25,11 @@ Mimick is a Linux background app that watches selected folders and syncs photos 
 - The app stores API keys in the desktop keyring and keeps operational state in `~/.cache/mimick/`.
 - Startup rescans use a local sync index so already-synced unchanged files are skipped quickly.
 - Flatpak distribution is signed; verify the published fingerprint before trusting a new repo setup.
+
+## Current App Highlights
+
+- Two-page `Setup` / `Controls` settings window
+- Queue inspector with retry actions
+- Per-folder rules for hidden paths, size limits, and extension filters
+- Diagnostics bundle export for support and bug reports
+- Metered-network and battery-aware upload deferral

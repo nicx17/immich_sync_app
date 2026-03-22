@@ -46,8 +46,10 @@ Tests in Rust are written inline within identical files to the logic they test, 
 
 | Source File | Test Location | Description |
 | :--- | :--- | :--- |
-| `src/config.rs` | `mod tests` | Tests JSON serde behavior plus folder-rule matching, hidden-path filtering, and extension normalization. |
+| `src/config.rs` | `mod tests` | Tests JSON serde behavior, folder-rule matching, hidden-path filtering, extension normalization, and best-match watch-path selection. |
+| `src/main.rs` | `mod tests` | Tests live-queue watch-path selection so nested folders use the most specific configured target. |
 | `src/monitor.rs` | `mod tests` | Tests monitor-side filtering such as temporary-file detection before queueing. |
+| `src/queue_manager.rs` | `mod tests` | Tests duplicate queue prevention, retry persistence, failed-queue clearing, and manual retry requeueing. |
 | `src/runtime_env.rs` | `mod tests` | Tests metered-network parsing and battery-power decision logic without depending on the host system. |
 | `src/diagnostics.rs` | `mod tests` | Tests support-summary generation and diagnostics bundle export contents. |
 | `src/state_manager.rs` | `mod tests` | Tests queue-event updates and event-history truncation rules. |
@@ -61,7 +63,7 @@ While core data structures and support logic are tested, the following areas sti
 1. **`src/settings_window.rs`**: GTK4/libadwaita UI interactions such as dialogs, queue inspector rendering, and per-folder rules editing.
 2. **`src/api_client.rs`**: Network endpoints still need deeper mocked or sandboxed Immich coverage.
 3. **`src/main.rs` / `src/tray_icon.rs`**: Full daemon lifecycle, tray signaling, and application-instance behavior remain mostly manual/integration tested.
-4. **`src/queue_manager.rs`**: Core behavior is exercised indirectly, but more direct async worker tests would still be valuable.
+4. **Async worker integration**: Queue manager helpers are covered more directly now, but end-to-end worker behavior against a mocked API is still a worthwhile next step.
 
 ## 5. Writing New Tests
 

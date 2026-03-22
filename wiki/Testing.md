@@ -11,7 +11,9 @@ cargo test
 Current tests focus on:
 
 - config parsing and defaults
+- watch-path matching for nested folder configs
 - checksum generation
+- queue duplicate prevention and retry controls
 - retry persistence
 - sync-index decisions
 - watch-path display helpers
