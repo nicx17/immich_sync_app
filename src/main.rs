@@ -107,12 +107,18 @@ async fn main() {
 
         // Load config
         let config = Config::new();
+        let watch_folder_count = config.data.watch_paths.len();
         log::info!(
             "Config: internal={} external={} paths={:?}",
             config.data.internal_url,
             config.data.external_url,
             config.watch_path_strings(),
         );
+
+        {
+            let mut state = shared_state_startup.lock().unwrap();
+            state.watched_folder_count = watch_folder_count;
+        }
 
         let api_key = config.get_api_key().unwrap_or_default();
 
@@ -148,21 +154,28 @@ async fn main() {
             while let Some((path, checksum)) = rx.recv().await {
                 log::info!("Queuing: {} (sha1={})", path, checksum);
 
-                let (album_id, album_name) =
+                let (album_id, album_name, watch_path) =
                     best_matching_watch_entry(std::path::Path::new(&path), &path_configs)
-                        .and_then(|entry| match entry {
+                        .map(|entry| match entry {
                             config::WatchPathEntry::WithConfig {
                                 album_id,
                                 album_name,
                                 ..
-                            } => Some((album_id.clone(), album_name.clone())),
-                            config::WatchPathEntry::Simple(_) => None,
+                            } => (
+                                album_id.clone(),
+                                album_name.clone(),
+                                entry.path().to_string(),
+                            ),
+                            config::WatchPathEntry::Simple(_) => {
+                                (None, None, entry.path().to_string())
+                            }
                         })
-                        .unwrap_or((None, None));
+                        .unwrap_or((None, None, String::new()));
 
                 let _ = qm_clone
                     .add_to_queue(FileTask {
                         path,
+                        watch_path,
                         checksum,
                         album_id,
                         album_name,
@@ -180,18 +193,49 @@ async fn main() {
         let _ = QM_HANDLE.set(qm.clone());
 
         // The startup scan backfills anything that arrived while Mimick was not running.
+        let shared_state_startup_task = shared_state_startup.clone();
         tokio::spawn(async move {
             let startup_api = API_CLIENT_HANDLE
                 .get()
                 .cloned()
                 .expect("API client should be initialized before startup scan");
-            queue_unsynced_files(startup_paths, startup_qm, startup_sync_index, startup_api).await;
+            queue_unsynced_files(
+                startup_paths,
+                startup_qm,
+                startup_sync_index,
+                startup_api,
+                config::Config::new().data.startup_catchup_mode,
+                shared_state_startup_task,
+            )
+            .await;
+        });
+
+        let startup_state = shared_state_startup.clone();
+        let status_api = API_CLIENT_HANDLE
+            .get()
+            .cloned()
+            .expect("API client should be initialized before connectivity check");
+        tokio::spawn(async move {
+            let connected = status_api.check_connection().await;
+            let route = status_api.active_route_label().await;
+            let latest_issue = status_api.latest_issue().await;
+
+            let mut state = startup_state.lock().unwrap();
+            state.active_server_route = route;
+            if connected {
+                state.last_error = None;
+                state.last_error_guidance = None;
+            } else if let Some(issue) = latest_issue {
+                state.last_error = Some(issue.summary);
+                state.last_error_guidance = Some(issue.guidance);
+            }
         });
 
         let (manual_sync_tx, mut manual_sync_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
         let _ = MANUAL_SYNC_TX.set(manual_sync_tx);
         let manual_qm = qm.clone();
         let manual_sync_index = sync_index.clone();
+        let shared_state_manual_task = shared_state_startup.clone();
         tokio::spawn(async move {
             while manual_sync_rx.recv().await.is_some() {
                 let config = Config::new();
@@ -204,6 +248,8 @@ async fn main() {
                     manual_qm.clone(),
                     manual_sync_index.clone(),
                     api,
+                    config.data.startup_catchup_mode,
+                    shared_state_manual_task.clone(),
                 )
                 .await;
             }

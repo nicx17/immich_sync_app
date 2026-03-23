@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Health Dashboard**: A visual status area on the Controls page showing active server route, watched folder count, pending items, recent retries, and latest errors.
+- **Per-Folder Status**: The settings UI now displays the pending queue count and last sync time specific to each configured watch folder.
+- **Permission Health Checks**: On startup, Mimick now verifies that it still has read access to all configured directories. If a Flatpak permission is lost, a warning is prominently displayed.
+- **Safer Startup Catch-Up Controls**: Added a "Startup Catch-up Mode" dropdown in settings allowing users to limit startup scans to "Recent Changed Only (7 days)" or "New Files Only" to save on disk I/O.
+- **Actionable Errors**: Meaningful connection failure and folder access loss messages replace generic request timeouts.
+
+### Fixed
+- Fixed a bug where a previously selected album target reverted visually to a "Custom Album" field after an application restart.
+
 ## [7.0.0] - 2026-03-22
 
 ### Added

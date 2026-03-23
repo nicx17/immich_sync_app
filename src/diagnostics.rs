@@ -67,6 +67,14 @@ fn build_summary(config: &Config, state: &AppState) -> String {
         "Pause reason: {}",
         state.pause_reason.as_deref().unwrap_or("none")
     ));
+    lines.push(format!(
+        "Watched folder count: {}",
+        state.watched_folder_count
+    ));
+    lines.push(format!(
+        "Active server route: {}",
+        state.active_server_route.as_deref().unwrap_or("none")
+    ));
     lines.push(format!("Queue size: {}", state.queue_size));
     lines.push(format!("Processed count: {}", state.processed_count));
     lines.push(format!("Failed count: {}", state.failed_count));
@@ -89,6 +97,10 @@ fn build_summary(config: &Config, state: &AppState) -> String {
     lines.push(format!(
         "Last error: {}",
         state.last_error.as_deref().unwrap_or("none")
+    ));
+    lines.push(format!(
+        "Suggested fix: {}",
+        state.last_error_guidance.as_deref().unwrap_or("none")
     ));
     lines.push(format!(
         "Configured watch paths: {}",
@@ -152,14 +164,18 @@ struct RedactedStateExport {
     status: String,
     paused: bool,
     pause_reason: Option<String>,
+    watched_folder_count: usize,
+    active_server_route: Option<String>,
     queue_size: usize,
     total_queued: usize,
     processed_count: usize,
     failed_count: usize,
     progress: u8,
+    last_successful_sync_at: Option<f64>,
     current_file: Option<String>,
     last_completed_file: Option<String>,
     last_error: Option<String>,
+    last_error_guidance: Option<String>,
     diagnostics_exports: usize,
     recent_events: Vec<RedactedQueueEvent>,
 }
@@ -216,14 +232,18 @@ fn build_state_export(state: &AppState) -> RedactedStateExport {
         status: state.status.clone(),
         paused: state.paused,
         pause_reason: state.pause_reason.clone(),
+        watched_folder_count: state.watched_folder_count,
+        active_server_route: state.active_server_route.clone(),
         queue_size: state.queue_size,
         total_queued: state.total_queued,
         processed_count: state.processed_count,
         failed_count: state.failed_count,
         progress: state.progress,
+        last_successful_sync_at: state.last_successful_sync_at,
         current_file: state.current_file.as_deref().map(redact_path_hint),
         last_completed_file: state.last_completed_file.as_deref().map(redact_path_hint),
         last_error: state.last_error.clone(),
+        last_error_guidance: state.last_error_guidance.clone(),
         diagnostics_exports: state.diagnostics_exports,
         recent_events: state
             .recent_events
@@ -350,6 +370,7 @@ mod tests {
 
         let summary = build_summary(&config, &state);
         assert!(summary.contains("App status: paused"));
+        assert!(summary.contains("Watched folder count: 0"));
         assert!(summary.contains("Configured watch paths: 1"));
         assert!(
             summary.contains(

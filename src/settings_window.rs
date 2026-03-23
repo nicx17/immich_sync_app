@@ -1,7 +1,7 @@
 //! GTK4/Libadwaita settings window and status dashboard.
 
 use crate::autostart;
-use crate::config::{FolderRules, WatchPathEntry};
+use crate::config::{FolderRules, StartupCatchupMode, WatchPathEntry};
 use crate::diagnostics;
 use adw::prelude::*;
 use glib::clone;
@@ -33,6 +33,85 @@ struct FolderRowData {
     pub string_list: StringList,
     pub custom_entry: Entry,
     pub rules: Rc<RefCell<FolderRules>>,
+    pub status_label: gtk::Label,
+}
+
+const DEFAULT_ALBUM_LABEL: &str = "Default (Folder Name)";
+const CUSTOM_ALBUM_LABEL: &str = "Custom Album...";
+
+fn dropdown_label(string_list: &StringList, selected: u32) -> Option<String> {
+    if selected < string_list.n_items() {
+        string_list.string(selected).map(|label| label.to_string())
+    } else {
+        None
+    }
+}
+
+fn effective_album_selection(selected_label: Option<&str>, custom_text: &str) -> String {
+    let trimmed_custom = custom_text.trim();
+    match selected_label {
+        Some(CUSTOM_ALBUM_LABEL) if !trimmed_custom.is_empty() => trimmed_custom.to_string(),
+        Some(CUSTOM_ALBUM_LABEL) => DEFAULT_ALBUM_LABEL.to_string(),
+        Some(label) if !label.is_empty() => label.to_string(),
+        _ if !trimmed_custom.is_empty() => trimmed_custom.to_string(),
+        _ => DEFAULT_ALBUM_LABEL.to_string(),
+    }
+}
+
+fn apply_album_selection(
+    dropdown: &DropDown,
+    string_list: &StringList,
+    custom_entry: &Entry,
+    album_name: Option<&str>,
+) {
+    let target = album_name
+        .map(str::trim)
+        .filter(|name| !name.is_empty() && *name != DEFAULT_ALBUM_LABEL)
+        .unwrap_or(DEFAULT_ALBUM_LABEL);
+
+    if target == DEFAULT_ALBUM_LABEL {
+        dropdown.set_selected(0);
+        custom_entry.set_text("");
+        custom_entry.set_visible(false);
+        return;
+    }
+
+    for i in 0..string_list.n_items() {
+        if let Some(label) = string_list.string(i)
+            && label.as_str() == target
+        {
+            dropdown.set_selected(i);
+            custom_entry.set_text("");
+            custom_entry.set_visible(false);
+            return;
+        }
+    }
+
+    dropdown.set_selected(string_list.n_items().saturating_sub(1));
+    custom_entry.set_text(target);
+    custom_entry.set_visible(true);
+}
+
+fn format_sync_age(timestamp: Option<f64>) -> String {
+    let Some(timestamp) = timestamp else {
+        return "No successful sync yet".to_string();
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64();
+    let elapsed = (now - timestamp).max(0.0);
+
+    if elapsed < 60.0 {
+        "Less than a minute ago".to_string()
+    } else if elapsed < 3600.0 {
+        format!("{} minute(s) ago", (elapsed / 60.0).floor() as u64)
+    } else if elapsed < 86_400.0 {
+        format!("{} hour(s) ago", (elapsed / 3600.0).floor() as u64)
+    } else {
+        format!("{} day(s) ago", (elapsed / 86_400.0).floor() as u64)
+    }
 }
 
 /// Build the main settings window and wire it to the shared app state.
@@ -151,6 +230,41 @@ pub fn build_settings_window(
         .fraction(0.0)
         .build();
     progress_group.add(&progress_bar);
+
+    let health_group = adw::PreferencesGroup::builder()
+        .title("Health Dashboard")
+        .build();
+    controls_page_box.append(&health_group);
+
+    let route_row = adw::ActionRow::builder()
+        .title("Server Route")
+        .subtitle("Checking connectivity...")
+        .build();
+    health_group.add(&route_row);
+
+    let folders_row = adw::ActionRow::builder()
+        .title("Watched Folders")
+        .subtitle("0 configured")
+        .build();
+    health_group.add(&folders_row);
+
+    let queue_health_row = adw::ActionRow::builder()
+        .title("Queue Health")
+        .subtitle("0 pending, 0 waiting to retry")
+        .build();
+    health_group.add(&queue_health_row);
+
+    let last_sync_row = adw::ActionRow::builder()
+        .title("Last Successful Sync")
+        .subtitle("No successful sync yet")
+        .build();
+    health_group.add(&last_sync_row);
+
+    let error_row = adw::ActionRow::builder()
+        .title("No recent errors")
+        .subtitle("Uploads are healthy.")
+        .build();
+    health_group.add(&error_row);
 
     // --- CONNECTIVITY GROUP ---
     let conn_group = adw::PreferencesGroup::builder()
@@ -375,6 +489,18 @@ pub fn build_settings_window(
         .build();
     behavior_group.add(&battery_row);
 
+    let catchup_model = gtk::StringList::new(&[
+        "Full Scan",
+        "Recent Changed Only (7 days)",
+        "New Files Only",
+    ]);
+    let catchup_row = adw::ComboRow::builder()
+        .title("Startup Catch-up Mode")
+        .subtitle("Limits how aggressively Mimick scans for changes when launching.")
+        .model(&catchup_model)
+        .build();
+    behavior_group.add(&catchup_row);
+
     // --- WATCH FOLDERS GROUP ---
     let folders_group = adw::PreferencesGroup::builder()
         .title("Watch Folders")
@@ -414,47 +540,28 @@ pub fn build_settings_window(
             *albums_ref.borrow_mut() = fetched.clone();
 
             for row_data in tracked_rows_async.borrow().iter() {
-                let current_selected = row_data.dropdown.selected();
-                let mut current_text = None;
-                if current_selected < row_data.string_list.n_items()
-                    && let Some(s) = row_data.string_list.string(current_selected)
-                {
-                    current_text = Some(s.to_string());
-                }
+                let current_album = effective_album_selection(
+                    dropdown_label(&row_data.string_list, row_data.dropdown.selected()).as_deref(),
+                    &row_data.custom_entry.text(),
+                );
 
                 row_data.string_list.splice(
                     0,
                     row_data.string_list.n_items(),
-                    &["Default (Folder Name)"],
+                    &[DEFAULT_ALBUM_LABEL],
                 );
                 for (name, _) in &fetched {
-                    if name != "Default (Folder Name)" {
+                    if name != DEFAULT_ALBUM_LABEL {
                         row_data.string_list.append(name);
                     }
                 }
-                row_data.string_list.append("Custom Album...");
-
-                if let Some(text) = current_text {
-                    let mut found = false;
-                    for i in 0..row_data.string_list.n_items() {
-                        if let Some(s) = row_data.string_list.string(i)
-                            && s.as_str() == text
-                        {
-                            row_data.dropdown.set_selected(i);
-                            found = true;
-                            break;
-                        }
-                    }
-                    if !found {
-                        if text == "Custom Album..." {
-                            row_data
-                                .dropdown
-                                .set_selected(row_data.string_list.n_items() - 1);
-                        } else {
-                            row_data.dropdown.set_selected(0);
-                        }
-                    }
-                }
+                row_data.string_list.append(CUSTOM_ALBUM_LABEL);
+                apply_album_selection(
+                    &row_data.dropdown,
+                    &row_data.string_list,
+                    &row_data.custom_entry,
+                    Some(&current_album),
+                );
             }
         });
     }
@@ -720,6 +827,8 @@ pub fn build_settings_window(
         #[weak]
         battery_row,
         #[weak]
+        catchup_row,
+        #[weak]
         save_btn,
         #[strong]
         app_clone,
@@ -737,6 +846,11 @@ pub fn build_settings_window(
             let run_on_startup = startup_row.is_active();
             let pause_on_metered_network = metered_row.is_active();
             let pause_on_battery_power = battery_row.is_active();
+            let catchup_mode = match catchup_row.selected() {
+                1 => StartupCatchupMode::RecentOnly,
+                2 => StartupCatchupMode::NewFilesOnly,
+                _ => StartupCatchupMode::Full,
+            };
             let mut watch_paths = Vec::new();
             let albums_map: HashMap<String, String> = albums.borrow().iter().cloned().collect();
 
@@ -746,24 +860,19 @@ pub fn build_settings_window(
                 let rules = row_data.rules.borrow().clone();
                 let has_rules = rules != FolderRules::default();
 
-                let album_name = if selected_idx == row_data.string_list.n_items() - 1 {
-                    row_data.custom_entry.text().to_string()
-                } else if let Some(s) = row_data.string_list.string(selected_idx) {
-                    s.to_string()
-                } else {
-                    "Default (Folder Name)".to_string()
-                };
+                let album_name = effective_album_selection(
+                    dropdown_label(&row_data.string_list, selected_idx).as_deref(),
+                    &row_data.custom_entry.text(),
+                );
 
-                if (album_name.is_empty() || album_name == "Default (Folder Name)") && !has_rules {
+                if (album_name.is_empty() || album_name == DEFAULT_ALBUM_LABEL) && !has_rules {
                     watch_paths.push(WatchPathEntry::Simple(folder));
                 } else {
                     let album_id = albums_map.get(&album_name).cloned();
                     watch_paths.push(WatchPathEntry::WithConfig {
                         path: folder,
                         album_id,
-                        album_name: if album_name.is_empty()
-                            || album_name == "Default (Folder Name)"
-                        {
+                        album_name: if album_name.is_empty() || album_name == DEFAULT_ALBUM_LABEL {
                             None
                         } else {
                             Some(album_name)
@@ -827,6 +936,7 @@ pub fn build_settings_window(
                     new_config.data.run_on_startup = run_on_startup;
                     new_config.data.pause_on_metered_network = pause_on_metered_network;
                     new_config.data.pause_on_battery_power = pause_on_battery_power;
+                    new_config.data.startup_catchup_mode = catchup_mode;
 
                     if !api_key.is_empty() {
                         new_config.set_api_key(&api_key);
@@ -862,6 +972,11 @@ pub fn build_settings_window(
     startup_row.set_active(config.data.run_on_startup);
     metered_row.set_active(config.data.pause_on_metered_network);
     battery_row.set_active(config.data.pause_on_battery_power);
+    catchup_row.set_selected(match config.data.startup_catchup_mode {
+        StartupCatchupMode::Full => 0,
+        StartupCatchupMode::RecentOnly => 1,
+        StartupCatchupMode::NewFilesOnly => 2,
+    });
 
     if let Some(key) = config.get_api_key() {
         api_key_entry.set_text(&key);
@@ -923,7 +1038,19 @@ pub fn build_settings_window(
             #[weak]
             progress_bar,
             #[weak]
+            route_row,
+            #[weak]
+            folders_row,
+            #[weak]
+            queue_health_row,
+            #[weak]
+            last_sync_row,
+            #[weak]
+            error_row,
+            #[weak]
             pause_btn,
+            #[strong]
+            tracked_rows,
             #[upgrade_or]
             glib::ControlFlow::Break,
             move || {
@@ -936,6 +1063,13 @@ pub fn build_settings_window(
                     current_file,
                     paused,
                     pause_reason,
+                    pending,
+                    route,
+                    watched_folder_count,
+                    last_successful_sync_at,
+                    last_error,
+                    last_error_guidance,
+                    folder_statuses,
                 ) = {
                     let s = shared_state.lock().unwrap();
                     (
@@ -947,10 +1081,62 @@ pub fn build_settings_window(
                         s.current_file.clone().unwrap_or_else(|| "...".to_string()),
                         s.paused,
                         s.pause_reason.clone(),
+                        s.queue_size,
+                        s.active_server_route.clone(),
+                        s.watched_folder_count,
+                        s.last_successful_sync_at,
+                        s.last_error.clone(),
+                        s.last_error_guidance.clone(),
+                        s.folder_statuses.clone(),
                     )
                 }; // lock released here
 
                 pause_btn.set_label(if paused { "Resume" } else { "Pause" });
+                route_row.set_subtitle(
+                    route
+                        .as_deref()
+                        .map(|route| match route {
+                            "LAN" => "Connected through LAN",
+                            "WAN" => "Connected through WAN",
+                            _ => "Connected through configured server",
+                        })
+                        .unwrap_or("Waiting for a successful connection check"),
+                );
+                folders_row.set_subtitle(&format!("{} configured", watched_folder_count));
+                queue_health_row
+                    .set_subtitle(&format!("{} pending, {} waiting to retry", pending, failed));
+                last_sync_row.set_subtitle(&format_sync_age(last_successful_sync_at));
+                error_row.set_title(last_error.as_deref().unwrap_or("No recent errors"));
+                error_row.set_subtitle(
+                    last_error_guidance
+                        .as_deref()
+                        .unwrap_or("Uploads are healthy."),
+                );
+
+                for row_data in tracked_rows.borrow().iter() {
+                    let path = &row_data.path;
+                    if let Some(folder_status) = folder_statuses.get(path) {
+                        if let Some(err) = &folder_status.last_error {
+                            row_data
+                                .status_label
+                                .set_label(&format!("⚠️ Error: {}", err));
+                            row_data.status_label.set_css_classes(&["error"]);
+                        } else {
+                            let mut txt = format!("Pending: {}", folder_status.pending_count);
+                            if let Some(t) = folder_status.last_sync_at {
+                                txt.push_str(&format!(
+                                    " • Last Sync: {}",
+                                    format_sync_age(Some(t))
+                                ));
+                            }
+                            row_data.status_label.set_label(&txt);
+                            row_data.status_label.set_css_classes(&["dim-label"]);
+                        }
+                    } else {
+                        row_data.status_label.set_label("Status: Idle");
+                        row_data.status_label.set_css_classes(&["dim-label"]);
+                    }
+                }
 
                 if status == "paused" || paused {
                     status_row.set_title("Paused");
@@ -1007,20 +1193,65 @@ fn add_folder_row(
     tracked_rows: &Rc<RefCell<Vec<FolderRowData>>>,
 ) {
     let path = entry.path().to_string();
-    let row = adw::ActionRow::builder()
-        .title(display_watch_path(&path))
+    let row = gtk::ListBoxRow::builder()
+        .activatable(false)
+        .selectable(false)
         .build();
+
+    let row_box = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(12)
+        .margin_top(10)
+        .margin_bottom(10)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    row.set_child(Some(&row_box));
+
+    let text_box = Box::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(4)
+        .hexpand(true)
+        .halign(gtk::Align::Fill)
+        .valign(gtk::Align::Center)
+        .build();
+    row_box.append(&text_box);
+
+    let title_label = gtk::Label::builder()
+        .label(display_watch_path(&path))
+        .halign(gtk::Align::Start)
+        .xalign(0.0)
+        .wrap(true)
+        .build();
+    title_label.add_css_class("heading");
+    text_box.append(&title_label);
+
     if let Some(subtitle) = watch_path_subtitle(&path) {
-        row.set_subtitle(subtitle);
+        let subtitle_label = gtk::Label::builder()
+            .label(subtitle)
+            .halign(gtk::Align::Start)
+            .xalign(0.0)
+            .wrap(true)
+            .build();
+        subtitle_label.add_css_class("dim-label");
+        text_box.append(&subtitle_label);
     }
 
-    let string_list = gtk::StringList::new(&["Default (Folder Name)"]);
+    let status_label = gtk::Label::builder()
+        .label("Status: Idle")
+        .halign(gtk::Align::Start)
+        .xalign(0.0)
+        .css_classes(vec!["dim-label".to_string()])
+        .build();
+    text_box.append(&status_label);
+
+    let string_list = gtk::StringList::new(&[DEFAULT_ALBUM_LABEL]);
     for (name, _) in albums {
-        if name != "Default (Folder Name)" {
+        if name != DEFAULT_ALBUM_LABEL {
             string_list.append(name);
         }
     }
-    string_list.append("Custom Album...");
+    string_list.append(CUSTOM_ALBUM_LABEL);
 
     let dropdown = gtk::DropDown::builder()
         .model(&string_list)
@@ -1034,25 +1265,7 @@ fn add_folder_row(
         .build();
     let rules = Rc::new(RefCell::new(entry.rules()));
 
-    if let Some(name) = entry.album_name()
-        && name != "Default (Folder Name)"
-    {
-        let mut found = false;
-        for i in 0..string_list.n_items() {
-            if let Some(s) = string_list.string(i)
-                && s.as_str() == name
-            {
-                dropdown.set_selected(i);
-                found = true;
-                break;
-            }
-        }
-        if !found {
-            dropdown.set_selected(string_list.n_items() - 1); // "Custom Album..."
-            custom_entry.set_text(name);
-            custom_entry.set_visible(true);
-        }
-    }
+    apply_album_selection(&dropdown, &string_list, &custom_entry, entry.album_name());
 
     let custom_entry_clone = custom_entry.clone();
     let string_list_clone = string_list.clone();
@@ -1068,7 +1281,8 @@ fn add_folder_row(
     let suffix_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     suffix_box.append(&dropdown);
     suffix_box.append(&custom_entry);
-    row.add_suffix(&suffix_box);
+
+    row_box.append(&suffix_box);
 
     let remove_btn = Button::builder()
         .icon_name("user-trash-symbolic")
@@ -1095,7 +1309,12 @@ fn add_folder_row(
                 .root()
                 .and_then(|root| root.downcast::<adw::ApplicationWindow>().ok())
             {
-                show_folder_rules_dialog(&window, &path_for_rules, rules_clone.clone());
+                let window = window.clone();
+                let path_for_rules = path_for_rules.clone();
+                let rules_clone = rules_clone.clone();
+                glib::idle_add_local_once(move || {
+                    show_folder_rules_dialog(&window, &path_for_rules, rules_clone);
+                });
             }
         }
     ));
@@ -1104,12 +1323,21 @@ fn add_folder_row(
         #[weak]
         row,
         move |_| {
-            list_clone.remove(&row);
-            tracked_clone.borrow_mut().retain(|r| r.path != path_clone);
+            let list_clone = list_clone.clone();
+            let tracked_clone = tracked_clone.clone();
+            let path_clone = path_clone.clone();
+            let row = row.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(focus_target) = list_clone.first_child() {
+                    focus_target.grab_focus();
+                }
+                list_clone.remove(&row);
+                tracked_clone.borrow_mut().retain(|r| r.path != path_clone);
+            });
         }
     ));
-    row.add_suffix(&rules_btn);
-    row.add_suffix(&remove_btn);
+    row_box.append(&rules_btn);
+    row_box.append(&remove_btn);
 
     list.append(&row);
     tracked_rows.borrow_mut().push(FolderRowData {
@@ -1118,6 +1346,7 @@ fn add_folder_row(
         string_list,
         custom_entry,
         rules,
+        status_label,
     });
 }
 
@@ -1388,4 +1617,44 @@ fn show_about_dialog(parent: &adw::ApplicationWindow) {
     );
 
     about.present();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CUSTOM_ALBUM_LABEL, DEFAULT_ALBUM_LABEL, effective_album_selection, format_sync_age,
+    };
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn test_effective_album_selection_prefers_custom_text_for_custom_choice() {
+        let album = effective_album_selection(Some(CUSTOM_ALBUM_LABEL), "Trips");
+        assert_eq!(album, "Trips");
+    }
+
+    #[test]
+    fn test_effective_album_selection_uses_selected_existing_album() {
+        let album = effective_album_selection(Some("Family"), "");
+        assert_eq!(album, "Family");
+    }
+
+    #[test]
+    fn test_effective_album_selection_falls_back_to_default_for_empty_custom() {
+        let album = effective_album_selection(Some(CUSTOM_ALBUM_LABEL), "   ");
+        assert_eq!(album, DEFAULT_ALBUM_LABEL);
+    }
+
+    #[test]
+    fn test_format_sync_age_for_missing_timestamp() {
+        assert_eq!(format_sync_age(None), "No successful sync yet");
+    }
+
+    #[test]
+    fn test_format_sync_age_for_recent_timestamp() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs_f64();
+        assert_eq!(format_sync_age(Some(now - 30.0)), "Less than a minute ago");
+    }
 }

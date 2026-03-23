@@ -6,6 +6,12 @@ use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApiIssue {
+    pub summary: String,
+    pub guidance: String,
+}
+
 pub struct ImmichApiClient {
     pub client: Client,
     pub internal_url: String,
@@ -13,6 +19,8 @@ pub struct ImmichApiClient {
     pub api_key: String,
     /// The currently active base URL selected by the last successful connectivity check.
     pub active_url: Mutex<Option<String>>,
+    /// Most recent actionable API/client problem for the dashboard and diagnostics.
+    last_issue: Mutex<Option<ApiIssue>>,
     /// Album name to album ID cache to avoid repeated list/create calls.
     album_cache: Mutex<HashMap<String, String>>,
     albums_fetched: Mutex<bool>,
@@ -42,8 +50,37 @@ impl ImmichApiClient {
             external_url: ext,
             api_key,
             active_url: Mutex::new(None),
+            last_issue: Mutex::new(None),
             album_cache: Mutex::new(HashMap::new()),
             albums_fetched: Mutex::new(false),
+        }
+    }
+
+    pub async fn active_route_label(&self) -> Option<String> {
+        let active = self.active_url.lock().await.clone()?;
+        Some(self.route_label_for_url(&active))
+    }
+
+    pub async fn latest_issue(&self) -> Option<ApiIssue> {
+        self.last_issue.lock().await.clone()
+    }
+
+    async fn set_issue(&self, issue: ApiIssue) {
+        *self.last_issue.lock().await = Some(issue);
+    }
+
+    async fn clear_issue(&self) {
+        *self.last_issue.lock().await = None;
+    }
+
+    fn route_label_for_url(&self, url: &str) -> String {
+        let trimmed = url.trim_end_matches('/');
+        if !self.internal_url.is_empty() && trimmed == self.internal_url {
+            "LAN".to_string()
+        } else if !self.external_url.is_empty() && trimmed == self.external_url {
+            "WAN".to_string()
+        } else {
+            "Custom".to_string()
         }
     }
 
@@ -54,6 +91,7 @@ impl ImmichApiClient {
         if self.ping_url(&self.internal_url).await {
             let mut active = self.active_url.lock().await;
             *active = Some(self.internal_url.clone());
+            self.clear_issue().await;
             log::info!("Connected via LAN: {}", self.internal_url);
             return true;
         }
@@ -61,6 +99,7 @@ impl ImmichApiClient {
         if self.ping_url(&self.external_url).await {
             let mut active = self.active_url.lock().await;
             *active = Some(self.external_url.clone());
+            self.clear_issue().await;
             log::info!("Connected via WAN: {}", self.external_url);
             return true;
         }
@@ -68,6 +107,12 @@ impl ImmichApiClient {
         log::error!("Could not connect to Immich server.");
         let mut active = self.active_url.lock().await;
         *active = None;
+        self.set_issue(ApiIssue {
+            summary: "Could not reach the Immich server".to_string(),
+            guidance: "Check the LAN/WAN URLs, confirm the server is running, and verify your network connection."
+                .to_string(),
+        })
+        .await;
         false
     }
 
@@ -136,6 +181,12 @@ impl ImmichApiClient {
             Some(u) => u,
             None => {
                 log::error!("No active connection. Skipping upload: {}", file_path);
+                self.set_issue(ApiIssue {
+                    summary: "No active server connection".to_string(),
+                    guidance: "Test the server connection in Settings and confirm at least one Immich URL is reachable."
+                        .to_string(),
+                })
+                .await;
                 return None;
             }
         };
@@ -143,6 +194,12 @@ impl ImmichApiClient {
         let path = Path::new(file_path);
         if !path.exists() {
             log::warn!("File not found, skipping: {}", file_path);
+            self.set_issue(ApiIssue {
+                summary: "A queued file is no longer available".to_string(),
+                guidance: "Check that the watched folder still exists and that the file was not moved or deleted before upload."
+                    .to_string(),
+            })
+            .await;
             return None;
         }
 
@@ -150,6 +207,12 @@ impl ImmichApiClient {
             Ok(m) => m,
             Err(e) => {
                 log::error!("Could not read metadata for {}: {}", file_path, e);
+                self.set_issue(ApiIssue {
+                    summary: "Mimick could not read a queued file".to_string(),
+                    guidance: "Verify folder permissions and make sure the file is still accessible to the app."
+                        .to_string(),
+                })
+                .await;
                 return None;
             }
         };
@@ -175,6 +238,12 @@ impl ImmichApiClient {
             Ok(f) => f,
             Err(e) => {
                 log::error!("Failed to open {}: {}", file_path, e);
+                self.set_issue(ApiIssue {
+                    summary: "Mimick could not open a queued file".to_string(),
+                    guidance: "The file may be locked, deleted, or outside the app's allowed folder access."
+                        .to_string(),
+                })
+                .await;
                 return None;
             }
         };
@@ -212,6 +281,7 @@ impl ImmichApiClient {
                     200 | 201 => {
                         if let Ok(json) = resp.json::<serde_json::Value>().await {
                             let asset_id = json["id"].as_str().map(String::from);
+                            self.clear_issue().await;
                             log::info!("Upload OK: {} => {:?}", filename, asset_id);
                             asset_id
                         } else {
@@ -225,6 +295,7 @@ impl ImmichApiClient {
                     }
                     409 => {
                         log::info!("Duplicate (already in Immich): {}", filename);
+                        self.clear_issue().await;
                         // Some versions return the ID even on 409
                         if let Ok(json) = resp.json::<serde_json::Value>().await
                             && let Some(id) = json["id"].as_str()
@@ -238,17 +309,44 @@ impl ImmichApiClient {
                         // Reset active_url to force re-check
                         let mut active = self.active_url.lock().await;
                         *active = None;
+                        self.set_issue(ApiIssue {
+                            summary: "Immich rejected a file as too large".to_string(),
+                            guidance: "Reduce the file size, raise the server's upload limits, or use a folder rule to skip oversized files."
+                                .to_string(),
+                        })
+                        .await;
                         None
                     }
-                    502 | 504 => {
+                    401 | 403 => {
+                        self.set_issue(ApiIssue {
+                            summary: "Immich rejected the API key".to_string(),
+                            guidance: "Update the API key in Settings and make sure it has permission to upload assets."
+                                .to_string(),
+                        })
+                        .await;
+                        None
+                    }
+                    502..=504 => {
                         log::warn!("Server error {}: retrying later for {}", status, filename);
                         let mut active = self.active_url.lock().await;
                         *active = None;
+                        self.set_issue(ApiIssue {
+                            summary: "Immich is temporarily unavailable".to_string(),
+                            guidance: "Wait a moment and retry. If it keeps happening, check the server logs and reverse proxy."
+                                .to_string(),
+                        })
+                        .await;
                         None
                     }
                     _ => {
                         let body = resp.text().await.unwrap_or_default();
                         log::error!("Upload failed [{}] for {}: {}", status, filename, body);
+                        self.set_issue(classify_http_issue(
+                            RequestContext::Upload,
+                            status,
+                            Some(&filename),
+                        ))
+                        .await;
                         None
                     }
                 }
@@ -258,6 +356,8 @@ impl ImmichApiClient {
                 // Force connection re-check on next upload
                 let mut active = self.active_url.lock().await;
                 *active = None;
+                self.set_issue(classify_network_issue(RequestContext::Upload, &e))
+                    .await;
                 None
             }
         }
@@ -271,6 +371,12 @@ impl ImmichApiClient {
             Some(u) => u,
             None => {
                 log::warn!("Cannot fetch albums: no active URL.");
+                self.set_issue(ApiIssue {
+                    summary: "Album list is unavailable".to_string(),
+                    guidance: "Reconnect to the Immich server before refreshing albums."
+                        .to_string(),
+                })
+                .await;
                 return;
             }
         };
@@ -298,14 +404,25 @@ impl ImmichApiClient {
                         }
                     }
                     *self.albums_fetched.lock().await = true;
+                    self.clear_issue().await;
                     log::info!("Cached {} albums.", cache.len());
                 }
             }
-            Ok(resp) => log::error!("Failed to fetch albums: {}", resp.status()),
+            Ok(resp) => {
+                log::error!("Failed to fetch albums: {}", resp.status());
+                self.set_issue(classify_http_issue(
+                    RequestContext::Albums,
+                    resp.status().as_u16(),
+                    None,
+                ))
+                .await;
+            }
             Err(e) => {
                 log::error!("Network error fetching albums: {}", e);
                 let mut active = self.active_url.lock().await;
                 *active = None;
+                self.set_issue(classify_network_issue(RequestContext::Albums, &e))
+                    .await;
             }
         }
     }
@@ -359,6 +476,7 @@ impl ImmichApiClient {
                     let id = json["id"].as_str().map(String::from)?;
                     let mut cache = self.album_cache.lock().await;
                     cache.insert(album_name.to_string(), id.clone());
+                    self.clear_issue().await;
                     log::info!("Album created: '{}' ({})", album_name, id);
                     Some(id)
                 } else {
@@ -367,10 +485,18 @@ impl ImmichApiClient {
             }
             Ok(resp) => {
                 log::error!("Failed to create album '{}': {}", album_name, resp.status());
+                self.set_issue(classify_http_issue(
+                    RequestContext::AlbumCreate,
+                    resp.status().as_u16(),
+                    Some(album_name),
+                ))
+                .await;
                 None
             }
             Err(e) => {
                 log::error!("Network error creating album '{}': {}", album_name, e);
+                self.set_issue(classify_network_issue(RequestContext::AlbumCreate, &e))
+                    .await;
                 None
             }
         }
@@ -487,16 +613,114 @@ impl ImmichApiClient {
         {
             Ok(resp) if resp.status().is_success() => {
                 log::info!("Assets added to album successfully.");
+                self.clear_issue().await;
                 true
             }
             Ok(resp) => {
                 log::error!("Failed to add assets to album: {}", resp.status());
+                self.set_issue(classify_http_issue(
+                    RequestContext::AlbumAssign,
+                    resp.status().as_u16(),
+                    Some(album_id),
+                ))
+                .await;
                 false
             }
             Err(e) => {
                 log::error!("Network error adding assets to album: {}", e);
+                self.set_issue(classify_network_issue(RequestContext::AlbumAssign, &e))
+                    .await;
                 false
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum RequestContext {
+    Upload,
+    Albums,
+    AlbumCreate,
+    AlbumAssign,
+}
+
+fn classify_http_issue(context: RequestContext, status: u16, subject: Option<&str>) -> ApiIssue {
+    match status {
+        401 | 403 => ApiIssue {
+            summary: "Immich rejected the API key".to_string(),
+            guidance: "Update the API key in Settings and confirm it still has upload access."
+                .to_string(),
+        },
+        404 if matches!(context, RequestContext::AlbumAssign | RequestContext::AlbumCreate) => {
+            ApiIssue {
+                summary: "An album reference is no longer valid".to_string(),
+                guidance: "Refresh the album list or choose a different album before retrying."
+                    .to_string(),
+            }
+        }
+        413 => ApiIssue {
+            summary: "Immich rejected a file as too large".to_string(),
+            guidance: "Reduce the file size, raise the server upload limit, or skip oversized files with folder rules."
+                .to_string(),
+        },
+        429 => ApiIssue {
+            summary: "Immich rate-limited the request".to_string(),
+            guidance: "Wait a moment and retry. If this happens often, lower upload concurrency or check reverse proxy limits."
+                .to_string(),
+        },
+        502..=504 => ApiIssue {
+            summary: "Immich is temporarily unavailable".to_string(),
+            guidance: "Wait a moment and retry. If it keeps happening, inspect the server and reverse proxy logs."
+                .to_string(),
+        },
+        _ => ApiIssue {
+            summary: match context {
+                RequestContext::Upload => {
+                    format!("Immich could not accept {}", subject.unwrap_or("the upload"))
+                }
+                RequestContext::Albums => "Immich could not load the album list".to_string(),
+                RequestContext::AlbumCreate => format!(
+                    "Immich could not create album '{}'",
+                    subject.unwrap_or("Unnamed")
+                ),
+                RequestContext::AlbumAssign => {
+                    "Immich could not add the asset to the selected album".to_string()
+                }
+            },
+            guidance: format!(
+                "The server responded with HTTP {}. Check the server logs and retry after confirming the current configuration.",
+                status
+            ),
+        },
+    }
+}
+
+fn classify_network_issue(context: RequestContext, error: &reqwest::Error) -> ApiIssue {
+    if error.is_timeout() {
+        ApiIssue {
+            summary: "The Immich request timed out".to_string(),
+            guidance: "Check network quality and server responsiveness, then retry.".to_string(),
+        }
+    } else if error.is_connect() {
+        ApiIssue {
+            summary: "Could not reach the Immich server".to_string(),
+            guidance: "Check the configured URLs, your network connection, and whether the server is online."
+                .to_string(),
+        }
+    } else {
+        ApiIssue {
+            summary: match context {
+                RequestContext::Upload => "The upload request failed before completion".to_string(),
+                RequestContext::Albums => "The album request failed before completion".to_string(),
+                RequestContext::AlbumCreate => {
+                    "The album creation request failed before completion".to_string()
+                }
+                RequestContext::AlbumAssign => {
+                    "The album assignment request failed before completion".to_string()
+                }
+            },
+            guidance: "Retry the request after checking network connectivity and server health."
+                .to_string(),
         }
     }
 }
@@ -606,5 +830,30 @@ mod tests {
             mime_for_path(Path::new("test.unknown")),
             "application/octet-stream"
         );
+    }
+
+    #[test]
+    fn test_classify_http_issue_for_invalid_api_key() {
+        let issue = classify_http_issue(RequestContext::Upload, 401, Some("photo.jpg"));
+        assert_eq!(issue.summary, "Immich rejected the API key");
+        assert!(issue.guidance.contains("API key"));
+    }
+
+    #[test]
+    fn test_classify_http_issue_for_album_assign_404() {
+        let issue = classify_http_issue(RequestContext::AlbumAssign, 404, Some("album-1"));
+        assert_eq!(issue.summary, "An album reference is no longer valid");
+    }
+
+    #[tokio::test]
+    async fn test_active_route_label_tracks_selected_url() {
+        let client = ImmichApiClient::new(
+            "http://lan.example".into(),
+            "https://wan.example".into(),
+            "token".into(),
+        );
+        *client.active_url.lock().await = Some("https://wan.example".into());
+
+        assert_eq!(client.active_route_label().await.as_deref(), Some("WAN"));
     }
 }

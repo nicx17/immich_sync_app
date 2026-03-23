@@ -66,13 +66,14 @@
 - [x] **Network / Power Awareness** — Uploads can defer on metered connections or while running on battery power.
 
 ### Next Wave
-
+- [ ] **sync delete** sync deleted files from local to remote.... implement this as a rule in the per folder rules toggle
+- [x] **fix album lable type** currently the ablum even if selected from the available album menu is marked as custom album on restart .. revise this
 - [ ] **Upload Limits** — User-configurable concurrency limit, bandwidth cap, and quiet hours.
-- [ ] **Notifications That Matter** — Summaries for sync success/failure, connectivity loss, permission loss, and album recreation events.
-- [ ] **Health Dashboard** — Show last successful sync, current server route, watched folder count, pending queue size, retry count, and latest error.
-- [ ] **Permission Health Checks** — Detect broken Flatpak portal access or lost folder permissions and guide the user to reauthorize them.
-- [ ] **Safer Startup Catch-Up Controls** — Let users choose full catch-up, recent-only catch-up, or new-files-only behavior.
-- [ ] **Per-Folder Status** — Track last sync time, pending count, target album, and last error per watch path.
+- [ ] **Notifications That Matter** — Summaries for sync success/failure, connectivity loss, permission loss, and album recreation events.... prevent notificatons for per sync cycle ... or make them temporary
+- [x] **Health Dashboard** — Show last successful sync, current server route, watched folder count, pending queue size, retry count, and latest error.
+- [x] **Permission Health Checks** — Detect broken Flatpak portal access or lost folder permissions and guide the user to reauthorize them.
+- [x] **Safer Startup Catch-Up Controls** — Let users choose full catch-up, recent-only catch-up, or new-files-only behavior.
+- [x] **Per-Folder Status** — Track last sync time, pending count, target album, and last error per watch path.
 
 ### UX Improvements
 
@@ -80,7 +81,7 @@
 - [ ] **Better Album Picker** — Searchable album list, recent albums, inline create-new, and a clearer `use folder name` option.
 - [x] **Split Setup / Controls Window** — Separate configuration from live actions and keep footer actions visible while scrolling.
 - [ ] **Status in Tray** — Surface idle / syncing / paused / offline / error state directly in the tray menu and tooltip.
-- [ ] **Actionable Errors** — Translate generic failures into concrete guidance like invalid API key, missing album, network timeout, or folder access loss.
+- [x] **Actionable Errors** — Translate generic failures into concrete guidance like invalid API key, missing album, network timeout, or folder access loss.
 - [ ] **Dry Run / Preview Mode** — Show what would be uploaded before enabling a new folder or changing rules.
 - [ ] **Verify Existing Remote State** — Audit a folder against the local sync index and highlight drift or mismatches.
 
