@@ -51,10 +51,12 @@ Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files
 - **Diagnostics Export**: Generate a redacted support bundle with queue state, sync summaries, and a human-readable report without exposing raw logs, URLs, or full local paths.
 - **Network / Power Awareness**: Optionally defer uploads while on a metered connection or running on battery power.
 - **Custom Album Mapping**: Select an existing remote album, type a custom name, or let the app create an album from the local folder name (e.g., `~/Pictures/Vacation 2024` → Album `Vacation 2024`).
+- **Health Dashboard & Status**: See global network connectivity and errors on the Controls page, alongside Per-Folder Status showing pending queue size and last sync time directly next to each watched directory.
+- **Actionable Errors & Permission Checks**: Emits specific UI warnings instead of generic timeouts, such as alerting you if Flatpak portal access to a watched folder is lost or an API key expires.
 - **One-Way Sync**: Uploads media without modifying local files.
 - **Security**: API Key stored in the system keyring via `secret-tool` (libsecret).
 - **Autostart**: Optional login startup with desktop-portal permission inside Flatpak and native autostart integration outside Flatpak.
-- **Startup Catch-Up**: On launch, Mimick scans watched folders for media that has not been synced yet and queues only new, changed, or retargeted files.
+- **Startup Catch-Up Controls**: On launch, Mimick scans watched folders for media that has not been synced yet. Users can optimize disk I/O by limiting this scan strictly to recent files (last 7 days) or new files only.
 - **Clear Window Controls**: `Close` hides the settings window, while `Quit` stops the app completely.
 - **Desktop Integration**:
   - GTK4 / Libadwaita settings UI (dark mode by default).

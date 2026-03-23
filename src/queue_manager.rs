@@ -9,12 +9,15 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, mpsc};
 
 /// A unit of work for the upload queue.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FileTask {
     pub path: String,
+    #[serde(default)]
+    pub watch_path: String,
     pub checksum: String,
     /// Optional album ID if it has already been resolved.
     #[serde(default)]
@@ -146,6 +149,8 @@ impl QueueManager {
                             let sync_target = handle_upload(&api, &file_task).await;
                             let success = sync_target.is_some();
                             let elapsed = t_start.elapsed().as_secs_f32();
+                            let active_route = api.active_route_label().await;
+                            let latest_issue = api.latest_issue().await;
 
                             if success {
                                 log::info!("Upload SUCCESS: {} ({:.2}s)", file_task.path, elapsed);
@@ -189,14 +194,27 @@ impl QueueManager {
 
                                 let mut s = state_ref.lock().unwrap();
                                 let attempts = current_attempt_count(&s, &file_task.path);
+                                s.active_server_route = active_route;
+                                s.last_successful_sync_at = Some(unix_timestamp_now());
                                 s.last_completed_file = Some(file_task.path.clone());
                                 s.last_error = None;
+                                s.last_error_guidance = None;
                                 s.record_event(
                                     file_task.path.clone(),
                                     "completed",
                                     Some(format!("Finished in {:.2}s", elapsed)),
                                     attempts,
                                 );
+                                if let Some(target) = sync_target.as_ref() {
+                                    let status = s
+                                        .folder_statuses
+                                        .entry(file_task.watch_path.clone())
+                                        .or_default();
+                                    status.pending_count = status.pending_count.saturating_sub(1);
+                                    status.last_sync_at = Some(unix_timestamp_now());
+                                    status.last_error = None;
+                                    status.target_album = target.album_name.clone();
+                                }
                             } else {
                                 log::warn!(
                                     "Upload FAILED: {} ({:.2}s). Adding to retry queue.",
@@ -207,8 +225,31 @@ impl QueueManager {
                                 retry_ref.lock().unwrap().push(file_task.clone());
                                 let mut s = state_ref.lock().unwrap();
                                 s.failed_count += 1;
-                                s.last_error =
-                                    Some(format!("Upload failed for {}", file_task.path));
+                                s.active_server_route = active_route;
+                                let error_text = latest_issue
+                                    .as_ref()
+                                    .map(|issue| issue.summary.clone())
+                                    .unwrap_or_else(|| {
+                                        format!("Upload failed for {}", file_task.path)
+                                    });
+                                s.last_error = Some(error_text.clone());
+                                s.last_error_guidance = latest_issue
+                                    .as_ref()
+                                    .map(|issue| issue.guidance.clone())
+                                    .or_else(|| {
+                                        Some(
+                                            "Review the latest server and permission settings, then retry the failed item."
+                                                .to_string(),
+                                        )
+                                    });
+
+                                let status = s
+                                    .folder_statuses
+                                    .entry(file_task.watch_path.clone())
+                                    .or_default();
+                                status.pending_count = status.pending_count.saturating_sub(1);
+                                status.last_error = Some(error_text);
+
                                 let attempts = current_attempt_count(&s, &file_task.path);
                                 s.record_event(
                                     file_task.path.clone(),
@@ -306,6 +347,14 @@ impl QueueManager {
             let mut s = self.shared_state.lock().unwrap();
             s.total_queued += 1;
             s.queue_size = s.total_queued.saturating_sub(s.processed_count);
+
+            let status = s
+                .folder_statuses
+                .entry(task.watch_path.clone())
+                .or_default();
+            status.pending_count += 1;
+            status.target_album = task.album_name.clone();
+
             let attempts = current_attempt_count(&s, &task.path);
             s.record_event(
                 task.path.clone(),
@@ -324,6 +373,8 @@ impl QueueManager {
             let mut s = self.shared_state.lock().unwrap();
             s.total_queued = s.total_queued.saturating_sub(1);
             s.queue_size = s.total_queued.saturating_sub(s.processed_count);
+            let status = s.folder_statuses.entry(e.0.watch_path.clone()).or_default();
+            status.pending_count = status.pending_count.saturating_sub(1);
             return false;
         }
 
@@ -435,6 +486,11 @@ impl QueueManager {
             for task in &tasks {
                 let attempts = current_attempt_count(&state, &task.path).saturating_add(1);
                 state.record_event(task.path.clone(), "pending", Some(detail.clone()), attempts);
+                let status = state
+                    .folder_statuses
+                    .entry(task.watch_path.clone())
+                    .or_default();
+                status.pending_count += 1;
             }
         }
 
@@ -455,6 +511,13 @@ fn current_attempt_count(state: &AppState, path: &str) -> u32 {
         .find(|event| event.path == path)
         .map(|event| event.attempts)
         .unwrap_or(1)
+}
+
+fn unix_timestamp_now() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
 }
 
 async fn wait_until_allowed(
@@ -676,6 +739,7 @@ mod tests {
     fn test_filetask_serialization() {
         let task = FileTask {
             path: "/a/b.jpg".to_string(),
+            watch_path: "/a".to_string(),
             checksum: "sha123".to_string(),
             album_id: Some("id1".to_string()),
             album_name: Some("Album".to_string()),
@@ -696,6 +760,7 @@ mod tests {
 
         let task = FileTask {
             path: "/a/1.jpg".to_string(),
+            watch_path: "/a".to_string(),
             checksum: "hash1".to_string(),
             album_id: None,
             album_name: None,
@@ -714,6 +779,7 @@ mod tests {
         let (qm, mut rx, shared_state, _retry_list, pending_paths) = test_queue_manager(4);
         let task = FileTask {
             path: "/a/1.jpg".to_string(),
+            watch_path: "/a".to_string(),
             checksum: "hash1".to_string(),
             album_id: None,
             album_name: Some("Album".into()),
@@ -734,6 +800,7 @@ mod tests {
         let (qm, mut rx, shared_state, retry_list, pending_paths) = test_queue_manager(4);
         let task = FileTask {
             path: "/a/failed.jpg".to_string(),
+            watch_path: "/a".to_string(),
             checksum: "hash1".to_string(),
             album_id: None,
             album_name: None,
@@ -758,10 +825,16 @@ mod tests {
     }
 
     #[test]
+    fn test_unix_timestamp_now_is_non_zero() {
+        assert!(unix_timestamp_now() > 0.0);
+    }
+
+    #[test]
     fn test_clear_failed_removes_retry_entries_and_pending_paths() {
         let (qm, _rx, shared_state, retry_list, pending_paths) = test_queue_manager(4);
         let task = FileTask {
             path: "/a/failed.jpg".to_string(),
+            watch_path: "/a".to_string(),
             checksum: "hash1".to_string(),
             album_id: None,
             album_name: None,

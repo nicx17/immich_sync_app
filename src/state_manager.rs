@@ -17,6 +17,15 @@ pub struct QueueEvent {
     pub timestamp: f64,
 }
 
+/// Status of an individual watch folder.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct FolderSyncStatus {
+    pub last_sync_at: Option<f64>,
+    pub pending_count: usize,
+    pub target_album: Option<String>,
+    pub last_error: Option<String>,
+}
+
 /// Shared progress counters exposed to the settings window.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppState {
@@ -37,13 +46,23 @@ pub struct AppState {
     #[serde(default)]
     pub pause_reason: Option<String>,
     #[serde(default)]
+    pub watched_folder_count: usize,
+    #[serde(default)]
+    pub active_server_route: Option<String>,
+    #[serde(default)]
+    pub last_successful_sync_at: Option<f64>,
+    #[serde(default)]
     pub last_error: Option<String>,
+    #[serde(default)]
+    pub last_error_guidance: Option<String>,
     #[serde(default)]
     pub last_completed_file: Option<String>,
     #[serde(default)]
     pub diagnostics_exports: usize,
     #[serde(default)]
     pub recent_events: Vec<QueueEvent>,
+    #[serde(default)]
+    pub folder_statuses: std::collections::HashMap<String, FolderSyncStatus>,
 }
 
 impl Default for AppState {
@@ -60,10 +79,15 @@ impl Default for AppState {
             timestamp: 0.0,
             paused: false,
             pause_reason: None,
+            watched_folder_count: 0,
+            active_server_route: None,
+            last_successful_sync_at: None,
             last_error: None,
+            last_error_guidance: None,
             last_completed_file: None,
             diagnostics_exports: 0,
             recent_events: Vec::new(),
+            folder_statuses: std::collections::HashMap::new(),
         }
     }
 }
@@ -190,6 +214,10 @@ mod tests {
         assert_eq!(state.queue_size, 0);
         assert_eq!(state.status, "idle");
         assert_eq!(state.progress, 0);
+        assert_eq!(state.watched_folder_count, 0);
+        assert!(state.active_server_route.is_none());
+        assert!(state.last_successful_sync_at.is_none());
+        assert!(state.last_error_guidance.is_none());
     }
 
     #[test]
@@ -215,6 +243,39 @@ mod tests {
         let read_state = manager.read_state();
         assert_eq!(read_state.status, "syncing");
         assert_eq!(read_state.progress, 50);
+    }
+
+    #[test]
+    fn test_state_manager_preserves_health_dashboard_fields() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("status.json");
+        let manager = StateManager {
+            state_file: file_path,
+        };
+
+        let state = AppState {
+            watched_folder_count: 3,
+            active_server_route: Some("LAN".into()),
+            last_successful_sync_at: Some(1234.5),
+            last_error: Some("Immich rejected the API key".into()),
+            last_error_guidance: Some("Update the API key in Settings.".into()),
+            ..AppState::default()
+        };
+
+        manager.write_state(state);
+        let read_state = manager.read_state();
+
+        assert_eq!(read_state.watched_folder_count, 3);
+        assert_eq!(read_state.active_server_route.as_deref(), Some("LAN"));
+        assert_eq!(read_state.last_successful_sync_at, Some(1234.5));
+        assert_eq!(
+            read_state.last_error.as_deref(),
+            Some("Immich rejected the API key")
+        );
+        assert_eq!(
+            read_state.last_error_guidance.as_deref(),
+            Some("Update the API key in Settings.")
+        );
     }
 
     #[test]

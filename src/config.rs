@@ -125,6 +125,14 @@ pub fn best_matching_watch_entry<'a>(
         .max_by_key(|entry| entry.path().len())
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub enum StartupCatchupMode {
+    #[default]
+    Full,
+    RecentOnly,
+    NewFilesOnly,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ConfigData {
     #[serde(default)]
@@ -147,6 +155,8 @@ pub struct ConfigData {
     pub pause_on_metered_network: bool,
     #[serde(default)]
     pub pause_on_battery_power: bool,
+    #[serde(default)]
+    pub startup_catchup_mode: StartupCatchupMode,
 }
 
 impl Default for ConfigData {
@@ -162,6 +172,7 @@ impl Default for ConfigData {
             delete_after_sync: false,
             pause_on_metered_network: false,
             pause_on_battery_power: false,
+            startup_catchup_mode: StartupCatchupMode::default(),
         }
     }
 }

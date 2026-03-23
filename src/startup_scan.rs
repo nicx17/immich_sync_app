@@ -1,9 +1,11 @@
 //! Startup catch-up scan for files that were missed while Mimick was not running.
 
 use crate::api_client::ImmichApiClient;
+use crate::config::StartupCatchupMode;
 use crate::config::WatchPathEntry;
 use crate::monitor::{compute_sha1_chunked, is_supported_media_path, is_temporary_file};
 use crate::queue_manager::{FileTask, QueueManager};
+use crate::state_manager::AppState;
 use crate::sync_index::{SyncDecision, SyncIndex, SyncTarget};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -13,6 +15,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 struct ScanCandidate {
     path: String,
+    watch_path: String,
     album_id: Option<String>,
     album_name: Option<String>,
     reassociate_only: bool,
@@ -25,6 +28,8 @@ pub async fn queue_unsynced_files(
     queue_manager: Arc<QueueManager>,
     sync_index: Arc<Mutex<SyncIndex>>,
     api_client: Arc<ImmichApiClient>,
+    catchup_mode: StartupCatchupMode,
+    shared_state: Arc<Mutex<AppState>>,
 ) {
     if watch_paths.is_empty() {
         return;
@@ -37,12 +42,17 @@ pub async fn queue_unsynced_files(
     let mut album_id_cache: HashMap<String, Option<String>> = HashMap::new();
 
     for entry in &watch_paths {
-        let root = Path::new(entry.path());
+        let watch_path_str = entry.path().to_string();
+        let root = Path::new(&watch_path_str);
         if !root.exists() {
             log::warn!(
                 "Startup scan skipped missing watch path: {}",
                 root.display()
             );
+            if let Ok(mut state) = shared_state.lock() {
+                let status = state.folder_statuses.entry(watch_path_str).or_default();
+                status.last_error = Some("Permission lost or folder missing".to_string());
+            }
             continue;
         }
 
@@ -74,6 +84,39 @@ pub async fn queue_unsynced_files(
                         }
 
                         let path_str = path.to_string_lossy().into_owned();
+
+                        // Apply Startup Catch-up Controls
+                        if catchup_mode == StartupCatchupMode::RecentOnly {
+                            if let Ok(meta) = entry_fs.metadata()
+                                && let Ok(modified) = meta.modified()
+                                && let Ok(duration) =
+                                    std::time::SystemTime::now().duration_since(modified)
+                                && duration.as_secs() > 7 * 86400
+                            {
+                                skipped_current += 1;
+                                continue;
+                            }
+                        } else if catchup_mode == StartupCatchupMode::NewFilesOnly {
+                            let last_sync = shared_state
+                                .lock()
+                                .unwrap()
+                                .last_successful_sync_at
+                                .unwrap_or_default();
+
+                            if let Ok(meta) = entry_fs.metadata()
+                                && let Ok(created) = meta.created().or_else(|_| meta.modified())
+                            {
+                                let created_secs = created
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs_f64();
+                                if created_secs < last_sync {
+                                    skipped_current += 1;
+                                    continue;
+                                }
+                            }
+                        }
+
                         seen_paths.insert(path_str.clone());
                         let album_name = effective_album_name(entry, &path);
                         let album_id =
@@ -105,6 +148,7 @@ pub async fn queue_unsynced_files(
                             SyncDecision::NeedsUpload => {
                                 candidates.push(ScanCandidate {
                                     path: path_str,
+                                    watch_path: watch_path_str.clone(),
                                     album_id,
                                     album_name: Some(album_name),
                                     reassociate_only: false,
@@ -116,6 +160,7 @@ pub async fn queue_unsynced_files(
                                     sync_index.lock().unwrap().stored_checksum(&path_str);
                                 candidates.push(ScanCandidate {
                                     path: path_str,
+                                    watch_path: watch_path_str.clone(),
                                     album_id,
                                     album_name: Some(album_name),
                                     reassociate_only: true,
@@ -183,6 +228,7 @@ pub async fn queue_unsynced_files(
         if queue_manager
             .add_to_queue(FileTask {
                 path: candidate.path,
+                watch_path: candidate.watch_path,
                 checksum,
                 album_id: candidate.album_id,
                 album_name: candidate.album_name,
