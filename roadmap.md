@@ -30,7 +30,7 @@
 - [x] GTK4 + Libadwaita native UI (dark mode, `adw::ApplicationWindow`).
 - [x] Internal/External URL fields with toggles (at least one must stay enabled — validated).
 - [x] Test Connection button (async ping, no UI freeze).
-- [x] Watch folders list with per-row album `DropDown` + custom name `Entry`.
+- [x] Watch folders list with per-row album picker button (searchable modal dialog, create-new inline).
 - [x] Live sync status row and progress bar (polling `status.json`).
 - [x] Save & Restart flow.
 
@@ -68,8 +68,8 @@
 ### Next Wave
 - [ ] **sync delete** sync deleted files from local to remote.... implement this as a rule in the per folder rules toggle
 - [x] **fix album lable type** currently the ablum even if selected from the available album menu is marked as custom album on restart .. revise this
-- [ ] **Upload Limits** — User-configurable concurrency limit, bandwidth cap, and quiet hours.
-- [ ] **Notifications That Matter** — Summaries for sync success/failure, connectivity loss, permission loss, and album recreation events.... prevent notificatons for per sync cycle ... or make them temporary
+- [x] **Notifications That Matter** — Summaries for sync success/failure and connectivity loss replaces per-file spam.
+- [x] **Upload Limits** — User-configurable concurrency limit and quiet hours are now supported in the settings window.
 - [x] **Health Dashboard** — Show last successful sync, current server route, watched folder count, pending queue size, retry count, and latest error.
 - [x] **Permission Health Checks** — Detect broken Flatpak portal access or lost folder permissions and guide the user to reauthorize them.
 - [x] **Safer Startup Catch-Up Controls** — Let users choose full catch-up, recent-only catch-up, or new-files-only behavior.
@@ -77,8 +77,8 @@
 
 ### UX Improvements
 
-- [ ] **First-Run Wizard** — Guided setup for server test, API key, first watch folder, and startup behavior.
-- [ ] **Better Album Picker** — Searchable album list, recent albums, inline create-new, and a clearer `use folder name` option.
+- [x] **First-Run Wizard** — Opens settings automatically when no API key is configured, shows a welcome banner, and disables "Save & Restart" until valid credentials are entered.
+- [x] **Better Album Picker** — Searchable modal dialog with inline create-new and a clear "use folder name" default option replaces the old dropdown.
 - [x] **Split Setup / Controls Window** — Separate configuration from live actions and keep footer actions visible while scrolling.
 - [ ] **Status in Tray** — Surface idle / syncing / paused / offline / error state directly in the tray menu and tooltip.
 - [x] **Actionable Errors** — Translate generic failures into concrete guidance like invalid API key, missing album, network timeout, or folder access loss.

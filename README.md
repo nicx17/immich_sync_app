@@ -42,15 +42,18 @@ Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files
 
 - **File Monitoring**: Watches selected folders for new files and waits for stable size before uploading.
 - **SHA-1 Checksumming**: Deduplication via checksum before upload — exact same logic as the Immich mobile apps.
-- **Concurrent Uploads**: 10 parallel worker tasks stream files directly from disk, keeping RAM usage constant.
+- **Concurrent Uploads**: Configurable parallel worker tasks (1–10) stream files directly from disk, keeping RAM usage constant.
 - **Offline Reliability**: Failed uploads are persisted to `~/.cache/mimick/retries.json` and replayed automatically on next launch.
 - **Queue Inspector & Retry Tools**: Inspect recent queue activity, retry one failed file, retry all failed uploads, or clear the failed queue from the settings window.
+- **Batch Notifications**: Receives a single summary notification when a sync cycle completes, replacing per-file spam. Dedicated alerts for connectivity loss help you stay informed without being overwhelmed.
 - **Sync Controls**: Pause or resume uploads and trigger a manual `Sync Now` pass from either the tray or the settings window.
 - **Connectivity**: Automatically switches between **Internal (LAN)** and **External (WAN)** URLs based on availability. At least one must be enabled (enforced by the UI).
 - **Per-Folder Rules**: Each watched folder can optionally ignore hidden paths, cap file size, or allow only selected file extensions.
+- **Quiet Hours**: Define a window of time during which uploads should be globally paused to reserve bandwidth or system resources.
 - **Diagnostics Export**: Generate a redacted support bundle with queue state, sync summaries, and a human-readable report without exposing raw logs, URLs, or full local paths.
 - **Network / Power Awareness**: Optionally defer uploads while on a metered connection or running on battery power.
-- **Custom Album Mapping**: Select an existing remote album, type a custom name, or let the app create an album from the local folder name (e.g., `~/Pictures/Vacation 2024` → Album `Vacation 2024`).
+- **Custom Album Mapping**: Select an existing remote album, type a custom name, or let the app create an album from the local folder name (e.g., `~/Pictures/Vacation 2024` → Album `Vacation 2024`). A searchable modal picker lets you filter albums or create new ones inline.
+- **First-Run Wizard**: When no API key is detected, Mimick opens the Setup page automatically with a welcome prompt and keeps "Save & Restart" disabled until credentials are entered, preventing silent connection failures.
 - **Health Dashboard & Status**: See global network connectivity and errors on the Controls page, alongside Per-Folder Status showing pending queue size and last sync time directly next to each watched directory.
 - **Actionable Errors & Permission Checks**: Emits specific UI warnings instead of generic timeouts, such as alerting you if Flatpak portal access to a watched folder is lost or an API key expires.
 - **One-Way Sync**: Uploads media without modifying local files.
