@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
 
       - name: Validate desktop entry
         run: desktop-file-validate setup/io.github.nicx17.mimick.desktop
