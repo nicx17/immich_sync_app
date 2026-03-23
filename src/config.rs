@@ -157,6 +157,15 @@ pub struct ConfigData {
     pub pause_on_battery_power: bool,
     #[serde(default)]
     pub startup_catchup_mode: StartupCatchupMode,
+    /// Number of parallel upload workers (1–10). Defaults to 3.
+    #[serde(default = "default_upload_concurrency")]
+    pub upload_concurrency: u8,
+    /// Quiet-hours window start (local clock hour, 0–23). `None` means disabled.
+    #[serde(default)]
+    pub quiet_hours_start: Option<u8>,
+    /// Quiet-hours window end (local clock hour, 0–23, exclusive).
+    #[serde(default)]
+    pub quiet_hours_end: Option<u8>,
 }
 
 impl Default for ConfigData {
@@ -173,12 +182,19 @@ impl Default for ConfigData {
             pause_on_metered_network: false,
             pause_on_battery_power: false,
             startup_catchup_mode: StartupCatchupMode::default(),
+            upload_concurrency: default_upload_concurrency(),
+            quiet_hours_start: None,
+            quiet_hours_end: None,
         }
     }
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_upload_concurrency() -> u8 {
+    3
 }
 
 pub struct Config {

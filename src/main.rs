@@ -132,12 +132,14 @@ async fn main() {
 
         let qm = Arc::new(QueueManager::new(
             api_client,
-            3,
+            config.data.upload_concurrency.max(1) as usize,
             shared_state_startup.clone(),
             sync_index.clone(),
             EnvironmentPolicy {
                 pause_on_metered_network: config.data.pause_on_metered_network,
                 pause_on_battery_power: config.data.pause_on_battery_power,
+                quiet_hours_start: config.data.quiet_hours_start,
+                quiet_hours_end: config.data.quiet_hours_end,
             },
         ));
 
@@ -409,7 +411,8 @@ async fn main() {
         let open_settings = argv.contains(&"--settings".to_string())
             // Also open settings when activated by a secondary instance (e.g. clicking
             // the app icon in the launcher while the daemon is already running).
-            || cmdline.is_remote();
+            || cmdline.is_remote()
+            || Config::new().get_api_key().unwrap_or_default().is_empty();
 
         if open_settings {
             let client = API_CLIENT_HANDLE.get().cloned();

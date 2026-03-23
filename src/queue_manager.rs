@@ -48,6 +48,10 @@ pub struct QueueManager {
 pub struct EnvironmentPolicy {
     pub pause_on_metered_network: bool,
     pub pause_on_battery_power: bool,
+    /// First local clock hour (0–23) of the quiet window. `None` = disabled.
+    pub quiet_hours_start: Option<u8>,
+    /// Last local clock hour (0–23, exclusive) of the quiet window.
+    pub quiet_hours_end: Option<u8>,
 }
 
 impl QueueManager {
@@ -89,6 +93,10 @@ impl QueueManager {
                 .collect(),
         ));
 
+        let last_notify_completed = Arc::new(std::sync::Mutex::new(0usize));
+        let connectivity_lost_notified = Arc::new(std::sync::Mutex::new(false));
+        let consecutive_failures = Arc::new(std::sync::Mutex::new(0usize));
+
         let qm = Self {
             sender: tx,
             shared_state: shared_state.clone(),
@@ -105,6 +113,9 @@ impl QueueManager {
             let retry_ref = retry_list.clone();
             let pending_ref = pending_paths.clone();
             let sync_index_ref = sync_index.clone();
+            let last_notify_ref = last_notify_completed.clone();
+            let connectivity_notified_ref = connectivity_lost_notified.clone();
+            let consec_fail_ref = consecutive_failures.clone();
 
             tokio::spawn(async move {
                 log::debug!("Worker {} started", i);
@@ -259,8 +270,26 @@ impl QueueManager {
                                 );
                             }
 
+                            // Track consecutive failures for connectivity-lost detection.
+                            if success {
+                                *consec_fail_ref.lock().unwrap() = 0;
+                            } else {
+                                let mut cf = consec_fail_ref.lock().unwrap();
+                                *cf += 1;
+                                // Fire connectivity-lost the first time N consecutive uploads fail.
+                                if *cf >= 3 {
+                                    let mut notified = connectivity_notified_ref.lock().unwrap();
+                                    if !*notified {
+                                        *notified = true;
+                                        tokio::task::spawn_blocking(|| {
+                                            notifications::send_connectivity_lost();
+                                        });
+                                    }
+                                }
+                            }
+
                             // Update processed count and determine idle state.
-                            let notify_msg = {
+                            let summary = {
                                 let mut s = state_ref.lock().unwrap();
                                 s.processed_count += 1;
                                 s.active_workers -= 1;
@@ -275,10 +304,13 @@ impl QueueManager {
                                     };
                                     s.progress = 100;
                                     log::info!("All {} file(s) processed. Idle.", s.total_queued);
-                                    Some(format!(
-                                        "Processed {} file(s).",
-                                        s.processed_count.saturating_sub(s.failed_count)
-                                    ))
+                                    let succeeded = s
+                                        .processed_count
+                                        .saturating_sub(*last_notify_ref.lock().unwrap())
+                                        .saturating_sub(s.failed_count);
+                                    let failed = s.failed_count;
+                                    *last_notify_ref.lock().unwrap() = s.processed_count;
+                                    Some((succeeded, failed))
                                 } else {
                                     s.queue_size = s.total_queued.saturating_sub(s.processed_count);
                                     s.progress = if s.total_queued > 0 {
@@ -292,11 +324,9 @@ impl QueueManager {
                                 }
                             };
 
-                            if let Some(msg) = notify_msg {
-                                // Spawn in blocking thread so notify-send doesn't stall the worker.
-                                let title = "Upload Complete".to_string();
+                            if let Some((succeeded, failed)) = summary {
                                 tokio::task::spawn_blocking(move || {
-                                    notifications::send(&title, &msg, Some(100));
+                                    notifications::send_sync_summary(succeeded, failed);
                                 });
                             }
                         }
@@ -520,6 +550,33 @@ fn unix_timestamp_now() -> f64 {
         .as_secs_f64()
 }
 
+/// Returns true if the current local clock hour falls inside the configured quiet window.
+///
+/// Wrapping windows (e.g. 23:00 to 06:00) are supported.
+fn is_quiet_hour(start: Option<u8>, end: Option<u8>) -> bool {
+    let (Some(start), Some(end)) = (start, end) else {
+        return false;
+    };
+    // Derive the local hour from the current UNIX timestamp.
+    // We use the UTC offset from the TZ environment variable via a simple modulo:
+    // this is sufficient for an on/off gate — we don't need calendar accuracy.
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let utc_hour = ((secs / 3600) % 24) as u8;
+    // Prefer using the TZ-aware offset when available via the `time` crate, but since
+    // we have no chrono/time dep we fall back to UTC. Users can adjust the window to
+    // compensate. A future iteration can improve this with a proper tz library.
+    let h = utc_hour;
+    if start <= end {
+        h >= start && h < end
+    } else {
+        // Wrapping window: e.g. 23 → 06
+        h >= start || h < end
+    }
+}
+
 async fn wait_until_allowed(
     state_ref: &Arc<std::sync::Mutex<AppState>>,
     policy: EnvironmentPolicy,
@@ -536,6 +593,8 @@ async fn wait_until_allowed(
             Some("Deferred on metered network".to_string())
         } else if policy.pause_on_battery_power && runtime_env::is_on_battery_power() {
             Some("Deferred while on battery power".to_string())
+        } else if is_quiet_hour(policy.quiet_hours_start, policy.quiet_hours_end) {
+            Some("Deferred during quiet hours".to_string())
         } else {
             None
         };

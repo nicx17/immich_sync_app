@@ -7,8 +7,8 @@ use adw::prelude::*;
 use glib::clone;
 use gtk::prelude::*;
 use gtk::{
-    Box, Button, DropDown, Entry, FileDialog, ListBox, Orientation, PasswordEntry, ProgressBar,
-    ScrolledWindow, Stack, StringList, Switch,
+    Box, Button, Entry, FileDialog, ListBox, Orientation, PasswordEntry, ProgressBar,
+    ScrolledWindow, Stack, Switch,
 };
 use libadwaita as adw;
 use std::cell::RefCell;
@@ -29,68 +29,12 @@ use crate::watch_path_display::{display_watch_path, watch_path_subtitle};
 /// GTK widgets kept around for a single watch-folder row in the settings list.
 struct FolderRowData {
     pub path: String,
-    pub dropdown: DropDown,
-    pub string_list: StringList,
-    pub custom_entry: Entry,
+    pub album_name: Rc<RefCell<String>>,
     pub rules: Rc<RefCell<FolderRules>>,
     pub status_label: gtk::Label,
 }
 
 const DEFAULT_ALBUM_LABEL: &str = "Default (Folder Name)";
-const CUSTOM_ALBUM_LABEL: &str = "Custom Album...";
-
-fn dropdown_label(string_list: &StringList, selected: u32) -> Option<String> {
-    if selected < string_list.n_items() {
-        string_list.string(selected).map(|label| label.to_string())
-    } else {
-        None
-    }
-}
-
-fn effective_album_selection(selected_label: Option<&str>, custom_text: &str) -> String {
-    let trimmed_custom = custom_text.trim();
-    match selected_label {
-        Some(CUSTOM_ALBUM_LABEL) if !trimmed_custom.is_empty() => trimmed_custom.to_string(),
-        Some(CUSTOM_ALBUM_LABEL) => DEFAULT_ALBUM_LABEL.to_string(),
-        Some(label) if !label.is_empty() => label.to_string(),
-        _ if !trimmed_custom.is_empty() => trimmed_custom.to_string(),
-        _ => DEFAULT_ALBUM_LABEL.to_string(),
-    }
-}
-
-fn apply_album_selection(
-    dropdown: &DropDown,
-    string_list: &StringList,
-    custom_entry: &Entry,
-    album_name: Option<&str>,
-) {
-    let target = album_name
-        .map(str::trim)
-        .filter(|name| !name.is_empty() && *name != DEFAULT_ALBUM_LABEL)
-        .unwrap_or(DEFAULT_ALBUM_LABEL);
-
-    if target == DEFAULT_ALBUM_LABEL {
-        dropdown.set_selected(0);
-        custom_entry.set_text("");
-        custom_entry.set_visible(false);
-        return;
-    }
-
-    for i in 0..string_list.n_items() {
-        if let Some(label) = string_list.string(i)
-            && label.as_str() == target
-        {
-            dropdown.set_selected(i);
-            custom_entry.set_text("");
-            custom_entry.set_visible(false);
-            return;
-        }
-    }
-
-    dropdown.set_selected(string_list.n_items().saturating_sub(1));
-    custom_entry.set_text(target);
-    custom_entry.set_visible(true);
-}
 
 fn format_sync_age(timestamp: Option<f64>) -> String {
     let Some(timestamp) = timestamp else {
@@ -501,6 +445,48 @@ pub fn build_settings_window(
         .build();
     behavior_group.add(&catchup_row);
 
+    // Upload concurrency (1–10 workers)
+    let concurrency_adj = gtk::Adjustment::new(3.0, 1.0, 10.0, 1.0, 1.0, 0.0);
+    let concurrency_row = adw::SpinRow::builder()
+        .title("Upload Workers")
+        .subtitle("Number of parallel upload workers (1–10). More workers = faster batch uploads.")
+        .adjustment(&concurrency_adj)
+        .build();
+    behavior_group.add(&concurrency_row);
+
+    // Quiet hours — enable switch + two hour spinners
+    let quiet_hours_row = adw::SwitchRow::builder()
+        .title("Quiet Hours")
+        .subtitle("Pause uploads during a nightly window (uses UTC clock).")
+        .build();
+    behavior_group.add(&quiet_hours_row);
+
+    let quiet_start_adj = gtk::Adjustment::new(22.0, 0.0, 23.0, 1.0, 1.0, 0.0);
+    let quiet_start_row = adw::SpinRow::builder()
+        .title("Quiet Hours Start (hour, UTC)")
+        .adjustment(&quiet_start_adj)
+        .build();
+    behavior_group.add(&quiet_start_row);
+
+    let quiet_end_adj = gtk::Adjustment::new(7.0, 0.0, 23.0, 1.0, 1.0, 0.0);
+    let quiet_end_row = adw::SpinRow::builder()
+        .title("Quiet Hours End (hour, UTC)")
+        .adjustment(&quiet_end_adj)
+        .build();
+    behavior_group.add(&quiet_end_row);
+
+    // Show the hour spinners only when quiet hours are enabled
+    quiet_hours_row.connect_active_notify(clone!(
+        #[weak]
+        quiet_start_row,
+        #[weak]
+        quiet_end_row,
+        move |row| {
+            quiet_start_row.set_sensitive(row.is_active());
+            quiet_end_row.set_sensitive(row.is_active());
+        }
+    ));
+
     // --- WATCH FOLDERS GROUP ---
     let folders_group = adw::PreferencesGroup::builder()
         .title("Watch Folders")
@@ -509,6 +495,18 @@ pub fn build_settings_window(
     setup_page_box.append(&folders_group);
 
     let config = Config::new();
+
+    let is_unconfigured = config.get_api_key().unwrap_or_default().is_empty();
+    if is_unconfigured {
+        let banner = adw::Banner::builder()
+            .title("Welcome to Mimick! Please provide your Immich API Key to proceed.")
+            .revealed(true)
+            .build();
+        vbox.insert_child_after(&banner, Some(&header_bar));
+
+        // Help the user find the setup automatically
+        page_stack.set_visible_child_name("setup");
+    }
     let startup_initial = config.data.run_on_startup;
     let tracked_rows = Rc::new(RefCell::new(Vec::<FolderRowData>::new()));
     let albums: Rc<RefCell<Vec<(String, String)>>> = Rc::new(RefCell::new(Vec::new()));
@@ -517,7 +515,6 @@ pub fn build_settings_window(
     // Creating a new reqwest Client per window open allocates a new connection pool
     // that takes ~30s to self-clean, causing RAM to grow with each open/close cycle.
     let albums_ref = albums.clone();
-    let tracked_rows_async = tracked_rows.clone();
 
     if let Some(client) = api_client {
         // Downgrade the window to a weak ref BEFORE the spawn.
@@ -539,30 +536,8 @@ pub fn build_settings_window(
 
             *albums_ref.borrow_mut() = fetched.clone();
 
-            for row_data in tracked_rows_async.borrow().iter() {
-                let current_album = effective_album_selection(
-                    dropdown_label(&row_data.string_list, row_data.dropdown.selected()).as_deref(),
-                    &row_data.custom_entry.text(),
-                );
-
-                row_data.string_list.splice(
-                    0,
-                    row_data.string_list.n_items(),
-                    &[DEFAULT_ALBUM_LABEL],
-                );
-                for (name, _) in &fetched {
-                    if name != DEFAULT_ALBUM_LABEL {
-                        row_data.string_list.append(name);
-                    }
-                }
-                row_data.string_list.append(CUSTOM_ALBUM_LABEL);
-                apply_album_selection(
-                    &row_data.dropdown,
-                    &row_data.string_list,
-                    &row_data.custom_entry,
-                    Some(&current_album),
-                );
-            }
+            // Album picker dialog fetches directly from albums_ref when opened.
+            // We don't need to push updates to existing rows anymore.
         });
     }
 
@@ -580,7 +555,7 @@ pub fn build_settings_window(
     // Add existing paths to listbox with album dropdown
     for entry in &config.data.watch_paths {
         #[allow(deprecated)]
-        add_folder_row(&folders_list, entry, &albums.borrow(), &tracked_rows);
+        add_folder_row(&folders_list, entry, albums.clone(), &tracked_rows);
     }
 
     let folders_list_clone = folders_list.clone();
@@ -609,7 +584,7 @@ pub fn build_settings_window(
                     add_folder_row(
                         &list_clone,
                         &WatchPathEntry::Simple(path_str),
-                        &albums_ref.borrow(),
+                        albums_ref.clone(),
                         &tracked_clone,
                     );
                 }
@@ -693,6 +668,27 @@ pub fn build_settings_window(
         .build();
     footer_box.append(&save_btn);
     vbox.append(&footer_box);
+
+    let update_save_btn_state = clone!(
+        #[weak]
+        api_key_entry,
+        #[weak]
+        save_btn,
+        move || {
+            let has_key = !api_key_entry.text().is_empty();
+            save_btn.set_sensitive(has_key);
+
+            if has_key {
+                save_btn.add_css_class("suggested-action");
+            } else {
+                save_btn.remove_css_class("suggested-action");
+            }
+        }
+    );
+    update_save_btn_state();
+    api_key_entry.connect_changed(move |_| {
+        update_save_btn_state();
+    });
 
     close_btn.connect_clicked(clone!(
         #[weak]
@@ -827,6 +823,14 @@ pub fn build_settings_window(
         #[weak]
         battery_row,
         #[weak]
+        concurrency_row,
+        #[weak]
+        quiet_hours_row,
+        #[weak]
+        quiet_start_row,
+        #[weak]
+        quiet_end_row,
+        #[weak]
         catchup_row,
         #[weak]
         save_btn,
@@ -846,6 +850,10 @@ pub fn build_settings_window(
             let run_on_startup = startup_row.is_active();
             let pause_on_metered_network = metered_row.is_active();
             let pause_on_battery_power = battery_row.is_active();
+            let upload_concurrency = concurrency_row.value() as u8;
+            let quiet_hours_enabled = quiet_hours_row.is_active();
+            let quiet_hours_start = quiet_hours_enabled.then(|| quiet_start_row.value() as u8);
+            let quiet_hours_end = quiet_hours_enabled.then(|| quiet_end_row.value() as u8);
             let catchup_mode = match catchup_row.selected() {
                 1 => StartupCatchupMode::RecentOnly,
                 2 => StartupCatchupMode::NewFilesOnly,
@@ -856,14 +864,10 @@ pub fn build_settings_window(
 
             for row_data in tracked_rows.borrow().iter() {
                 let folder = row_data.path.clone();
-                let selected_idx = row_data.dropdown.selected();
                 let rules = row_data.rules.borrow().clone();
                 let has_rules = rules != FolderRules::default();
 
-                let album_name = effective_album_selection(
-                    dropdown_label(&row_data.string_list, selected_idx).as_deref(),
-                    &row_data.custom_entry.text(),
-                );
+                let album_name = row_data.album_name.borrow().clone();
 
                 if (album_name.is_empty() || album_name == DEFAULT_ALBUM_LABEL) && !has_rules {
                     watch_paths.push(WatchPathEntry::Simple(folder));
@@ -937,6 +941,9 @@ pub fn build_settings_window(
                     new_config.data.pause_on_metered_network = pause_on_metered_network;
                     new_config.data.pause_on_battery_power = pause_on_battery_power;
                     new_config.data.startup_catchup_mode = catchup_mode;
+                    new_config.data.upload_concurrency = upload_concurrency;
+                    new_config.data.quiet_hours_start = quiet_hours_start;
+                    new_config.data.quiet_hours_end = quiet_hours_end;
 
                     if !api_key.is_empty() {
                         new_config.set_api_key(&api_key);
@@ -972,6 +979,13 @@ pub fn build_settings_window(
     startup_row.set_active(config.data.run_on_startup);
     metered_row.set_active(config.data.pause_on_metered_network);
     battery_row.set_active(config.data.pause_on_battery_power);
+    concurrency_row.set_value(config.data.upload_concurrency as f64);
+    let qh_enabled = config.data.quiet_hours_start.is_some();
+    quiet_hours_row.set_active(qh_enabled);
+    quiet_start_row.set_value(config.data.quiet_hours_start.unwrap_or(22) as f64);
+    quiet_end_row.set_value(config.data.quiet_hours_end.unwrap_or(7) as f64);
+    quiet_start_row.set_sensitive(qh_enabled);
+    quiet_end_row.set_sensitive(qh_enabled);
     catchup_row.set_selected(match config.data.startup_catchup_mode {
         StartupCatchupMode::Full => 0,
         StartupCatchupMode::RecentOnly => 1,
@@ -1189,7 +1203,7 @@ pub fn build_settings_window(
 fn add_folder_row(
     list: &ListBox,
     entry: &WatchPathEntry,
-    albums: &[(String, String)],
+    albums_ref: Rc<RefCell<Vec<(String, String)>>>,
     tracked_rows: &Rc<RefCell<Vec<FolderRowData>>>,
 ) {
     let path = entry.path().to_string();
@@ -1245,42 +1259,52 @@ fn add_folder_row(
         .build();
     text_box.append(&status_label);
 
-    let string_list = gtk::StringList::new(&[DEFAULT_ALBUM_LABEL]);
-    for (name, _) in albums {
-        if name != DEFAULT_ALBUM_LABEL {
-            string_list.append(name);
-        }
-    }
-    string_list.append(CUSTOM_ALBUM_LABEL);
+    let album_name = Rc::new(RefCell::new(
+        entry
+            .album_name()
+            .unwrap_or(DEFAULT_ALBUM_LABEL)
+            .to_string(),
+    ));
 
-    let dropdown = gtk::DropDown::builder()
-        .model(&string_list)
-        .valign(gtk::Align::Center)
-        .build();
-
-    let custom_entry = gtk::Entry::builder()
-        .placeholder_text("New album name")
-        .valign(gtk::Align::Center)
-        .visible(false)
-        .build();
     let rules = Rc::new(RefCell::new(entry.rules()));
 
-    apply_album_selection(&dropdown, &string_list, &custom_entry, entry.album_name());
+    let picker_btn = Button::builder()
+        .label(format!("Album: {}", album_name.borrow()))
+        .valign(gtk::Align::Center)
+        .tooltip_text("Select or create an target Immich album")
+        .build();
 
-    let custom_entry_clone = custom_entry.clone();
-    let string_list_clone = string_list.clone();
-    dropdown.connect_selected_notify(move |dd| {
-        let selected = dd.selected();
-        if selected == string_list_clone.n_items() - 1 {
-            custom_entry_clone.set_visible(true);
-        } else {
-            custom_entry_clone.set_visible(false);
+    let picker_btn_clone = picker_btn.clone();
+    let album_name_clone = album_name.clone();
+    let albums_ref_clone = albums_ref.clone();
+
+    picker_btn.connect_clicked(clone!(
+        #[weak]
+        row,
+        move |_| {
+            if let Some(window) = row
+                .root()
+                .and_then(|root| root.downcast::<adw::ApplicationWindow>().ok())
+            {
+                let window_clone = window.clone();
+                let albums_ref_clone = albums_ref_clone.clone();
+                let album_name_clone = album_name_clone.clone();
+                let picker_btn_clone = picker_btn_clone.clone();
+
+                glib::idle_add_local_once(move || {
+                    show_album_picker_dialog(
+                        &window_clone,
+                        albums_ref_clone,
+                        album_name_clone,
+                        picker_btn_clone,
+                    );
+                });
+            }
         }
-    });
+    ));
 
     let suffix_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    suffix_box.append(&dropdown);
-    suffix_box.append(&custom_entry);
+    suffix_box.append(&picker_btn);
 
     row_box.append(&suffix_box);
 
@@ -1342,9 +1366,7 @@ fn add_folder_row(
     list.append(&row);
     tracked_rows.borrow_mut().push(FolderRowData {
         path,
-        dropdown,
-        string_list,
-        custom_entry,
+        album_name,
         rules,
         status_label,
     });
@@ -1619,30 +1641,142 @@ fn show_about_dialog(parent: &adw::ApplicationWindow) {
     about.present();
 }
 
+fn show_album_picker_dialog(
+    parent: &adw::ApplicationWindow,
+    albums_ref: Rc<RefCell<Vec<(String, String)>>>,
+    target_album_state: Rc<RefCell<String>>,
+    trigger_btn: Button,
+) {
+    let dialog = adw::Window::builder()
+        .transient_for(parent)
+        .modal(true)
+        .title("Select Album")
+        .default_width(400)
+        .default_height(500)
+        .build();
+
+    let header_bar = adw::HeaderBar::new();
+    let vbox = Box::builder().orientation(Orientation::Vertical).build();
+    dialog.set_content(Some(&vbox));
+    vbox.append(&header_bar);
+
+    let search_entry = gtk::SearchEntry::builder()
+        .halign(gtk::Align::Center)
+        .width_request(300)
+        .margin_top(8)
+        .margin_bottom(8)
+        .build();
+    vbox.append(&search_entry);
+
+    let list_box = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .margin_start(12)
+        .margin_end(12)
+        .margin_bottom(12)
+        .build();
+    list_box.add_css_class("boxed-list");
+
+    let scrolled_window = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .vexpand(true)
+        .build();
+    scrolled_window.set_child(Some(&list_box));
+    vbox.append(&scrolled_window);
+
+    // Dynamic filtering capability
+    let albums_ref_cloned = albums_ref.clone();
+    let apply_filter = {
+        let list_box = list_box.clone();
+        let dialog = dialog.clone();
+        let target_album_state = target_album_state.clone();
+        let trigger_btn = trigger_btn.clone();
+
+        move |query: &str| {
+            // Clear existing
+            while let Some(child) = list_box.first_child() {
+                list_box.remove(&child);
+            }
+
+            let q = query.trim().to_lowercase();
+
+            // Row 1: Default Folder Name (only if it matches search)
+            if q.is_empty() || DEFAULT_ALBUM_LABEL.to_lowercase().contains(&q) {
+                let default_row = adw::ActionRow::builder()
+                    .title(DEFAULT_ALBUM_LABEL)
+                    .subtitle("Creates album dynamically per-folder")
+                    .activatable(true)
+                    .build();
+                let dialog_clone = dialog.clone();
+                let state_clone = target_album_state.clone();
+                let btn_clone = trigger_btn.clone();
+                default_row.connect_activated(move |_| {
+                    *state_clone.borrow_mut() = DEFAULT_ALBUM_LABEL.to_string();
+                    btn_clone.set_label(&format!("Album: {}", DEFAULT_ALBUM_LABEL));
+                    dialog_clone.close();
+                });
+                list_box.append(&default_row);
+            }
+
+            // Row 2: Create Custom (if query is typed)
+            if !q.is_empty() {
+                let typed_raw = query.trim().to_string();
+                let create_row = adw::ActionRow::builder()
+                    .title(format!("Create new: \"{}\"", typed_raw))
+                    .activatable(true)
+                    .build();
+                let dialog_clone = dialog.clone();
+                let state_clone = target_album_state.clone();
+                let btn_clone = trigger_btn.clone();
+                create_row.connect_activated(move |_| {
+                    *state_clone.borrow_mut() = typed_raw.clone();
+                    btn_clone.set_label(&format!("Album: {}", typed_raw));
+                    dialog_clone.close();
+                });
+                list_box.append(&create_row);
+            }
+
+            // Row 3+: Remote Albums
+            for (name, _) in albums_ref_cloned.borrow().iter() {
+                if name == DEFAULT_ALBUM_LABEL {
+                    continue; // Skip the "Use default folder name" if we pushed it above
+                }
+                if q.is_empty() || name.to_lowercase().contains(&q) {
+                    let album_name = name.clone();
+                    let row = adw::ActionRow::builder()
+                        .title(&album_name)
+                        .activatable(true)
+                        .build();
+                    let dialog_clone = dialog.clone();
+                    let state_clone = target_album_state.clone();
+                    let btn_clone = trigger_btn.clone();
+                    let album_name_clone = album_name.clone();
+                    row.connect_activated(move |_| {
+                        *state_clone.borrow_mut() = album_name_clone.clone();
+                        btn_clone.set_label(&format!("Album: {}", album_name_clone));
+                        dialog_clone.close();
+                    });
+                    list_box.append(&row);
+                }
+            }
+        }
+    };
+
+    // Initial populate
+    apply_filter("");
+
+    let apply_filter_rc = Rc::new(apply_filter);
+    search_entry.connect_search_changed(move |entry| {
+        apply_filter_rc(&entry.text());
+    });
+
+    dialog.present();
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{
-        CUSTOM_ALBUM_LABEL, DEFAULT_ALBUM_LABEL, effective_album_selection, format_sync_age,
-    };
+    use super::format_sync_age;
     use std::time::{SystemTime, UNIX_EPOCH};
-
-    #[test]
-    fn test_effective_album_selection_prefers_custom_text_for_custom_choice() {
-        let album = effective_album_selection(Some(CUSTOM_ALBUM_LABEL), "Trips");
-        assert_eq!(album, "Trips");
-    }
-
-    #[test]
-    fn test_effective_album_selection_uses_selected_existing_album() {
-        let album = effective_album_selection(Some("Family"), "");
-        assert_eq!(album, "Family");
-    }
-
-    #[test]
-    fn test_effective_album_selection_falls_back_to_default_for_empty_custom() {
-        let album = effective_album_selection(Some(CUSTOM_ALBUM_LABEL), "   ");
-        assert_eq!(album, DEFAULT_ALBUM_LABEL);
-    }
 
     #[test]
     fn test_format_sync_age_for_missing_timestamp() {

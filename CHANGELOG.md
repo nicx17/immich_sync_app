@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Permission Health Checks**: On startup, Mimick now verifies that it still has read access to all configured directories. If a Flatpak permission is lost, a warning is prominently displayed.
 - **Safer Startup Catch-Up Controls**: Added a "Startup Catch-up Mode" dropdown in settings allowing users to limit startup scans to "Recent Changed Only (7 days)" or "New Files Only" to save on disk I/O.
 - **Actionable Errors**: Meaningful connection failure and folder access loss messages replace generic request timeouts.
+- **Better Album Picker**: The per-folder album selector is now a modal search dialog. Users can filter existing Immich albums by name, pick the default folder-name behavior, or type a new name to create an album on the fly.
+- **First-Run Wizard**: When no API key is configured, Mimick automatically opens the Setup page and displays a welcome banner. The "Save & Restart" button is disabled until an API key is entered, preventing silent broken-connection states.
+- **Notifications That Matter**: Replaced per-file notification spam with a single batch summary notification that fires once a sync cycle completes. Added a dedicated "Connection Lost" notification that fires after consecutive failures.
+- **Upload Concurrency**: Users can now configure between 1 and 10 parallel upload workers in the settings, allowing for better tuning based on network capacity.
+- **Quiet Hours**: Added a configurable quiet-hours window to pause uploads during specific hours of the day (e.g., to prevent impact on nighttime network usage).
 
 ### Fixed
 - Fixed a bug where a previously selected album target reverted visually to a "Custom Album" field after an application restart.
