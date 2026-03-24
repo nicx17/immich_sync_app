@@ -38,6 +38,16 @@
   </screenshots>
 
   <launchable type="desktop-id">io.github.nicx17.mimick.desktop</launchable>
+  <requires>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <display_length compare="ge">medium</display_length>
+  </requires>
+
+  <recommends>
+    <control>touch</control>
+  </recommends>
+  
   <url type="homepage">https://github.com/nicx17/mimick</url>
   <url type="bugtracker">https://github.com/nicx17/mimick/issues</url>
   <url type="vcs-browser">https://github.com/nicx17/mimick</url>
