@@ -59,6 +59,8 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 - **Security**: API Key stored in the system keyring via `secret-tool` (libsecret).
 - **Autostart**: Optional login startup with desktop-portal permission inside Flatpak and native autostart integration outside Flatpak.
 - **Startup Catch-Up Controls**: On launch, Mimick scans watched folders for media that has not been synced yet. Users can optimize disk I/O by limiting this scan strictly to recent files (last 7 days) or new files only.
+- **Mobile Responsive UI**: The settings window is built with `adw::PreferencesWindow` and adaptive `gtk::FlowBox` layouts, allowing it to scale down to 360px width. Fully usable on mobile Linux environments like Phosh or small desktop monitors.
+- **Expander-Based Folder Rows**: Watch folder entries use `adw::ExpanderRow` to logically group settings (Album, Rules, Remove), keeping the interface clean and navigable on small screens.
 - **Clear Window Controls**: `Close` hides the settings window, while `Quit` stops the app completely.
 - **Desktop Integration**:
   - GTK4 / Libadwaita settings UI (dark mode by default).
@@ -114,6 +116,8 @@ The window is split into two pages:
 
 * **Setup** for server details, behavior switches, watch folders, and folder rules
 * **Controls** for status, queue actions, manual sync, pause/resume, and diagnostics export
+
+The UI is fully responsive and automatically adapts its layout for narrow widths (sub-360px), making it compatible with mobile Linux devices.
 
 1. **Internal URL** — LAN address (e.g., `http://192.168.1.50:2283`).
 2. **External URL** — WAN/Public address (e.g., `https://photos.example.com`). *At least one must be enabled.*

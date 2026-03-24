@@ -27,12 +27,16 @@
 - [x] `WatchPathEntry` supports both plain path strings and per-folder album configs.
 
 ### Settings UI
-- [x] GTK4 + Libadwaita native UI (dark mode, `adw::ApplicationWindow`).
+- [x] GTK4 + Libadwaita native UI with `adw::PreferencesWindow` for native dark mode and adaptive layouts.
+- [x] Adaptive Settings Window — Refactored from `adw::ApplicationWindow` to target 350-360px minimum width, ensuring full support for mobile displays like Phosh.
 - [x] Internal/External URL fields with toggles (at least one must stay enabled — validated).
 - [x] Test Connection button (async ping, no UI freeze).
 - [x] Watch folders list with per-row album picker button (searchable modal dialog, create-new inline).
 - [x] Live sync status row and progress bar (polling `status.json`).
-- [x] Save & Restart flow.
+- [x] Save and Restart flow.
+- [x] Split Setup / Controls Window — Separated configuration from live actions and kept footer-style actions visible while scrolling.
+- [x] Adaptive Action Buttons — Layout uses `gtk::FlowBox` to auto-stack action buttons (Sync, Pause, Inspector, etc.) vertically on narrow screens.
+- [x] Expander-based Folder Rows — Folder rows use `adw::ExpanderRow` to collapse advanced settings and maximize mobile real estate.
 
 ### System Tray
 - [x] StatusNotifierItem tray via `ksni` crate.
