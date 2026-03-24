@@ -10,11 +10,16 @@
   </developer>
   <description>
     <p>
-      Mimick is a Linux daemon running in the background to automatically synchronize your local media files to a designated Immich server.
+      Mimick is a high-performance Rust desktop client that mirrors local media to your Immich server in real-time. 
+      Designed as an interactive agent with a modern dashboard and system tray indicator, it provides transparent, 
+      user-led control over your backups.
     </p>
-    <p>
-      It watches configured folders, uses native filesystem events where available and a polling fallback for sandboxed portal-backed directories, tracks deduplication via SHA-1 checksum computations locally, and securely stores configuration parameters leveraging the native secret keyring standard. Includes a system tray indicator for settings and manual controls.
-    </p>
+    <ul>
+      <li>Intelligent Monitoring: Uses native filesystem events with a polling fallback for sandboxed directories.</li>
+      <li>Efficient Deduplication: Tracks local assets using SHA-1 checksums to prevent redundant uploads.</li>
+      <li>Secure Storage: Leverages the native secret keyring standard for all configuration parameters.</li>
+      <li>User-Centric UI: Provides a graphical dashboard and tray menu for manual sync, settings, and status monitoring.</li>
+    </ul>
   </description>
   
   <screenshots>
