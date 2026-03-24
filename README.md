@@ -14,9 +14,8 @@
 
 </div>
 
-A daemon-based synchronization tool for uploading media files from a Linux desktop to an [Immich](https://immich.app/) server.
 
-Mimick monitors local directories (e.g., `~/Pictures`, `~/Videos`) for new files and automatically uploads them to your Immich instance. It runs securely as a background service and integrates natively with the GNOME desktop environment via a GTK4 / Libadwaita settings window and a StatusNotifier system tray icon.
+Mimick is a desktop Immich client for Linux, combining a persistent background daemon with a modern GTK4 user interface. It monitors your folders, manages upload queues, and adapts to network and power conditions—all while running unobtrusively in the background. Users can configure, monitor, and control the app in real time via a settings window and system tray icon, making it a seamless and reliable way to sync media to your Immich server from the desktop.
 
 [![Install Guide](https://img.shields.io/badge/Install-Guide-1F6FEB?style=for-the-badge&labelColor=1F6FEB)](https://github.com/nicx17/mimick/wiki/Installation)
 [![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](docs/USER_GUIDE.md)
