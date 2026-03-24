@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Notifications That Matter**: Replaced per-file notification spam with a single batch summary notification that fires once a sync cycle completes. Added a dedicated "Connection Lost" notification that fires after consecutive failures.
 - **Upload Concurrency**: Users can now configure between 1 and 10 parallel upload workers in the settings, allowing for better tuning based on network capacity.
 - **Quiet Hours**: Added a configurable quiet-hours window to pause uploads during specific hours of the day (e.g., to prevent impact on nighttime network usage).
+- **Mobile Responsive UI**: Refactored the settings window from a rigid `adw::ApplicationWindow` to a native `adw::PreferencesWindow`. Primary controls and action buttons now use adaptive `FlowBox` layouts that auto-stack vertically on narrow displays (down to 360px), ensuring the app is fully usable on Linux phones and small monitors.
+- **Adaptive Folder Rows**: Watch folder entries now use `adw::ExpanderRow` to hide additional settings (Album, Rules, Remove) until clicked, maximizing screen space on mobile.
 
 ### Fixed
 - Fixed a bug where a previously selected album target reverted visually to a "Custom Album" field after an application restart.

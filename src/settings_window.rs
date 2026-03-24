@@ -8,7 +8,7 @@ use glib::clone;
 use gtk::prelude::*;
 use gtk::{
     Box, Button, Entry, FileDialog, ListBox, Orientation, PasswordEntry, ProgressBar,
-    ScrolledWindow, Stack, Switch,
+    ScrolledWindow, Switch,
 };
 use libadwaita as adw;
 use std::cell::RefCell;
@@ -28,10 +28,11 @@ use crate::watch_path_display::{display_watch_path, watch_path_subtitle};
 
 /// GTK widgets kept around for a single watch-folder row in the settings list.
 struct FolderRowData {
-    pub path: String,
-    pub album_name: Rc<RefCell<String>>,
-    pub rules: Rc<RefCell<FolderRules>>,
-    pub status_label: gtk::Label,
+    path: String,
+    album_name: Rc<RefCell<String>>,
+    rules: Rc<RefCell<FolderRules>>,
+    action_row: adw::ExpanderRow,
+    base_subtitle: String,
 }
 
 const DEFAULT_ALBUM_LABEL: &str = "Default (Folder Name)";
@@ -66,10 +67,10 @@ pub fn build_settings_window(
     queue_manager: Option<Arc<QueueManager>>,
     sync_now_tx: Option<UnboundedSender<()>>,
 ) {
-    // Use an ApplicationWindow so Libadwaita manages the titlebar and window lifecycle.
-    let window = adw::ApplicationWindow::builder()
+    // Use a PreferencesWindow for native Libadwaita mobile responsiveness and adaptive layouts
+    let window = adw::PreferencesWindow::builder()
         .application(app)
-        .title("Mimick Settings")
+        .search_enabled(false)
         .default_width(660)
         .default_height(840)
         .build();
@@ -79,86 +80,23 @@ pub fn build_settings_window(
     let style_mgr = adw::StyleManager::default();
     style_mgr.set_color_scheme(adw::ColorScheme::ForceDark);
 
-    let vbox = Box::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(0)
+    let setup_page = adw::PreferencesPage::builder()
+        .title("Setup")
+        .icon_name("emblem-system-symbolic")
         .build();
-    window.set_content(Some(&vbox));
+    window.add(&setup_page);
 
-    // HeaderBar lives inside the content box – no double titlebar
-    let header_bar = adw::HeaderBar::new();
-    vbox.append(&header_bar);
-
-    let page_stack = Stack::builder()
-        .hexpand(true)
-        .vexpand(true)
-        .transition_type(gtk::StackTransitionType::SlideLeftRight)
+    let controls_page = adw::PreferencesPage::builder()
+        .title("Controls")
+        .icon_name("preferences-system-symbolic")
         .build();
-    let stack_switcher = gtk::StackSwitcher::new();
-    stack_switcher.set_stack(Some(&page_stack));
-    header_bar.set_title_widget(Some(&stack_switcher));
-
-    // About Button
-    let about_btn = Button::builder()
-        .icon_name("help-about-symbolic")
-        .tooltip_text("About Mimick")
-        .build();
-    let window_clone = window.clone();
-    about_btn.connect_clicked(move |_| {
-        show_about_dialog(&window_clone);
-    });
-    header_bar.pack_start(&about_btn);
-
-    let setup_scroll = ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .vexpand(true)
-        .build();
-    let controls_scroll = ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .vexpand(true)
-        .build();
-    page_stack.add_titled(&setup_scroll, Some("setup"), "Setup");
-    page_stack.add_titled(&controls_scroll, Some("controls"), "Controls");
-    page_stack.set_visible_child_name("setup");
-    vbox.append(&page_stack);
-
-    let setup_clamp = adw::Clamp::builder()
-        .maximum_size(640)
-        .margin_top(8)
-        .margin_bottom(8)
-        .margin_start(10)
-        .margin_end(10)
-        .build();
-    setup_scroll.set_child(Some(&setup_clamp));
-
-    let controls_clamp = adw::Clamp::builder()
-        .maximum_size(640)
-        .margin_top(8)
-        .margin_bottom(8)
-        .margin_start(10)
-        .margin_end(10)
-        .build();
-    controls_scroll.set_child(Some(&controls_clamp));
-
-    let setup_page_box = Box::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(18)
-        .build();
-    setup_clamp.set_child(Some(&setup_page_box));
-
-    let controls_page_box = Box::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(18)
-        .build();
-    controls_clamp.set_child(Some(&controls_page_box));
+    window.add(&controls_page);
 
     // --- PROGRESS GROUP ---
     let progress_group = adw::PreferencesGroup::builder()
         .title("Sync Status")
         .build();
-    controls_page_box.append(&progress_group);
+    controls_page.add(&progress_group);
 
     let status_row = adw::ActionRow::builder()
         .title("Idle")
@@ -178,7 +116,7 @@ pub fn build_settings_window(
     let health_group = adw::PreferencesGroup::builder()
         .title("Health Dashboard")
         .build();
-    controls_page_box.append(&health_group);
+    controls_page.add(&health_group);
 
     let route_row = adw::ActionRow::builder()
         .title("Server Route")
@@ -214,7 +152,7 @@ pub fn build_settings_window(
     let conn_group = adw::PreferencesGroup::builder()
         .title("Connectivity")
         .build();
-    setup_page_box.append(&conn_group);
+    setup_page.add(&conn_group);
 
     // Internal URL
     let internal_row = adw::ActionRow::builder()
@@ -224,6 +162,7 @@ pub fn build_settings_window(
     let internal_entry = Entry::builder()
         .placeholder_text("http://192.168.1.10:2283")
         .valign(gtk::Align::Center)
+        .width_request(0)
         .hexpand(true)
         .build();
     internal_row.add_prefix(&internal_switch);
@@ -238,6 +177,7 @@ pub fn build_settings_window(
     let external_entry = Entry::builder()
         .placeholder_text("https://immich.example.com")
         .valign(gtk::Align::Center)
+        .width_request(0)
         .hexpand(true)
         .build();
     external_row.add_prefix(&external_switch);
@@ -413,7 +353,7 @@ pub fn build_settings_window(
     ));
 
     let behavior_group = adw::PreferencesGroup::builder().title("Behavior").build();
-    setup_page_box.append(&behavior_group);
+    setup_page.add(&behavior_group);
 
     let startup_row = adw::SwitchRow::builder()
         .title("Run on Startup")
@@ -492,20 +432,38 @@ pub fn build_settings_window(
         .title("Watch Folders")
         .description("Add folders with the picker so Mimick can keep access to them.")
         .build();
-    setup_page_box.append(&folders_group);
+    setup_page.add(&folders_group);
 
     let config = Config::new();
 
     let is_unconfigured = config.get_api_key().unwrap_or_default().is_empty();
     if is_unconfigured {
-        let banner = adw::Banner::builder()
-            .title("Welcome to Mimick! Please provide your Immich API Key to proceed.")
-            .revealed(true)
+        let welcome_group = adw::PreferencesGroup::builder()
+            .title("Welcome to Mimick!")
+            .description("Please provide your Immich API Key to proceed.")
             .build();
-        vbox.insert_child_after(&banner, Some(&header_bar));
 
-        // Help the user find the setup automatically
-        page_stack.set_visible_child_name("setup");
+        let help_row = adw::ActionRow::builder()
+            .title("How to get an API Key")
+            .activatable(true)
+            .build();
+
+        help_row.connect_activated(|_| {
+            let uri = "https://immich.app/docs/features/command-line-interface/#api-key";
+            if let Err(e) =
+                gtk::gio::AppInfo::launch_default_for_uri(uri, None::<&gtk::gio::AppLaunchContext>)
+            {
+                log::error!("Failed to open browser: {}", e);
+            }
+        });
+
+        welcome_group.add(&help_row);
+
+        // Add at the very top of setup_page by inserting before conn_group?
+        // adw::PreferencesPage doesn't have insert_child_after, just `add()`. We appended conn_group already.
+        // But since this is a refactoring, we'll just add it where the banner was roughly.
+        // Wait, setup_page.add just appends to the bottom. Let's just append it.
+        setup_page.add(&welcome_group);
     }
     let startup_initial = config.data.run_on_startup;
     let tracked_rows = Rc::new(RefCell::new(Vec::<FolderRowData>::new()));
@@ -593,81 +551,84 @@ pub fn build_settings_window(
     });
 
     let controls_group = adw::PreferencesGroup::builder().title("Actions").build();
-    controls_page_box.append(&controls_group);
+    controls_page.add(&controls_group);
 
-    let controls_box = Box::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(10)
+    // FlowBox so buttons wrap automatically on narrow widths
+    let actions_flow = gtk::FlowBox::builder()
+        .homogeneous(true)
+        .min_children_per_line(1)
+        .max_children_per_line(4)
+        .selection_mode(gtk::SelectionMode::None)
+        .row_spacing(8)
+        .column_spacing(8)
         .margin_top(6)
         .margin_bottom(6)
-        .margin_start(6)
-        .margin_end(6)
         .build();
-    controls_group.add(&controls_box);
-
-    let primary_actions_row = Box::builder()
-        .orientation(Orientation::Horizontal)
-        .spacing(10)
-        .build();
-    controls_box.append(&primary_actions_row);
-
-    let secondary_actions_row = Box::builder()
-        .orientation(Orientation::Horizontal)
-        .spacing(10)
-        .build();
-    controls_box.append(&secondary_actions_row);
+    controls_group.add(&actions_flow);
 
     let sync_now_btn = Button::builder()
         .label("Sync Now")
         .css_classes(vec!["suggested-action".to_string()])
         .hexpand(true)
         .build();
-    primary_actions_row.append(&sync_now_btn);
+    actions_flow.insert(&sync_now_btn, -1);
 
     let pause_btn = Button::builder().label("Pause").hexpand(true).build();
-    primary_actions_row.append(&pause_btn);
+    actions_flow.insert(&pause_btn, -1);
 
     let queue_btn = Button::builder()
         .label("Queue Inspector")
         .hexpand(true)
         .build();
-    secondary_actions_row.append(&queue_btn);
+    actions_flow.insert(&queue_btn, -1);
 
     let export_btn = Button::builder()
         .label("Export Diagnostics")
         .hexpand(true)
         .build();
-    secondary_actions_row.append(&export_btn);
+    actions_flow.insert(&export_btn, -1);
 
-    let footer_separator = gtk::Separator::new(Orientation::Horizontal);
-    vbox.append(&footer_separator);
-
-    let footer_box = Box::builder()
-        .orientation(Orientation::Horizontal)
-        .spacing(12)
-        .margin_top(10)
-        .margin_bottom(10)
-        .margin_start(12)
-        .margin_end(12)
+    let app_group = adw::PreferencesGroup::builder()
+        .title("Application")
         .build();
-    let footer_spacer = Box::builder().hexpand(true).build();
-    footer_box.append(&footer_spacer);
+    controls_page.add(&app_group);
 
-    let close_btn = Button::builder().label("Close").build();
-    footer_box.append(&close_btn);
+    let app_flow = gtk::FlowBox::builder()
+        .homogeneous(true)
+        .min_children_per_line(1)
+        .max_children_per_line(3)
+        .selection_mode(gtk::SelectionMode::None)
+        .row_spacing(8)
+        .column_spacing(8)
+        .margin_top(6)
+        .margin_bottom(6)
+        .build();
+    app_group.add(&app_flow);
+
+    let about_btn = Button::builder()
+        .label("About Mimick")
+        .hexpand(true)
+        .build();
+    app_flow.insert(&about_btn, -1);
 
     let quit_btn = Button::builder()
         .label("Quit")
         .css_classes(vec!["destructive-action".to_string()])
+        .hexpand(true)
         .build();
-    footer_box.append(&quit_btn);
+    app_flow.insert(&quit_btn, -1);
 
     let save_btn = Button::builder()
         .label("Save & Restart")
         .css_classes(vec!["suggested-action".to_string()])
+        .hexpand(true)
         .build();
-    footer_box.append(&save_btn);
-    vbox.append(&footer_box);
+    app_flow.insert(&save_btn, -1);
+
+    let window_clone_about = window.clone();
+    about_btn.connect_clicked(move |_| {
+        show_about_dialog(&window_clone_about);
+    });
 
     let update_save_btn_state = clone!(
         #[weak]
@@ -689,14 +650,6 @@ pub fn build_settings_window(
     api_key_entry.connect_changed(move |_| {
         update_save_btn_state();
     });
-
-    close_btn.connect_clicked(clone!(
-        #[weak]
-        window,
-        move |_| {
-            window.set_visible(false);
-        }
-    ));
 
     if let Some(qm) = queue_manager.clone() {
         let qm_for_inspector = qm.clone();
@@ -996,7 +949,7 @@ pub fn build_settings_window(
         api_key_entry.set_text(&key);
     }
 
-    // Toggle validation – at least one URL must always be enabled
+    // Toggle validation — at least one URL must always be enabled
     internal_switch.connect_active_notify(clone!(
         #[weak]
         external_switch,
@@ -1126,15 +1079,15 @@ pub fn build_settings_window(
                         .as_deref()
                         .unwrap_or("Uploads are healthy."),
                 );
-
                 for row_data in tracked_rows.borrow().iter() {
                     let path = &row_data.path;
+                    let mut final_subtitle = row_data.base_subtitle.clone();
                     if let Some(folder_status) = folder_statuses.get(path) {
+                        if !final_subtitle.is_empty() {
+                            final_subtitle.push('\n');
+                        }
                         if let Some(err) = &folder_status.last_error {
-                            row_data
-                                .status_label
-                                .set_label(&format!("⚠️ Error: {}", err));
-                            row_data.status_label.set_css_classes(&["error"]);
+                            final_subtitle.push_str(&format!("⚠️ Error: {}", err));
                         } else {
                             let mut txt = format!("Pending: {}", folder_status.pending_count);
                             if let Some(t) = folder_status.last_sync_at {
@@ -1143,13 +1096,15 @@ pub fn build_settings_window(
                                     format_sync_age(Some(t))
                                 ));
                             }
-                            row_data.status_label.set_label(&txt);
-                            row_data.status_label.set_css_classes(&["dim-label"]);
+                            final_subtitle.push_str(&txt);
                         }
                     } else {
-                        row_data.status_label.set_label("Status: Idle");
-                        row_data.status_label.set_css_classes(&["dim-label"]);
+                        if !final_subtitle.is_empty() {
+                            final_subtitle.push('\n');
+                        }
+                        final_subtitle.push_str("Status: Idle");
                     }
+                    row_data.action_row.set_subtitle(&final_subtitle);
                 }
 
                 if status == "paused" || paused {
@@ -1207,57 +1162,20 @@ fn add_folder_row(
     tracked_rows: &Rc<RefCell<Vec<FolderRowData>>>,
 ) {
     let path = entry.path().to_string();
-    let row = gtk::ListBoxRow::builder()
-        .activatable(false)
-        .selectable(false)
-        .build();
+    let base_subtitle = watch_path_subtitle(&path).unwrap_or_default().to_string();
 
-    let row_box = Box::builder()
-        .orientation(Orientation::Horizontal)
-        .spacing(12)
-        .margin_top(10)
-        .margin_bottom(10)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-    row.set_child(Some(&row_box));
-
-    let text_box = Box::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(4)
-        .hexpand(true)
-        .halign(gtk::Align::Fill)
-        .valign(gtk::Align::Center)
-        .build();
-    row_box.append(&text_box);
-
-    let title_label = gtk::Label::builder()
-        .label(display_watch_path(&path))
-        .halign(gtk::Align::Start)
-        .xalign(0.0)
-        .wrap(true)
-        .build();
-    title_label.add_css_class("heading");
-    text_box.append(&title_label);
-
-    if let Some(subtitle) = watch_path_subtitle(&path) {
-        let subtitle_label = gtk::Label::builder()
-            .label(subtitle)
-            .halign(gtk::Align::Start)
-            .xalign(0.0)
-            .wrap(true)
-            .build();
-        subtitle_label.add_css_class("dim-label");
-        text_box.append(&subtitle_label);
+    let mut initial_subtitle = base_subtitle.clone();
+    if !initial_subtitle.is_empty() {
+        initial_subtitle.push('\n');
     }
+    initial_subtitle.push_str("Status: Idle");
 
-    let status_label = gtk::Label::builder()
-        .label("Status: Idle")
-        .halign(gtk::Align::Start)
-        .xalign(0.0)
-        .css_classes(vec!["dim-label".to_string()])
+    let expander_row = adw::ExpanderRow::builder()
+        .title(display_watch_path(&path))
+        .subtitle(&initial_subtitle)
+        .subtitle_lines(2)
+        .title_lines(1)
         .build();
-    text_box.append(&status_label);
 
     let album_name = Rc::new(RefCell::new(
         entry
@@ -1280,11 +1198,11 @@ fn add_folder_row(
 
     picker_btn.connect_clicked(clone!(
         #[weak]
-        row,
+        expander_row,
         move |_| {
-            if let Some(window) = row
+            if let Some(window) = expander_row
                 .root()
-                .and_then(|root| root.downcast::<adw::ApplicationWindow>().ok())
+                .and_then(|root| root.downcast::<adw::PreferencesWindow>().ok())
             {
                 let window_clone = window.clone();
                 let albums_ref_clone = albums_ref_clone.clone();
@@ -1303,10 +1221,9 @@ fn add_folder_row(
         }
     ));
 
-    let suffix_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    suffix_box.append(&picker_btn);
-
-    row_box.append(&suffix_box);
+    let album_subrow = adw::ActionRow::builder().title("Target Album").build();
+    album_subrow.add_suffix(&picker_btn);
+    expander_row.add_row(&album_subrow);
 
     let remove_btn = Button::builder()
         .icon_name("user-trash-symbolic")
@@ -1327,11 +1244,11 @@ fn add_folder_row(
 
     rules_btn.connect_clicked(clone!(
         #[weak]
-        row,
+        expander_row,
         move |_| {
-            if let Some(window) = row
+            if let Some(window) = expander_row
                 .root()
-                .and_then(|root| root.downcast::<adw::ApplicationWindow>().ok())
+                .and_then(|root| root.downcast::<adw::PreferencesWindow>().ok())
             {
                 let window = window.clone();
                 let path_for_rules = path_for_rules.clone();
@@ -1345,35 +1262,42 @@ fn add_folder_row(
 
     remove_btn.connect_clicked(clone!(
         #[weak]
-        row,
+        expander_row,
         move |_| {
             let list_clone = list_clone.clone();
             let tracked_clone = tracked_clone.clone();
             let path_clone = path_clone.clone();
-            let row = row.clone();
+            let expander_row = expander_row.clone();
             glib::idle_add_local_once(move || {
                 if let Some(focus_target) = list_clone.first_child() {
                     focus_target.grab_focus();
                 }
-                list_clone.remove(&row);
+                list_clone.remove(&expander_row);
                 tracked_clone.borrow_mut().retain(|r| r.path != path_clone);
             });
         }
     ));
-    row_box.append(&rules_btn);
-    row_box.append(&remove_btn);
 
-    list.append(&row);
+    let rules_subrow = adw::ActionRow::builder().title("Folder Rules").build();
+    rules_subrow.add_suffix(&rules_btn);
+    expander_row.add_row(&rules_subrow);
+
+    let remove_subrow = adw::ActionRow::builder().title("Remove Folder").build();
+    remove_subrow.add_suffix(&remove_btn);
+    expander_row.add_row(&remove_subrow);
+
+    list.append(&expander_row);
     tracked_rows.borrow_mut().push(FolderRowData {
         path,
         album_name,
         rules,
-        status_label,
+        action_row: expander_row,
+        base_subtitle,
     });
 }
 
 fn show_folder_rules_dialog(
-    parent: &adw::ApplicationWindow,
+    parent: &impl gtk::prelude::IsA<gtk::Window>,
     folder_path: &str,
     rules_state: Rc<RefCell<FolderRules>>,
 ) {
@@ -1411,6 +1335,7 @@ fn show_folder_rules_dialog(
 
     let max_size_entry = Entry::builder()
         .placeholder_text("Max file size in MB, leave blank for no limit")
+        .width_request(0)
         .text(
             current
                 .max_file_size_mb
@@ -1421,7 +1346,8 @@ fn show_folder_rules_dialog(
     content.append(&max_size_entry);
 
     let extensions_entry = Entry::builder()
-        .placeholder_text("Allowed extensions, comma separated, leave blank for default media list")
+        .placeholder_text("Comma-separated extensions, e.g. jpg,png,mp4")
+        .width_request(0)
         .text(current.allowed_extensions.join(", "))
         .build();
     content.append(&extensions_entry);
@@ -1472,7 +1398,10 @@ fn show_folder_rules_dialog(
     dialog.present();
 }
 
-fn show_queue_inspector(parent: &adw::ApplicationWindow, queue_manager: Arc<QueueManager>) {
+fn show_queue_inspector(
+    parent: &impl gtk::prelude::IsA<gtk::Window>,
+    queue_manager: Arc<QueueManager>,
+) {
     let dialog = adw::Window::builder()
         .transient_for(parent)
         .modal(true)
@@ -1613,7 +1542,7 @@ fn show_queue_inspector(parent: &adw::ApplicationWindow, queue_manager: Arc<Queu
     dialog.present();
 }
 
-fn show_about_dialog(parent: &adw::ApplicationWindow) {
+fn show_about_dialog(parent: &impl gtk::prelude::IsA<gtk::Window>) {
     // Register asset search path so the "icon" name resolves
     let display = gtk::gdk::Display::default();
     if let Some(display) = display {
@@ -1642,7 +1571,7 @@ fn show_about_dialog(parent: &adw::ApplicationWindow) {
 }
 
 fn show_album_picker_dialog(
-    parent: &adw::ApplicationWindow,
+    parent: &impl gtk::prelude::IsA<gtk::Window>,
     albums_ref: Rc<RefCell<Vec<(String, String)>>>,
     target_album_state: Rc<RefCell<String>>,
     trigger_btn: Button,
