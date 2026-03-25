@@ -4,9 +4,8 @@ updates:
     directory: "/"
     target-branch: "main"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "03:00"
+      interval: "daily"
+      time: "03:00"  
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
@@ -23,9 +22,8 @@ updates:
     directory: "/"
     target-branch: "main"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "03:30"
+      interval: "daily"
+      time: "03:00"  
     open-pull-requests-limit: 3
     labels:
       - "dependencies"
