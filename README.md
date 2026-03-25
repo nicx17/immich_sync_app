@@ -43,6 +43,7 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 - **SHA-1 Checksumming**: Deduplication via checksum before upload — exact same logic as the Immich mobile apps.
 - **Concurrent Uploads**: Configurable parallel worker tasks (1–10) stream files directly from disk, keeping RAM usage constant.
 - **Offline Reliability**: Failed uploads are persisted to `~/.cache/mimick/retries.json` and replayed automatically on next launch.
+- **Offline Sync Stability**: Prevents already-synced files from being incorrectly re-queued for reassociation when the server is unreachable, avoiding endless sync loops during network outages.
 - **Queue Inspector & Retry Tools**: Inspect recent queue activity, retry one failed file, retry all failed uploads, or clear the failed queue from the settings window.
 - **Batch Notifications**: Receives a single summary notification when a sync cycle completes, replacing per-file spam. Dedicated alerts for connectivity loss help you stay informed without being overwhelmed.
 - **Sync Controls**: Pause or resume uploads and trigger a manual `Sync Now` pass from either the tray or the settings window.

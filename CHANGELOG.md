@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Adaptive Folder Rows**: Watch folder entries now use `adw::ExpanderRow` to hide additional settings (Album, Rules, Remove) until clicked, maximizing screen space on mobile.
 
 ### Fixed
+- Fixed an "endless loop" bug where offline network conditions caused already-synced files to be incorrectly re-queued for reassociation.
+- Fixed an issue where the processed file count in the UI would increment infinitely during network failures.
 - Fixed a bug where a previously selected album target reverted visually to a "Custom Album" field after an application restart.
 
 ## [7.0.0] - 2026-03-22

@@ -119,9 +119,23 @@ pub async fn queue_unsynced_files(
 
                         seen_paths.insert(path_str.clone());
                         let album_name = effective_album_name(entry, &path);
-                        let album_id =
+                        let album_id_result =
                             resolve_target_album_id(&api_client, &album_name, &mut album_id_cache)
                                 .await;
+
+                        let album_id = match album_id_result {
+                            Ok(id) => id,
+                            Err(err) => {
+                                scan_errors += 1;
+                                log::warn!(
+                                    "Startup scan skipping '{}' because album resolution failed: {}",
+                                    path.display(),
+                                    err
+                                );
+                                continue;
+                            }
+                        };
+
                         let target = SyncTarget {
                             album_name: Some(album_name.clone()),
                             album_id: album_id.clone(),
@@ -260,14 +274,14 @@ async fn resolve_target_album_id(
     api_client: &ImmichApiClient,
     album_name: &str,
     album_id_cache: &mut HashMap<String, Option<String>>,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     if let Some(cached) = album_id_cache.get(album_name) {
-        return cached.clone();
+        return Ok(cached.clone());
     }
 
-    let resolved = api_client.resolve_album_by_name(album_name, false).await;
+    let resolved = api_client.resolve_album_by_name(album_name, false).await?;
     album_id_cache.insert(album_name.to_string(), resolved.clone());
-    resolved
+    Ok(resolved)
 }
 
 #[cfg(test)]

@@ -437,20 +437,26 @@ impl ImmichApiClient {
     }
 
     /// Return a snapshot of all cached albums as a list of (albumName, id)
-    pub async fn get_all_albums(&self) -> Vec<(String, String)> {
+    pub async fn get_all_albums(&self) -> Result<Vec<(String, String)>, String> {
         if !*self.albums_fetched.lock().await {
             self.fetch_all_albums().await;
         }
+        if !*self.albums_fetched.lock().await {
+            return Err("Failed to fetch albums".to_string());
+        }
         let cache = self.album_cache.lock().await;
-        cache
+        Ok(cache
             .iter()
             .map(|(n, id)| (n.clone(), id.clone()))
-            .collect()
+            .collect())
     }
 
     /// Create a new album. Returns the new album ID.
-    pub async fn create_album(&self, album_name: &str) -> Option<String> {
-        let base_url = self.get_active_url().await?;
+    pub async fn create_album(&self, album_name: &str) -> Result<Option<String>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
         let url = format!("{}/api/albums", base_url);
 
         log::info!("Creating album: '{}'", album_name);
@@ -473,14 +479,16 @@ impl ImmichApiClient {
         {
             Ok(resp) if resp.status().as_u16() == 200 || resp.status().as_u16() == 201 => {
                 if let Ok(json) = resp.json::<serde_json::Value>().await {
-                    let id = json["id"].as_str().map(String::from)?;
-                    let mut cache = self.album_cache.lock().await;
-                    cache.insert(album_name.to_string(), id.clone());
+                    let id = json["id"].as_str().map(String::from);
+                    if let Some(id_str) = &id {
+                        let mut cache = self.album_cache.lock().await;
+                        cache.insert(album_name.to_string(), id_str.clone());
+                    }
                     self.clear_issue().await;
-                    log::info!("Album created: '{}' ({})", album_name, id);
-                    Some(id)
+                    log::info!("Album created: '{}' ({:?})", album_name, id);
+                    Ok(id)
                 } else {
-                    None
+                    Ok(None)
                 }
             }
             Ok(resp) => {
@@ -491,19 +499,19 @@ impl ImmichApiClient {
                     Some(album_name),
                 ))
                 .await;
-                None
+                Err(format!("HTTP {}", resp.status()))
             }
             Err(e) => {
                 log::error!("Network error creating album '{}': {}", album_name, e);
                 self.set_issue(classify_network_issue(RequestContext::AlbumCreate, &e))
                     .await;
-                None
+                Err(e.to_string())
             }
         }
     }
 
     /// Return an existing album ID or create a new one.
-    pub async fn get_or_create_album(&self, album_name: &str) -> Option<String> {
+    pub async fn get_or_create_album(&self, album_name: &str) -> Result<Option<String>, String> {
         if !*self.albums_fetched.lock().await {
             self.fetch_all_albums().await;
         }
@@ -511,8 +519,13 @@ impl ImmichApiClient {
             let cache = self.album_cache.lock().await;
             if let Some(id) = cache.get(album_name) {
                 log::debug!("Album found in cache: '{}' ({})", album_name, id);
-                return Some(id.clone());
+                return Ok(Some(id.clone()));
             }
+        }
+        if !*self.albums_fetched.lock().await {
+            // Cannot fetch albums, so we shouldn't attempt to create one blindly, nor should we return Ok(None)
+            // which implies the album doesn't exist and can't be created. It's a network error.
+            return Err("Cannot fetch albums to verify existence".to_string());
         }
         self.create_album(album_name).await
     }
@@ -521,7 +534,7 @@ impl ImmichApiClient {
         &self,
         album_name: &str,
         force_refresh: bool,
-    ) -> Option<String> {
+    ) -> Result<Option<String>, String> {
         if force_refresh {
             self.refresh_album_cache().await;
         }

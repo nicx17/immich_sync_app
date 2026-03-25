@@ -10,6 +10,8 @@
 - [x] File type whitelist (JPG, PNG, HEIC, MP4, MOV, GIF, WEBP, TIFF, RAW, ARW, DNG). Sidecars ignored.
 - [x] 10 concurrent streaming upload workers (constant RAM use regardless of file size).
 - [x] Persistent retry queue (`~/.cache/mimick/retries.json`) — failed uploads survive reboots.
+- [x] **Offline Sync Stability** — Prevented already-synced files from being re-queued for reassociation when the application is offline or unable to reach the server.
+- [x] **Accurate Progress Tracking** — Fixed the processed file counter to only increment on successful uploads, preventing "ghost" progress during network outages.
 
 ### Immich API Client
 - [x] Smart URL routing — LAN first, WAN fallback.
