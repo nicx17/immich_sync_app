@@ -62,6 +62,18 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="8.0.0" date="2026-03-25">
+      <description>
+        <ul>
+          <li>Added a mobile-responsive UI refactor using <code>adw::PreferencesWindow</code> and adaptive <code>gtk::FlowBox</code> layouts for small screens.</li>
+          <li>Fixed critical offline sync stability bugs ("endless loop" and false progress reporting during network outages).</li>
+          <li>Introduced a health dashboard, per-folder queue status indicators, and actionable error messaging.</li>
+          <li>Added new user controls for upload concurrency, quiet hours, and safer startup catch-up modes to optimize disk I/O.</li>
+          <li>Improved desktop notifications with batch summaries and dedicated connectivity-lost alerts.</li>
+          <li>Enhanced the album picker with a searchable modal dialog and inline album creation.</li>
+        </ul>
+      </description>
+    </release>
     <release version="7.0.0" date="2026-03-22">
       <description>
         <ul>

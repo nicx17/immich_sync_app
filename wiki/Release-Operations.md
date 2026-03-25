@@ -35,7 +35,7 @@ Current published Flatpak repo signing fingerprint:
 
 1. land the release-prep commit on `main`
 2. make sure `Cargo.toml`, `CHANGELOG.md`, the Flatpak manifest tag, and AppStream metadata all agree on the version
-3. create an annotated tag such as `v7.0.0`
+3. create an annotated tag such as `v8.0.0`
 4. push `main` and the tag
 5. verify the release workflow and Flatpak Pages workflow complete successfully
 
