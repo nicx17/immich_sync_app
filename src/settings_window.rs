@@ -483,7 +483,7 @@ pub fn build_settings_window(
         let weak_win = window.downgrade();
 
         glib::MainContext::default().spawn_local(async move {
-            let fetched = client.get_all_albums().await;
+            let fetched = client.get_all_albums().await.unwrap_or_default();
 
             // Window may have been closed while we awaited the network response.
             // Bail out early — drops tracked_rows_async and albums_ref immediately.

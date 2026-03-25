@@ -291,11 +291,15 @@ impl QueueManager {
                             // Update processed count and determine idle state.
                             let summary = {
                                 let mut s = state_ref.lock().unwrap();
-                                s.processed_count += 1;
+                                if success {
+                                    s.processed_count += 1;
+                                }
                                 s.active_workers -= 1;
                                 s.current_file = None;
 
-                                if s.processed_count >= s.total_queued && s.active_workers == 0 {
+                                let total_handled = s.processed_count + s.failed_count;
+
+                                if total_handled >= s.total_queued && s.active_workers == 0 {
                                     s.queue_size = 0;
                                     s.status = if s.paused {
                                         "paused".to_string()
@@ -306,15 +310,14 @@ impl QueueManager {
                                     log::info!("All {} file(s) processed. Idle.", s.total_queued);
                                     let succeeded = s
                                         .processed_count
-                                        .saturating_sub(*last_notify_ref.lock().unwrap())
-                                        .saturating_sub(s.failed_count);
+                                        .saturating_sub(*last_notify_ref.lock().unwrap());
                                     let failed = s.failed_count;
                                     *last_notify_ref.lock().unwrap() = s.processed_count;
                                     Some((succeeded, failed))
                                 } else {
-                                    s.queue_size = s.total_queued.saturating_sub(s.processed_count);
+                                    s.queue_size = s.total_queued.saturating_sub(total_handled);
                                     s.progress = if s.total_queued > 0 {
-                                        ((s.processed_count as f32 / s.total_queued as f32) * 100.0)
+                                        ((total_handled as f32 / s.total_queued as f32) * 100.0)
                                             as u8
                                     } else {
                                         0
@@ -664,10 +667,22 @@ async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> Option<SyncTar
         if !id.is_empty() {
             Some(id.clone())
         } else {
-            api.get_or_create_album(&album_name).await
+            match api.get_or_create_album(&album_name).await {
+                Ok(id) => id,
+                Err(e) => {
+                    log::warn!("Failed to resolve album '{}': {}", album_name, e);
+                    None
+                }
+            }
         }
     } else {
-        api.get_or_create_album(&album_name).await
+        match api.get_or_create_album(&album_name).await {
+            Ok(id) => id,
+            Err(e) => {
+                log::warn!("Failed to resolve album '{}': {}", album_name, e);
+                None
+            }
+        }
     };
 
     if let Some(album_id) = final_album_id.clone() {
@@ -684,7 +699,19 @@ async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> Option<SyncTar
                     "Album '{}' may be stale or deleted. Refreshing album resolution.",
                     album_id
                 );
-                final_album_id = api.resolve_album_by_name(&album_name, true).await;
+
+                final_album_id = match api.resolve_album_by_name(&album_name, true).await {
+                    Ok(id) => id,
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to refresh album resolution for '{}': {}",
+                            album_name,
+                            e
+                        );
+                        None
+                    }
+                };
+
                 if let Some(ref refreshed_id) = final_album_id {
                     if !api
                         .add_assets_to_album(refreshed_id, std::slice::from_ref(&asset_id))
