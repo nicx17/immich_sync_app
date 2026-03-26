@@ -24,16 +24,28 @@
   
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_window.png</image>
-      <caption>Settings Window</caption>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/setup_window.png</image>
+      <caption>Setup Window</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/tray_icon_screenshot.png</image>
-      <caption>Tray Icon</caption>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/control_window.png</image>
+      <caption>Control Window</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/queue_inspector_window.png</image>
+      <caption>Queue Inspector</caption>
     </screenshot>
     <screenshot>
       <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/about_dialog.png</image>
       <caption>About Dialog</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/ping_test_screenshot.png</image>
+      <caption>Ping Test Dialog</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/tray_icon_screenshot.png</image>
+      <caption>Tray Icon</caption>
     </screenshot>
   </screenshots>
 
