@@ -17,12 +17,17 @@
 
 Mimick is a desktop Immich client for Linux, combining a persistent background daemon with a modern GTK4 user interface. It monitors your folders, manages upload queues, and adapts to network and power conditions—all while running unobtrusively in the background. Users can configure, monitor, and control the app in real time via a settings window and system tray icon, making it a seamless and reliable way to sync media to your Immich server from the desktop.
 
+<div align="center">
+
 [![Install Guide](https://img.shields.io/badge/Install-Guide-1F6FEB?style=for-the-badge&labelColor=1F6FEB)](https://github.com/nicx17/mimick/wiki/Installation)
 [![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](docs/USER_GUIDE.md)
 [![Configuration](https://img.shields.io/badge/Configuration-Guide-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](docs/CONFIGURATION.md)
 [![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Help-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
 [![Repo Automation](https://img.shields.io/badge/Repo-Automation-444444?style=for-the-badge&labelColor=444444)](docs/REPOSITORY_AUTOMATION.md)
 [![Project Wiki](https://img.shields.io/badge/Project-Wiki-444444?style=for-the-badge&labelColor=444444)](https://github.com/nicx17/mimick/wiki)
+
+
+</div>
 
 > [!NOTE]
 > **This project is in BETA.** Core features are stable and tested. Please report any issues or edge cases you encounter.
@@ -33,9 +38,11 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 
 | Settings Window | System Tray Menu |
 | :---: | :---: |
-| ![Settings Window](docs/screenshots/settings_window.png) | ![System Tray Menu](docs/screenshots/tray_icon_screenshot.png) |
-| **Ping Test Dialog** | **About Dialog** |
-| ![Ping Test Dialog](docs/screenshots/ping_test_screenshot.png) | ![About Dialog](docs/screenshots/about_dialog.png) |
+| ![Setup window](docs/screenshots/setup_window.png) | ![Control window](docs/screenshots/control_window.png) |
+| **Queue Inspector** | **About Dialog** |
+| ![Queue Inspector](docs/screenshots/queue_inspector_window.png) | ![About Dialog](docs/screenshots/about_dialog.png) |
+| **Ping Test Dialog** | **Tray Icon** |
+| ![Ping Test Dialog](docs/screenshots/ping_test_screenshot.png) | ![Tray Icon](docs/screenshots/tray_icon_screenshot.png) |
 
 ## Features
 
@@ -250,6 +257,8 @@ flatpak run io.github.nicx17.mimick
 
 ## Documentation
 
+<div align="center">
+
 [![Wiki Home](https://img.shields.io/badge/Wiki-Home-444444?style=for-the-badge&labelColor=444444)](https://github.com/nicx17/mimick/wiki)
 [![Installation](https://img.shields.io/badge/Installation-Guide-1F6FEB?style=for-the-badge&labelColor=1F6FEB)](https://github.com/nicx17/mimick/wiki/Installation)
 [![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](docs/USER_GUIDE.md)
@@ -259,6 +268,8 @@ flatpak run io.github.nicx17.mimick
 [![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Guide-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
 [![Repo Automation](https://img.shields.io/badge/Repo-Automation-444444?style=for-the-badge&labelColor=444444)](docs/REPOSITORY_AUTOMATION.md)
 [![Security](https://img.shields.io/badge/Security-Policy-5B8C5A?style=for-the-badge&labelColor=5B8C5A)](SECURITY.md)
+
+</div>
 
 ## Trust and Verification
 
