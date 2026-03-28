@@ -8,8 +8,7 @@ use std::path::{Path, PathBuf};
 
 const AUTOSTART_DESKTOP_ID: &str = "io.github.nicx17.mimick.desktop";
 const APP_ID: &str = "io.github.nicx17.mimick";
-const AUTOSTART_REASON: &str =
-    "Reason for requesting background access: Mimick must run in the background to automatically sync media to Immich.";
+const AUTOSTART_REASON: &str = "Reason for requesting background access: Mimick must run in the background to automatically sync media to Immich.";
 
 pub async fn apply(window: &impl IsA<gtk::Window>, enable: bool) -> Result<bool, String> {
     if enable {
