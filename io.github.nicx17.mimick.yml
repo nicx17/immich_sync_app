@@ -48,5 +48,5 @@ modules:
     sources:
       - type: git
         url: https://github.com/nicx17/mimick.git
-        tag: v8.0.0
+        tag: v9.0.0
       - cargo-sources.json

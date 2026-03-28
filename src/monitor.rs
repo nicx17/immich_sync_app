@@ -306,7 +306,8 @@ pub(crate) fn compute_sha1_chunked(path: &str) -> io::Result<String> {
         }
         hasher.update(&buf[..n]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    let digest = hasher.finalize();
+    Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 /// Return whether a path points to a supported media file rather than a directory.
