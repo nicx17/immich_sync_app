@@ -97,7 +97,8 @@ Thread-safe upload orchestrator using a single `Arc<Mutex<AppState>>` for all co
 - `Arc<Mutex<AppState>>` passed in directly; the 500ms `glib::timeout_add_local` timer reads it without any disk I/O
 - Album list fetched via the shared `Arc<ImmichApiClient>` on first show; a `glib::WeakRef` guard on the window ensures the async task returns early if the window is closed before the API responds
 - Test Connection button uses the shared client — no new reqwest pool per click
-- Uses a two-page `Setup` / `Controls` layout with a persistent footer for `Close`, `Quit`, and `Save & Restart`
+- Uses a two-page `Settings` / `Status` layout with a persistent footer for `Close`, `Quit`, and live `Save Changes`
+- Saving applies updated API settings, queue policy, worker limit, and watched folders to the running process without a restart
 - Includes queue inspector, diagnostics export, per-folder rule editing, and manual sync controls
 
 ### 6. System Tray (`src/tray_icon.rs`)

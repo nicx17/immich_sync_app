@@ -1,8 +1,10 @@
 //! Immich API integration, connectivity failover, and album/cache helpers.
 
+use chrono::{SecondsFormat, TimeZone, Utc};
 use reqwest::Client;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::RwLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
@@ -12,11 +14,16 @@ pub struct ApiIssue {
     pub guidance: String,
 }
 
+#[derive(Debug, Clone)]
+struct ApiClientSettings {
+    internal_url: String,
+    external_url: String,
+    api_key: String,
+}
+
 pub struct ImmichApiClient {
     pub client: Client,
-    pub internal_url: String,
-    pub external_url: String,
-    pub api_key: String,
+    settings: RwLock<ApiClientSettings>,
     /// The currently active base URL selected by the last successful connectivity check.
     pub active_url: Mutex<Option<String>>,
     /// Most recent actionable API/client problem for the dashboard and diagnostics.
@@ -46,9 +53,11 @@ impl ImmichApiClient {
 
         Self {
             client,
-            internal_url: int,
-            external_url: ext,
-            api_key,
+            settings: RwLock::new(ApiClientSettings {
+                internal_url: int,
+                external_url: ext,
+                api_key,
+            }),
             active_url: Mutex::new(None),
             last_issue: Mutex::new(None),
             album_cache: Mutex::new(HashMap::new()),
@@ -65,6 +74,24 @@ impl ImmichApiClient {
         self.last_issue.lock().await.clone()
     }
 
+    pub async fn update_settings(
+        &self,
+        internal_url: String,
+        external_url: String,
+        api_key: String,
+    ) {
+        {
+            let mut settings = self.settings.write().unwrap();
+            settings.internal_url = internal_url.trim_end_matches('/').to_string();
+            settings.external_url = external_url.trim_end_matches('/').to_string();
+            settings.api_key = api_key;
+        }
+
+        *self.active_url.lock().await = None;
+        self.refresh_album_cache().await;
+        self.clear_issue().await;
+    }
+
     async fn set_issue(&self, issue: ApiIssue) {
         *self.last_issue.lock().await = Some(issue);
     }
@@ -74,10 +101,11 @@ impl ImmichApiClient {
     }
 
     fn route_label_for_url(&self, url: &str) -> String {
+        let settings = self.settings.read().unwrap().clone();
         let trimmed = url.trim_end_matches('/');
-        if !self.internal_url.is_empty() && trimmed == self.internal_url {
+        if !settings.internal_url.is_empty() && trimmed == settings.internal_url {
             "LAN".to_string()
-        } else if !self.external_url.is_empty() && trimmed == self.external_url {
+        } else if !settings.external_url.is_empty() && trimmed == settings.external_url {
             "WAN".to_string()
         } else {
             "Custom".to_string()
@@ -87,20 +115,21 @@ impl ImmichApiClient {
     /// Determine which base URL to use, preferring the internal address when reachable.
     pub async fn check_connection(&self) -> bool {
         log::info!("Checking connectivity...");
+        let settings = self.settings.read().unwrap().clone();
 
-        if self.ping_url(&self.internal_url).await {
+        if self.ping_url(&settings.internal_url).await {
             let mut active = self.active_url.lock().await;
-            *active = Some(self.internal_url.clone());
+            *active = Some(settings.internal_url.clone());
             self.clear_issue().await;
-            log::info!("Connected via LAN: {}", self.internal_url);
+            log::info!("Connected via LAN: {}", settings.internal_url);
             return true;
         }
 
-        if self.ping_url(&self.external_url).await {
+        if self.ping_url(&settings.external_url).await {
             let mut active = self.active_url.lock().await;
-            *active = Some(self.external_url.clone());
+            *active = Some(settings.external_url.clone());
             self.clear_issue().await;
-            log::info!("Connected via WAN: {}", self.external_url);
+            log::info!("Connected via WAN: {}", settings.external_url);
             return true;
         }
 
@@ -217,7 +246,10 @@ impl ImmichApiClient {
             }
         };
 
-        let (created_at, modified_at) = file_timestamps_iso(&meta);
+        let (created_ts, modified_ts) = file_timestamps(&meta);
+        let created_at = unix_to_utc_iso8601(created_ts);
+        let modified_at = unix_to_utc_iso8601(modified_ts);
+        let desired_time_zone = local_timezone_name();
         let filename = path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -265,11 +297,12 @@ impl ImmichApiClient {
             .text("isFavorite", "false");
 
         let url = format!("{}/api/assets", base_url);
+        let api_key = self.settings.read().unwrap().api_key.clone();
 
         match self
             .client
             .post(&url)
-            .header("x-api-key", &self.api_key)
+            .header("x-api-key", &api_key)
             .header("Accept", "application/json")
             .multipart(form)
             .send()
@@ -281,6 +314,13 @@ impl ImmichApiClient {
                     200 | 201 => {
                         if let Ok(json) = resp.json::<serde_json::Value>().await {
                             let asset_id = json["id"].as_str().map(String::from);
+                            if let Some(asset_id) = asset_id.as_deref() {
+                                self.schedule_asset_timezone_fixup(
+                                    base_url.clone(),
+                                    asset_id.to_string(),
+                                    desired_time_zone.clone(),
+                                );
+                            }
                             self.clear_issue().await;
                             log::info!("Upload OK: {} => {:?}", filename, asset_id);
                             asset_id
@@ -365,6 +405,35 @@ impl ImmichApiClient {
 
     // --------------- Album Management ---------------
 
+    fn schedule_asset_timezone_fixup(
+        &self,
+        base_url: String,
+        asset_id: String,
+        time_zone: Option<String>,
+    ) {
+        let client = self.client.clone();
+        let api_key = self.settings.read().unwrap().api_key.clone();
+
+        tokio::spawn(async move {
+            let Some(time_zone) = time_zone else {
+                log::warn!(
+                    "Could not determine local timezone for uploaded asset {}; leaving Immich timezone unchanged",
+                    asset_id
+                );
+                return;
+            };
+
+            // Immich can rewrite the timeline placement after the initial upload once
+            // the metadata extraction job finishes. Re-apply the intended timezone
+            // after a few short delays so the final stored value matches the source file.
+            for delay_secs in [2_u64, 8, 20] {
+                tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+                apply_asset_timezone_fixup(&client, &api_key, &base_url, &asset_id, &time_zone)
+                    .await;
+            }
+        });
+    }
+
     /// Get all albums from Immich, populating the local cache.
     async fn fetch_all_albums(&self) {
         let base_url = match self.get_active_url().await {
@@ -382,12 +451,13 @@ impl ImmichApiClient {
         };
 
         let url = format!("{}/api/albums", base_url);
+        let api_key = self.settings.read().unwrap().api_key.clone();
         log::info!("Fetching album list...");
 
         match self
             .client
             .get(&url)
-            .header("x-api-key", &self.api_key)
+            .header("x-api-key", &api_key)
             .header("Accept", "application/json")
             .timeout(Duration::from_secs(10))
             .send()
@@ -458,6 +528,7 @@ impl ImmichApiClient {
             .await
             .ok_or_else(|| "No active connection".to_string())?;
         let url = format!("{}/api/albums", base_url);
+        let api_key = self.settings.read().unwrap().api_key.clone();
 
         log::info!("Creating album: '{}'", album_name);
 
@@ -469,7 +540,7 @@ impl ImmichApiClient {
         match self
             .client
             .post(&url)
-            .header("x-api-key", &self.api_key)
+            .header("x-api-key", &api_key)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .json(&body)
@@ -545,6 +616,7 @@ impl ImmichApiClient {
     pub async fn find_existing_asset_id(&self, checksum: &str) -> Option<String> {
         let base_url = self.get_active_url().await?;
         let url = format!("{}/api/assets/bulk-upload-check", base_url);
+        let api_key = self.settings.read().unwrap().api_key.clone();
         let body = serde_json::json!({
             "assets": [
                 {
@@ -557,7 +629,7 @@ impl ImmichApiClient {
         match self
             .client
             .post(&url)
-            .header("x-api-key", &self.api_key)
+            .header("x-api-key", &api_key)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .json(&body)
@@ -605,6 +677,7 @@ impl ImmichApiClient {
         };
 
         let url = format!("{}/api/albums/{}/assets", base_url, album_id);
+        let api_key = self.settings.read().unwrap().api_key.clone();
         let body = serde_json::json!({ "ids": asset_ids });
 
         log::info!(
@@ -616,7 +689,7 @@ impl ImmichApiClient {
         match self
             .client
             .put(&url)
-            .header("x-api-key", &self.api_key)
+            .header("x-api-key", &api_key)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .json(&body)
@@ -756,71 +829,118 @@ fn mime_for_path(path: &Path) -> &'static str {
     }
 }
 
-fn file_timestamps_iso(meta: &std::fs::Metadata) -> (String, String) {
+async fn apply_asset_timezone_fixup(
+    client: &Client,
+    api_key: &str,
+    base_url: &str,
+    asset_id: &str,
+    time_zone: &str,
+) {
+    let url = format!("{}/api/assets", base_url);
+    let body = serde_json::json!({
+        "ids": [asset_id],
+        "timeZone": time_zone,
+    });
+
+    match client
+        .put(&url)
+        .header("x-api-key", api_key)
+        .header("Accept", "application/json")
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            log::debug!("Updated timezone for asset {} to {}", asset_id, time_zone);
+        }
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            log::warn!(
+                "Uploaded asset {} but failed to update timezone [{}]: {}",
+                asset_id,
+                status,
+                body
+            );
+        }
+        Err(e) => {
+            log::warn!(
+                "Uploaded asset {} but timezone update request failed: {}",
+                asset_id,
+                e
+            );
+        }
+    }
+}
+
+fn file_timestamps(meta: &std::fs::Metadata) -> (u64, u64) {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
-    let created = meta
-        .created()
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(now);
+    let created = meta.created().ok().and_then(system_time_to_unix_secs);
+    let modified = meta.modified().ok().and_then(system_time_to_unix_secs);
+    let (created, modified) = normalize_file_timestamps(created, modified, now);
 
-    let modified = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(now);
-
-    (unix_to_iso8601(created), unix_to_iso8601(modified))
+    (created, modified)
 }
 
-/// Approximate ISO 8601 UTC from unix seconds (no chrono dependency).
-fn unix_to_iso8601(secs: u64) -> String {
-    // Days from epoch to year
-    let days = secs / 86400;
-    let time_of_day = secs % 86400;
-    let h = time_of_day / 3600;
-    let m = (time_of_day % 3600) / 60;
-    let s = time_of_day % 60;
+fn system_time_to_unix_secs(time: SystemTime) -> Option<u64> {
+    time.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs())
+}
 
-    // Gregorian calendar approximation
-    let mut year = 1970u64;
-    let mut rem_days = days;
-    loop {
-        let leap =
-            (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400);
-        let days_in_year = if leap { 366 } else { 365 };
-        if rem_days < days_in_year {
-            break;
-        }
-        rem_days -= days_in_year;
-        year += 1;
-    }
-    let leap = (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400);
-    let month_days: &[u64] = if leap {
-        &[31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        &[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+fn normalize_file_timestamps(created: Option<u64>, modified: Option<u64>, now: u64) -> (u64, u64) {
+    // Birth time is frequently the copy/import time on Linux and for moved files.
+    // Use the earliest available filesystem timestamp as the asset creation time so
+    // Immich's timeline is closer to the media's original timestamp.
+    let created = match (created, modified) {
+        (Some(created), Some(modified)) => created.min(modified),
+        (Some(created), None) => created,
+        (None, Some(modified)) => modified,
+        (None, None) => now,
     };
-    let mut month = 1u64;
-    for &md in month_days {
-        if rem_days < md {
-            break;
-        }
-        rem_days -= md;
-        month += 1;
-    }
-    let day = rem_days + 1;
 
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.000Z",
-        year, month, day, h, m, s
-    )
+    let modified = modified.unwrap_or(created);
+
+    (created, modified)
+}
+
+fn unix_to_utc_iso8601(secs: u64) -> String {
+    Utc.timestamp_opt(secs as i64, 0)
+        .single()
+        .map(|dt| dt.to_rfc3339_opts(SecondsFormat::Millis, true))
+        .unwrap_or_else(|| "1970-01-01T00:00:00.000+00:00".to_string())
+}
+
+fn local_timezone_name() -> Option<String> {
+    if let Ok(tz) = std::env::var("TZ") {
+        let tz = tz.trim().trim_start_matches(':');
+        if looks_like_iana_timezone(tz) {
+            return Some(tz.to_string());
+        }
+    }
+
+    if let Ok(target) = std::fs::read_link("/etc/localtime")
+        && let Some(path) = target.to_str()
+        && let Some((_, tz)) = path.split_once("/zoneinfo/")
+        && looks_like_iana_timezone(tz)
+    {
+        return Some(tz.to_string());
+    }
+
+    if let Ok(tz) = std::fs::read_to_string("/etc/timezone") {
+        let tz = tz.trim();
+        if looks_like_iana_timezone(tz) {
+            return Some(tz.to_string());
+        }
+    }
+
+    None
+}
+
+fn looks_like_iana_timezone(value: &str) -> bool {
+    !value.is_empty() && value.contains('/') && !value.contains(' ')
 }
 
 #[cfg(test)]
@@ -829,9 +949,9 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn test_unix_to_iso8601() {
-        assert_eq!(unix_to_iso8601(0), "1970-01-01T00:00:00.000Z");
-        assert_eq!(unix_to_iso8601(1704067200), "2024-01-01T00:00:00.000Z");
+    fn test_unix_to_utc_iso8601() {
+        assert_eq!(unix_to_utc_iso8601(0), "1970-01-01T00:00:00.000Z");
+        assert_eq!(unix_to_utc_iso8601(1704067200), "2024-01-01T00:00:00.000Z");
     }
 
     #[test]
@@ -856,6 +976,31 @@ mod tests {
     fn test_classify_http_issue_for_album_assign_404() {
         let issue = classify_http_issue(RequestContext::AlbumAssign, 404, Some("album-1"));
         assert_eq!(issue.summary, "An album reference is no longer valid");
+    }
+
+    #[test]
+    fn test_normalize_file_timestamps_prefers_earliest_available_time_for_created_at() {
+        let (created, modified) =
+            normalize_file_timestamps(Some(1_704_153_600), Some(1_704_067_200), 99);
+
+        assert_eq!(created, 1_704_067_200);
+        assert_eq!(modified, 1_704_067_200);
+    }
+
+    #[test]
+    fn test_normalize_file_timestamps_falls_back_to_created_time_when_modified_is_missing() {
+        let (created, modified) = normalize_file_timestamps(Some(1_704_067_200), None, 99);
+
+        assert_eq!(created, 1_704_067_200);
+        assert_eq!(modified, 1_704_067_200);
+    }
+
+    #[test]
+    fn test_looks_like_iana_timezone() {
+        assert!(looks_like_iana_timezone("Asia/Kolkata"));
+        assert!(looks_like_iana_timezone("America/New_York"));
+        assert!(!looks_like_iana_timezone("UTC"));
+        assert!(!looks_like_iana_timezone("Africa Abidjan"));
     }
 
     #[tokio::test]

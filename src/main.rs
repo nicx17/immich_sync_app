@@ -13,7 +13,6 @@ mod diagnostics;
 mod monitor;
 mod notifications;
 mod queue_manager;
-mod restart;
 mod runtime_env;
 mod settings_window;
 mod startup_scan;
@@ -24,9 +23,8 @@ mod watch_path_display;
 
 use api_client::ImmichApiClient;
 use config::{Config, best_matching_watch_entry};
-use monitor::Monitor;
+use monitor::{Monitor, MonitorHandle};
 use queue_manager::{EnvironmentPolicy, FileTask, QueueManager};
-use restart::{launch_replacement, take_restart_request};
 use settings_window::build_settings_window;
 use startup_scan::queue_unsynced_files;
 use state_manager::{AppState, StateManager};
@@ -39,6 +37,8 @@ use flexi_logger::{FileSpec, Logger, WriteMode, colored_detailed_format, detaile
 static QM_HANDLE: std::sync::OnceLock<Arc<QueueManager>> = std::sync::OnceLock::new();
 /// Shared API client reused by the settings window and startup scan.
 static API_CLIENT_HANDLE: std::sync::OnceLock<Arc<ImmichApiClient>> = std::sync::OnceLock::new();
+/// Live monitor handle used to update watched folders without restarting the daemon.
+static MONITOR_HANDLE: std::sync::OnceLock<Arc<MonitorHandle>> = std::sync::OnceLock::new();
 /// Requests an immediate startup-style catch-up scan from UI or tray controls.
 static MANUAL_SYNC_TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<()>> =
     std::sync::OnceLock::new();
@@ -121,10 +121,20 @@ async fn main() {
         }
 
         let api_key = config.get_api_key().unwrap_or_default();
+        let runtime_internal_url = if config.data.internal_url_enabled {
+            config.data.internal_url.clone()
+        } else {
+            String::new()
+        };
+        let runtime_external_url = if config.data.external_url_enabled {
+            config.data.external_url.clone()
+        } else {
+            String::new()
+        };
 
         let api_client = Arc::new(ImmichApiClient::new(
-            config.data.internal_url.clone(),
-            config.data.external_url.clone(),
+            runtime_internal_url,
+            runtime_external_url,
             api_key,
         ));
         let _ = API_CLIENT_HANDLE.set(api_client.clone());
@@ -146,7 +156,8 @@ async fn main() {
         // Start the live filesystem watcher immediately.
         let (tx, mut rx) = mpsc::channel(32);
         let monitor = Monitor::new(config.data.watch_paths.clone());
-        monitor.start(tx);
+        let monitor_handle = Arc::new(monitor.start(tx));
+        let _ = MONITOR_HANDLE.set(monitor_handle);
         log::info!("File monitor started");
 
         // Feed monitor events into the upload queue, preserving per-path album config
@@ -287,12 +298,14 @@ async fn main() {
             if settings_triggered {
                 let client = API_CLIENT_HANDLE.get().cloned();
                 let qm = QM_HANDLE.get().cloned();
+                let monitor = MONITOR_HANDLE.get().cloned();
                 let sync_now_tx = MANUAL_SYNC_TX.get().cloned();
                 open_settings_if_needed(
                     &app_clone2,
                     shared_state2.clone(),
                     client,
                     qm,
+                    monitor,
                     sync_now_tx,
                 );
             }
@@ -417,8 +430,16 @@ async fn main() {
         if open_settings {
             let client = API_CLIENT_HANDLE.get().cloned();
             let qm = QM_HANDLE.get().cloned();
+            let monitor = MONITOR_HANDLE.get().cloned();
             let sync_now_tx = MANUAL_SYNC_TX.get().cloned();
-            open_settings_if_needed(app, shared_state_cmdline.clone(), client, qm, sync_now_tx);
+            open_settings_if_needed(
+                app,
+                shared_state_cmdline.clone(),
+                client,
+                qm,
+                monitor,
+                sync_now_tx,
+            );
         }
 
         app.activate();
@@ -441,12 +462,6 @@ async fn main() {
         StateManager::new().write_state(state);
         log::info!("Mimick exiting");
     }
-
-    if take_restart_request()
-        && let Err(err) = launch_replacement(true)
-    {
-        log::error!("{err}");
-    }
 }
 
 /// Open the settings window only if one is not already visible.
@@ -455,13 +470,21 @@ fn open_settings_if_needed(
     shared_state: Arc<Mutex<AppState>>,
     api_client: Option<Arc<ImmichApiClient>>,
     queue_manager: Option<Arc<QueueManager>>,
+    monitor_handle: Option<Arc<MonitorHandle>>,
     sync_now_tx: Option<tokio::sync::mpsc::UnboundedSender<()>>,
 ) {
     if let Some(win) = app.windows().first() {
         win.present();
     } else {
         log::debug!("Opening settings window");
-        build_settings_window(app, shared_state, api_client, queue_manager, sync_now_tx);
+        build_settings_window(
+            app,
+            shared_state,
+            api_client,
+            queue_manager,
+            monitor_handle,
+            sync_now_tx,
+        );
     }
 }
 
@@ -493,7 +516,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(matched.album_id(), Some("trips-album"));
+        let config::WatchPathEntry::WithConfig { album_id, .. } = matched else {
+            panic!("expected configured watch entry");
+        };
+        assert_eq!(album_id.as_deref(), Some("trips-album"));
         assert_eq!(matched.album_name(), Some("Trips"));
     }
 }
