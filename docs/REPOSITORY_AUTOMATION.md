@@ -43,21 +43,19 @@ This is most useful when combined with branch protection or rulesets that requir
 
 ## Branch Protection On `main`
 
-`main` is now protected in GitHub with these native rules:
+For a solo-maintainer setup, `main` should be protected in GitHub with these native rules:
 
 - required status checks:
   - `Format, Lint, and Test`
   - `Dependency Audit`
   - `Verify cargo-sources.json`
-- 1 required approving review
-- required code-owner review
 - stale approvals dismissed on new commits
 - required conversation resolution
 - admins are not enforced
 
-Because [`.github/CODEOWNERS`](../.github/CODEOWNERS) assigns the repo to `@nicx17`, pull requests opened by other people need your approval before merging.
+Do not rely on GitHub's native `required approving review` rule for a solo-maintainer repository. GitHub does not let the PR author satisfy that rule by approving their own pull request, so enabling it will block your own PRs from ever becoming "approved" in the normal way.
 
-Your own pull requests are still practical to merge because admin enforcement is left off.
+Instead, this repo uses the `Maintainer Approval Gate` status check to require `@nicx17` approval on pull requests opened by other people, while allowing PRs authored by `@nicx17` to pass without a second account.
 
 ## Maintainer Approval Gate
 
@@ -112,7 +110,7 @@ Release Drafter is configured by:
 
 It helps maintain a draft GitHub release based on merged PR labels and categories.
 
-This does not replace the manual changelog. Mimick still uses [CHANGELOG.md](../CHANGELOG.md) as the canonical release notes source for tagged releases.
+Tagged releases now prefer the latest Release Drafter draft body when publishing a GitHub release. If no draft release exists, the release workflow falls back to the matching section in [CHANGELOG.md](../CHANGELOG.md).
 
 ## Dependabot Auto Merge
 
@@ -136,16 +134,18 @@ Important:
 These GitHub settings are already the intended baseline for this repo:
 
 1. **Allow auto-merge** is enabled.
-2. `main` is protected with required CI checks and review rules.
-3. Code-owner review is required for outside pull requests.
+2. `main` is protected with required CI checks and conversation resolution.
+3. `Maintainer Approval Gate` is included in the required status checks if you want outside-contributor PRs to require `@nicx17` approval.
 
 Optional extras you may still want later:
 
-1. enforce admin rules too, if you ever want your own PRs to need the same review path
-2. add more required checks if additional always-on workflows become important enough to gate merges
+1. re-enable native required approving reviews if you add another maintainer who can review your PRs
+2. enforce admin rules too, if you ever want your own PRs to need the same bypass restrictions
+3. add more required checks if additional always-on workflows become important enough to gate merges
 
 ## Practical Notes
 
 - Public repositories can use GitHub-hosted Actions without the same billing pressure as private repos.
 - Dependabot dependency PRs still need human judgment for larger dependency jumps.
-- Release Drafter is a convenience layer, not the source of truth for Mimick release notes.
+- Release Drafter is now the preferred GitHub release-notes source when a draft exists, while [CHANGELOG.md](../CHANGELOG.md) remains the fallback and long-form project history.
+- GitHub Actions cannot override the native "required approving review" rule for self-authored PRs; if you enable that rule, plan on a second reviewer or manual admin bypass.

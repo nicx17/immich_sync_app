@@ -1,5 +1,10 @@
 name: Maintainer Approval Gate
 
+# This workflow is intended to be the approval gate for a solo-maintainer repo.
+# GitHub's native "required approving review" rule cannot be satisfied by the PR
+# author reviewing their own pull request, so this check passes automatically for
+# @nicx17's PRs and requires @nicx17 approval for PRs opened by anyone else.
+
 on:
   pull_request_target:
     branches: ["main"]
