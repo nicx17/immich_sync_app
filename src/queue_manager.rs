@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, mpsc};
 
@@ -42,6 +43,8 @@ pub struct QueueManager {
     /// notice the same file in a short time window.
     pending_paths: Arc<std::sync::Mutex<HashSet<String>>>,
     retry_path: PathBuf,
+    policy: Arc<std::sync::Mutex<EnvironmentPolicy>>,
+    worker_limit: Arc<AtomicUsize>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -62,6 +65,7 @@ impl QueueManager {
         sync_index: Arc<std::sync::Mutex<SyncIndex>>,
         policy: EnvironmentPolicy,
     ) -> Self {
+        const MAX_WORKERS: usize = 10;
         let (tx, rx) = mpsc::channel::<FileTask>(64);
         let rx = Arc::new(Mutex::new(rx));
 
@@ -92,6 +96,8 @@ impl QueueManager {
                 .map(|task| task.path.clone())
                 .collect(),
         ));
+        let policy_ref = Arc::new(std::sync::Mutex::new(policy));
+        let worker_limit = Arc::new(AtomicUsize::new(workers.clamp(1, MAX_WORKERS)));
 
         let last_notify_completed = Arc::new(std::sync::Mutex::new(0usize));
         let connectivity_lost_notified = Arc::new(std::sync::Mutex::new(false));
@@ -103,9 +109,11 @@ impl QueueManager {
             retry_list: retry_list.clone(),
             pending_paths: pending_paths.clone(),
             retry_path: retry_path.clone(),
+            policy: policy_ref.clone(),
+            worker_limit: worker_limit.clone(),
         };
 
-        for i in 0..workers {
+        for i in 0..MAX_WORKERS {
             let rx_clone = rx.clone();
             let tx_clone = qm.sender.clone();
             let api = api_client.clone();
@@ -116,10 +124,16 @@ impl QueueManager {
             let last_notify_ref = last_notify_completed.clone();
             let connectivity_notified_ref = connectivity_lost_notified.clone();
             let consec_fail_ref = consecutive_failures.clone();
+            let policy_ref = policy_ref.clone();
+            let worker_limit_ref = worker_limit.clone();
 
             tokio::spawn(async move {
                 log::debug!("Worker {} started", i);
                 loop {
+                    while i >= worker_limit_ref.load(Ordering::Relaxed) {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+                    }
+
                     let task = {
                         let mut receiver = rx_clone.lock().await;
                         receiver.recv().await
@@ -127,7 +141,7 @@ impl QueueManager {
 
                     match task {
                         Some(file_task) => {
-                            wait_until_allowed(&state_ref, policy).await;
+                            wait_until_allowed(&state_ref, &policy_ref).await;
 
                             // Update the shared progress snapshot before handing off to the API.
                             let (pc, tq) = {
@@ -431,6 +445,15 @@ impl QueueManager {
         self.shared_state.lock().unwrap().paused
     }
 
+    pub fn set_worker_limit(&self, workers: u8) {
+        self.worker_limit
+            .store((workers as usize).clamp(1, 10), Ordering::Relaxed);
+    }
+
+    pub fn update_environment_policy(&self, policy: EnvironmentPolicy) {
+        *self.policy.lock().unwrap() = policy;
+    }
+
     pub fn recent_events(&self) -> Vec<crate::state_manager::QueueEvent> {
         self.shared_state.lock().unwrap().recent_events.clone()
     }
@@ -582,9 +605,10 @@ fn is_quiet_hour(start: Option<u8>, end: Option<u8>) -> bool {
 
 async fn wait_until_allowed(
     state_ref: &Arc<std::sync::Mutex<AppState>>,
-    policy: EnvironmentPolicy,
+    policy_ref: &Arc<std::sync::Mutex<EnvironmentPolicy>>,
 ) {
     loop {
+        let policy = *policy_ref.lock().unwrap();
         let defer_reason = if state_ref.lock().unwrap().paused {
             state_ref
                 .lock()
@@ -813,6 +837,13 @@ mod tests {
                 retry_list: retry_list.clone(),
                 pending_paths: pending_paths.clone(),
                 retry_path,
+                policy: Arc::new(Mutex::new(EnvironmentPolicy {
+                    pause_on_metered_network: false,
+                    pause_on_battery_power: false,
+                    quiet_hours_start: None,
+                    quiet_hours_end: None,
+                })),
+                worker_limit: Arc::new(AtomicUsize::new(1)),
             },
             rx,
             shared_state,

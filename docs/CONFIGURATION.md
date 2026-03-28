@@ -8,8 +8,8 @@ The most convenient way to configure the application is via the built-in Setting
 
 The window is divided into two pages:
 
-- **Setup** for configuration fields and watch-folder management
-- **Controls** for operational actions like sync, pause, queue inspection, and diagnostics export
+- **Settings** for configuration fields and watch-folder management
+- **Status** for operational actions like sync, pause, queue inspection, and diagnostics export
 
 1. Right-click the **System Tray Icon**.
 2. Select **Settings**.
@@ -19,12 +19,12 @@ The window is divided into two pages:
 6. Toggle **Run on Startup**, **Pause on Metered Network**, or **Pause on Battery Power** in the **Behavior** section.
 7. Use **Queue Inspector** to inspect failures and retry work without restarting.
 8. Use **Sync Now**, **Pause**, and **Export Diagnostics** for manual control and troubleshooting.
-9. Click **Save & Restart**.
+9. Click **Save Changes**.
 10. Use **Close** to hide the window or **Quit** to exit the app entirely.
 
-`Save & Restart` now relaunches Mimick after writing the updated configuration so new folder watches and connectivity settings take effect immediately.
+`Save Changes` now applies the updated configuration to the running app so new folder watches, connectivity changes, worker-count changes, and behavior policies take effect immediately.
 
-The footer keeps **Close**, **Quit**, and **Save & Restart** visible on both pages even when the content scrolls.
+The footer keeps **Close**, **Quit**, and **Save Changes** visible on both pages even when the content scrolls.
 
 The settings window close button behaves like **Close** and keeps the background daemon running.
 
@@ -107,7 +107,7 @@ Diagnostics exports write a timestamped `mimick-diagnostics-*` directory with a 
 
 When generating an API Key in the Immich Web UI (Account Settings > API Keys), you can restrict its permissions for better security. `mimick` requires the following minimum permissions:
 
-- **Asset**: `Read` (to check for duplicates), `Create` (to upload new media)
+- **Asset**: `Read` (to check for duplicates), `Create` (to upload new media), `Update` (to reapply final asset timezone metadata after upload)
 - **Album**: `Read` (to list existing albums), `Create` (to create new albums), `Update` (to add uploaded media to albums)
 
 ### Keyring Storage

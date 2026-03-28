@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 ashpd = { version = "0.13.9", features = ["background", "gtk4"] }
+chrono = "0.4.44"
 dirs = "6.0.0"
 glib = "0.22.3"
 gtk = { version = "0.11.1", package = "gtk4", features = ["v4_12"] }

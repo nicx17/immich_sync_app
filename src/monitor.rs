@@ -7,7 +7,7 @@ use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -26,15 +26,25 @@ pub struct Monitor {
     watch_paths: Vec<WatchPathEntry>,
 }
 
+enum MonitorCommand {
+    ReplaceWatchPaths(Vec<WatchPathEntry>),
+}
+
+#[derive(Clone)]
+pub struct MonitorHandle {
+    command_tx: std::sync::mpsc::Sender<MonitorCommand>,
+}
+
 impl Monitor {
     pub fn new(watch_paths: Vec<WatchPathEntry>) -> Self {
         Self { watch_paths }
     }
 
     /// Start the watcher thread and emit `(path, sha1_hex)` tuples for ready files.
-    pub fn start(&self, tx: mpsc::Sender<(String, String)>) {
+    pub fn start(&self, tx: mpsc::Sender<(String, String)>) -> MonitorHandle {
         let watch_paths = self.watch_paths.clone();
         let handle = tokio::runtime::Handle::current();
+        let (command_tx, command_rx) = std::sync::mpsc::channel();
 
         std::thread::spawn(move || {
             let (notify_tx, notify_rx) = std::sync::mpsc::channel();
@@ -46,26 +56,9 @@ impl Monitor {
                 }
             };
 
-            let mut any_watching = false;
-            for entry in &watch_paths {
-                let p = Path::new(entry.path());
-                if p.exists() {
-                    match watcher.watch(p, RecursiveMode::Recursive) {
-                        Ok(_) => {
-                            log::info!("Watching: {}", display_watch_path(entry.path()));
-                            any_watching = true;
-                        }
-                        Err(e) => log::warn!("Failed to watch '{}': {:?}", entry.path(), e),
-                    }
-                } else {
-                    log::warn!("Watch path does not exist, skipping: {}", entry.path());
-                }
-            }
-
-            if !any_watching {
-                log::warn!("No valid watch paths. File monitoring is inactive.");
-                return;
-            }
+            let mut watch_paths = watch_paths;
+            let mut watched_roots = Vec::<PathBuf>::new();
+            replace_watches(&mut *watcher, &mut watched_roots, &watch_paths);
 
             // Debounce map: path -> last seen instant
             let mut debounce_map: HashMap<String, Instant> = HashMap::new();
@@ -76,7 +69,22 @@ impl Monitor {
             let active_tasks: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>> =
                 std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
 
-            for res in notify_rx {
+            loop {
+                while let Ok(command) = command_rx.try_recv() {
+                    match command {
+                        MonitorCommand::ReplaceWatchPaths(new_paths) => {
+                            watch_paths = new_paths;
+                            replace_watches(&mut *watcher, &mut watched_roots, &watch_paths);
+                        }
+                    }
+                }
+
+                let res = match notify_rx.recv_timeout(Duration::from_millis(500)) {
+                    Ok(res) => res,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                };
+
                 match res {
                     Ok(event) => {
                         let is_relevant =
@@ -176,6 +184,52 @@ impl Monitor {
 
             log::warn!("File watcher thread exiting.");
         });
+
+        MonitorHandle { command_tx }
+    }
+}
+
+impl MonitorHandle {
+    pub fn replace_watch_paths(&self, watch_paths: Vec<WatchPathEntry>) {
+        if let Err(err) = self
+            .command_tx
+            .send(MonitorCommand::ReplaceWatchPaths(watch_paths))
+        {
+            log::warn!("Could not update watch paths on the live monitor: {}", err);
+        }
+    }
+}
+
+fn replace_watches(
+    watcher: &mut dyn Watcher,
+    watched_roots: &mut Vec<PathBuf>,
+    watch_paths: &[WatchPathEntry],
+) {
+    for path in watched_roots.drain(..) {
+        if let Err(err) = watcher.unwatch(&path) {
+            log::debug!("Could not unwatch '{}': {:?}", path.display(), err);
+        }
+    }
+
+    let mut any_watching = false;
+    for entry in watch_paths {
+        let p = Path::new(entry.path());
+        if p.exists() {
+            match watcher.watch(p, RecursiveMode::Recursive) {
+                Ok(_) => {
+                    log::info!("Watching: {}", display_watch_path(entry.path()));
+                    watched_roots.push(p.to_path_buf());
+                    any_watching = true;
+                }
+                Err(e) => log::warn!("Failed to watch '{}': {:?}", entry.path(), e),
+            }
+        } else {
+            log::warn!("Watch path does not exist, skipping: {}", entry.path());
+        }
+    }
+
+    if !any_watching {
+        log::warn!("No valid watch paths. File monitoring is idle until a folder is added.");
     }
 }
 

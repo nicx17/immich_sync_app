@@ -31,8 +31,8 @@ Right-click the tray icon and select **Settings**, or launch with `mimick --sett
 
 The settings window is split into two pages:
 
-* **Setup**: server details, behavior switches, watch folders, and folder rules
-* **Controls**: sync status, queue tools, pause/resume, manual sync, and diagnostics export
+* **Settings**: server details, behavior switches, watch folders, and folder rules
+* **Status**: sync status, queue tools, pause/resume, manual sync, and diagnostics export
 
 ### Connectivity & Server Details
 
@@ -42,6 +42,7 @@ The settings window is split into two pages:
     * Open your Immich Web Interface in a browser.
     * Go to **Account Settings** → **API Keys**.
     * Click **New API Key**, give it a name (like "Linux Desktop"), and click Create.
+    * Make sure the key includes **Asset Read/Create/Update** and **Album Read/Create/Update** permissions.
     * Copy the key and paste it into the API Key field in Mimick.
     * *The key is stored in your system's secure keyring (libsecret). It is never written to disk in plain text.*
 
@@ -76,9 +77,9 @@ You can also enable:
 
 ### Saving Changes
 
-Click **Save & Restart** after changing settings. Mimick saves the updated configuration, closes the current instance, and launches a fresh one so the new watcher and connection settings take effect immediately.
+Click **Save Changes** after changing settings. Mimick saves the updated configuration and applies it to the running app immediately, including updated server URLs, watch folders, worker count, and pause policies.
 
-The footer keeps **Close**, **Quit**, and **Save & Restart** visible even if the current page needs scrolling.
+The footer keeps **Close**, **Quit**, and **Save Changes** visible even if the current page needs scrolling.
 
 ### Closing vs Quitting
 
@@ -88,9 +89,9 @@ The settings window has separate actions for hiding the window and quitting the 
 * **Quit** fully exits Mimick.
 * The window titlebar close button behaves the same as **Close**.
 
-### Controls Page
+### Status Page
 
-The **Controls** page groups the live actions you may want while Mimick is already running:
+The **Status** page groups the live actions you may want while Mimick is already running:
 
 * **Sync Now** to trigger an immediate watched-folder scan
 * **Pause / Resume** to stop and continue uploads manually

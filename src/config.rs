@@ -82,18 +82,11 @@ pub enum WatchPathEntry {
     },
 }
 
-#[allow(dead_code)]
 impl WatchPathEntry {
     pub fn path(&self) -> &str {
         match self {
             WatchPathEntry::Simple(p) => p,
             WatchPathEntry::WithConfig { path, .. } => path,
-        }
-    }
-    pub fn album_id(&self) -> Option<&str> {
-        match self {
-            WatchPathEntry::Simple(_) => None,
-            WatchPathEntry::WithConfig { album_id, .. } => album_id.as_deref(),
         }
     }
     pub fn album_name(&self) -> Option<&str> {
@@ -333,7 +326,7 @@ mod tests {
         let entry: WatchPathEntry = serde_json::from_str(json).unwrap();
 
         assert_eq!(entry.path(), "/home/nick/Pictures");
-        assert!(entry.album_id().is_none());
+        assert!(matches!(entry, WatchPathEntry::Simple(_)));
     }
 
     #[test]
@@ -346,7 +339,10 @@ mod tests {
         let entry: WatchPathEntry = serde_json::from_str(json).unwrap();
 
         assert_eq!(entry.path(), "/home/nick/Pictures");
-        assert_eq!(entry.album_id().unwrap(), "abc-123");
+        let WatchPathEntry::WithConfig { album_id, .. } = &entry else {
+            panic!("expected configured watch entry");
+        };
+        assert_eq!(album_id.as_deref(), Some("abc-123"));
         assert_eq!(entry.album_name().unwrap(), "My Album");
     }
 

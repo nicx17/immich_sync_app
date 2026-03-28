@@ -21,8 +21,8 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::api_client::ImmichApiClient;
 use crate::config::Config;
+use crate::monitor::MonitorHandle;
 use crate::queue_manager::QueueManager;
-use crate::restart::request_restart;
 use crate::state_manager::AppState;
 use crate::watch_path_display::{display_watch_path, watch_path_subtitle};
 
@@ -65,6 +65,7 @@ pub fn build_settings_window(
     shared_state: Arc<Mutex<AppState>>,
     api_client: Option<Arc<ImmichApiClient>>,
     queue_manager: Option<Arc<QueueManager>>,
+    monitor_handle: Option<Arc<MonitorHandle>>,
     sync_now_tx: Option<UnboundedSender<()>>,
 ) {
     // Use a PreferencesWindow for native Libadwaita mobile responsiveness and adaptive layouts
@@ -75,28 +76,50 @@ pub fn build_settings_window(
         .default_height(840)
         .build();
     let app_clone = app.clone();
+    let config = Config::new();
 
-    // Force Dark Theme
-    let style_mgr = adw::StyleManager::default();
-    style_mgr.set_color_scheme(adw::ColorScheme::ForceDark);
+    let status_page = adw::PreferencesPage::builder()
+        .title("Status")
+        .icon_name("view-dashboard-symbolic")
+        .build();
+    window.add(&status_page);
 
-    let setup_page = adw::PreferencesPage::builder()
-        .title("Setup")
+    let settings_page = adw::PreferencesPage::builder()
+        .title("Settings")
         .icon_name("emblem-system-symbolic")
         .build();
-    window.add(&setup_page);
+    window.add(&settings_page);
 
-    let controls_page = adw::PreferencesPage::builder()
-        .title("Controls")
-        .icon_name("preferences-system-symbolic")
-        .build();
-    window.add(&controls_page);
+    let is_unconfigured = config.get_api_key().unwrap_or_default().is_empty();
+    if is_unconfigured {
+        let welcome_group = adw::PreferencesGroup::builder()
+            .title("Welcome to Mimick!")
+            .description("Start by adding your API key, testing the connection, and choosing at least one folder.")
+            .build();
+
+        let help_row = adw::ActionRow::builder()
+            .title("How to get an API Key")
+            .activatable(true)
+            .build();
+
+        help_row.connect_activated(|_| {
+            let uri = "https://immich.app/docs/features/command-line-interface/#api-key";
+            if let Err(e) =
+                gtk::gio::AppInfo::launch_default_for_uri(uri, None::<&gtk::gio::AppLaunchContext>)
+            {
+                log::error!("Failed to open browser: {}", e);
+            }
+        });
+
+        welcome_group.add(&help_row);
+        settings_page.add(&welcome_group);
+    }
 
     // --- PROGRESS GROUP ---
     let progress_group = adw::PreferencesGroup::builder()
         .title("Sync Status")
         .build();
-    controls_page.add(&progress_group);
+    status_page.add(&progress_group);
 
     let status_row = adw::ActionRow::builder()
         .title("Idle")
@@ -116,7 +139,7 @@ pub fn build_settings_window(
     let health_group = adw::PreferencesGroup::builder()
         .title("Health Dashboard")
         .build();
-    controls_page.add(&health_group);
+    status_page.add(&health_group);
 
     let route_row = adw::ActionRow::builder()
         .title("Server Route")
@@ -152,7 +175,7 @@ pub fn build_settings_window(
     let conn_group = adw::PreferencesGroup::builder()
         .title("Connectivity")
         .build();
-    setup_page.add(&conn_group);
+    settings_page.add(&conn_group);
 
     // Internal URL
     let internal_row = adw::ActionRow::builder()
@@ -353,7 +376,7 @@ pub fn build_settings_window(
     ));
 
     let behavior_group = adw::PreferencesGroup::builder().title("Behavior").build();
-    setup_page.add(&behavior_group);
+    settings_page.add(&behavior_group);
 
     let startup_row = adw::SwitchRow::builder()
         .title("Run on Startup")
@@ -397,20 +420,20 @@ pub fn build_settings_window(
     // Quiet hours — enable switch + two hour spinners
     let quiet_hours_row = adw::SwitchRow::builder()
         .title("Quiet Hours")
-        .subtitle("Pause uploads during a nightly window (uses UTC clock).")
+        .subtitle("Pause uploads during a nightly window using your local clock.")
         .build();
     behavior_group.add(&quiet_hours_row);
 
     let quiet_start_adj = gtk::Adjustment::new(22.0, 0.0, 23.0, 1.0, 1.0, 0.0);
     let quiet_start_row = adw::SpinRow::builder()
-        .title("Quiet Hours Start (hour, UTC)")
+        .title("Quiet Hours Start (hour, local)")
         .adjustment(&quiet_start_adj)
         .build();
     behavior_group.add(&quiet_start_row);
 
     let quiet_end_adj = gtk::Adjustment::new(7.0, 0.0, 23.0, 1.0, 1.0, 0.0);
     let quiet_end_row = adw::SpinRow::builder()
-        .title("Quiet Hours End (hour, UTC)")
+        .title("Quiet Hours End (hour, local)")
         .adjustment(&quiet_end_adj)
         .build();
     behavior_group.add(&quiet_end_row);
@@ -432,39 +455,8 @@ pub fn build_settings_window(
         .title("Watch Folders")
         .description("Add folders with the picker so Mimick can keep access to them.")
         .build();
-    setup_page.add(&folders_group);
+    settings_page.add(&folders_group);
 
-    let config = Config::new();
-
-    let is_unconfigured = config.get_api_key().unwrap_or_default().is_empty();
-    if is_unconfigured {
-        let welcome_group = adw::PreferencesGroup::builder()
-            .title("Welcome to Mimick!")
-            .description("Please provide your Immich API Key to proceed.")
-            .build();
-
-        let help_row = adw::ActionRow::builder()
-            .title("How to get an API Key")
-            .activatable(true)
-            .build();
-
-        help_row.connect_activated(|_| {
-            let uri = "https://immich.app/docs/features/command-line-interface/#api-key";
-            if let Err(e) =
-                gtk::gio::AppInfo::launch_default_for_uri(uri, None::<&gtk::gio::AppLaunchContext>)
-            {
-                log::error!("Failed to open browser: {}", e);
-            }
-        });
-
-        welcome_group.add(&help_row);
-
-        // Add at the very top of setup_page by inserting before conn_group?
-        // adw::PreferencesPage doesn't have insert_child_after, just `add()`. We appended conn_group already.
-        // But since this is a refactoring, we'll just add it where the banner was roughly.
-        // Wait, setup_page.add just appends to the bottom. Let's just append it.
-        setup_page.add(&welcome_group);
-    }
     let startup_initial = config.data.run_on_startup;
     let tracked_rows = Rc::new(RefCell::new(Vec::<FolderRowData>::new()));
     let albums: Rc<RefCell<Vec<(String, String)>>> = Rc::new(RefCell::new(Vec::new()));
@@ -474,7 +466,7 @@ pub fn build_settings_window(
     // that takes ~30s to self-clean, causing RAM to grow with each open/close cycle.
     let albums_ref = albums.clone();
 
-    if let Some(client) = api_client {
+    if let Some(client) = api_client.clone() {
         // Downgrade the window to a weak ref BEFORE the spawn.
         // After the async await, we upgrade it — if it's None the window was closed
         // while the API call was in-flight. We bail immediately, releasing all strong
@@ -551,7 +543,7 @@ pub fn build_settings_window(
     });
 
     let controls_group = adw::PreferencesGroup::builder().title("Actions").build();
-    controls_page.add(&controls_group);
+    status_page.add(&controls_group);
 
     // FlowBox so buttons wrap automatically on narrow widths
     let actions_flow = gtk::FlowBox::builder()
@@ -591,7 +583,7 @@ pub fn build_settings_window(
     let app_group = adw::PreferencesGroup::builder()
         .title("Application")
         .build();
-    controls_page.add(&app_group);
+    settings_page.add(&app_group);
 
     let app_flow = gtk::FlowBox::builder()
         .homogeneous(true)
@@ -619,7 +611,7 @@ pub fn build_settings_window(
     app_flow.insert(&quit_btn, -1);
 
     let save_btn = Button::builder()
-        .label("Save & Restart")
+        .label("Save Changes")
         .css_classes(vec!["suggested-action".to_string()])
         .hexpand(true)
         .build();
@@ -788,11 +780,17 @@ pub fn build_settings_window(
         #[weak]
         save_btn,
         #[strong]
-        app_clone,
-        #[strong]
         tracked_rows,
         #[strong]
         albums,
+        #[strong]
+        shared_state,
+        #[strong]
+        api_client,
+        #[strong]
+        queue_manager,
+        #[strong]
+        monitor_handle,
         move |_| {
             save_btn.set_sensitive(false);
 
@@ -840,6 +838,16 @@ pub fn build_settings_window(
             }
 
             let api_key = api_key_entry.text().to_string();
+            let runtime_internal_url = if internal_url_enabled {
+                internal_url.clone()
+            } else {
+                String::new()
+            };
+            let runtime_external_url = if external_url_enabled {
+                external_url.clone()
+            } else {
+                String::new()
+            };
             let startup_changed = run_on_startup != startup_initial;
 
             glib::MainContext::default().spawn_local(clone!(
@@ -850,7 +858,13 @@ pub fn build_settings_window(
                 #[weak]
                 save_btn,
                 #[strong]
-                app_clone,
+                shared_state,
+                #[strong]
+                api_client,
+                #[strong]
+                queue_manager,
+                #[strong]
+                monitor_handle,
                 async move {
                     if startup_changed {
                         match autostart::apply(&window, run_on_startup).await {
@@ -889,7 +903,7 @@ pub fn build_settings_window(
                     new_config.data.external_url_enabled = external_url_enabled;
                     new_config.data.internal_url = internal_url;
                     new_config.data.external_url = external_url;
-                    new_config.data.watch_paths = watch_paths;
+                    new_config.data.watch_paths = watch_paths.clone();
                     new_config.data.run_on_startup = run_on_startup;
                     new_config.data.pause_on_metered_network = pause_on_metered_network;
                     new_config.data.pause_on_battery_power = pause_on_battery_power;
@@ -898,8 +912,17 @@ pub fn build_settings_window(
                     new_config.data.quiet_hours_start = quiet_hours_start;
                     new_config.data.quiet_hours_end = quiet_hours_end;
 
-                    if !api_key.is_empty() {
-                        new_config.set_api_key(&api_key);
+                    if !api_key.is_empty() && !new_config.set_api_key(&api_key) {
+                        save_btn.set_sensitive(true);
+
+                        let dialog = adw::MessageDialog::builder()
+                            .transient_for(&window)
+                            .heading("Could Not Save API Key")
+                            .body("Mimick could not store the API key in your desktop keyring.")
+                            .build();
+                        dialog.add_response("ok", "OK");
+                        dialog.present();
+                        return;
                     }
 
                     if !new_config.save() {
@@ -915,8 +938,57 @@ pub fn build_settings_window(
                         return;
                     }
 
-                    request_restart();
-                    app_clone.quit();
+                    if let Some(client) = api_client.clone() {
+                        client
+                            .update_settings(
+                                runtime_internal_url.clone(),
+                                runtime_external_url.clone(),
+                                api_key.clone(),
+                            )
+                            .await;
+                    }
+
+                    if let Some(qm) = queue_manager.clone() {
+                        qm.set_worker_limit(upload_concurrency);
+                        qm.update_environment_policy(crate::queue_manager::EnvironmentPolicy {
+                            pause_on_metered_network,
+                            pause_on_battery_power,
+                            quiet_hours_start,
+                            quiet_hours_end,
+                        });
+                    }
+
+                    if let Some(monitor) = monitor_handle.clone() {
+                        monitor.replace_watch_paths(watch_paths.clone());
+                    }
+
+                    {
+                        let mut state = shared_state.lock().unwrap();
+                        state.watched_folder_count = watch_paths.len();
+                        let current_paths = watch_paths
+                            .iter()
+                            .map(|entry| entry.path().to_string())
+                            .collect::<std::collections::HashSet<_>>();
+                        state
+                            .folder_statuses
+                            .retain(|path, _| current_paths.contains(path));
+                    }
+
+                    save_btn.set_sensitive(true);
+                    save_btn.set_label("Saved");
+                    save_btn.remove_css_class("suggested-action");
+
+                    glib::timeout_add_local_once(
+                        Duration::from_secs(2),
+                        clone!(
+                            #[weak]
+                            save_btn,
+                            move || {
+                                save_btn.set_label("Save Changes");
+                                save_btn.add_css_class("suggested-action");
+                            }
+                        ),
+                    );
                 }
             ));
         }

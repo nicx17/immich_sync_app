@@ -6,7 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
---
+
+### Fixed
+- Fixed an Immich asset timestamp regression where newly uploaded files could land at the wrong timeline time or lose their intended timezone after server-side metadata processing.
+
+### Changed
+- Upload metadata handling now preserves filesystem-based creation times more reliably and reapplies the local timezone after upload so Immich keeps the correct asset date placement.
+- The settings window now uses `Status` and `Settings` pages, shows the first-run API-key guidance at the top of the configuration flow, and no longer forces dark mode.
+- `Save & Restart` has been replaced with live `Save Changes` behavior that updates the running API client, queue policy, upload worker count, and watched folders without relaunching Mimick.
+- Watch-folder changes now reconfigure the live filesystem monitor in place, so adding or removing folders takes effect immediately after saving.
+
 ## [8.0.0] - 2026-03-25
 
 ### Added

@@ -60,8 +60,8 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 - **Diagnostics Export**: Generate a redacted support bundle with queue state, sync summaries, and a human-readable report without exposing raw logs, URLs, or full local paths.
 - **Network / Power Awareness**: Optionally defer uploads while on a metered connection or running on battery power.
 - **Custom Album Mapping**: Select an existing remote album, type a custom name, or let the app create an album from the local folder name (e.g., `~/Pictures/Vacation 2024` → Album `Vacation 2024`). A searchable modal picker lets you filter albums or create new ones inline.
-- **First-Run Wizard**: When no API key is detected, Mimick opens the Setup page automatically with a welcome prompt and keeps "Save & Restart" disabled until credentials are entered, preventing silent connection failures.
-- **Health Dashboard & Status**: See global network connectivity and errors on the Controls page, alongside Per-Folder Status showing pending queue size and last sync time directly next to each watched directory.
+- **First-Run Wizard**: When no API key is detected, Mimick opens the Settings page automatically with a welcome prompt and places the API-key help at the top of the configuration flow.
+- **Health Dashboard & Status**: See global network connectivity and errors on the Status page, alongside Per-Folder Status showing pending queue size and last sync time directly next to each watched directory.
 - **Actionable Errors & Permission Checks**: Emits specific UI warnings instead of generic timeouts, such as alerting you if Flatpak portal access to a watched folder is lost or an API key expires.
 - **One-Way Sync**: Uploads media without modifying local files.
 - **Security**: API Key stored in the system keyring via `secret-tool` (libsecret).
@@ -69,9 +69,10 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 - **Startup Catch-Up Controls**: On launch, Mimick scans watched folders for media that has not been synced yet. Users can optimize disk I/O by limiting this scan strictly to recent files (last 7 days) or new files only.
 - **Mobile Responsive UI**: The settings window is built with `adw::PreferencesWindow` and adaptive `gtk::FlowBox` layouts, allowing it to scale down to 360px width. Fully usable on mobile Linux environments like Phosh or small desktop monitors.
 - **Expander-Based Folder Rows**: Watch folder entries use `adw::ExpanderRow` to logically group settings (Album, Rules, Remove), keeping the interface clean and navigable on small screens.
+- **Live Settings Apply**: `Save Changes` updates the running configuration in place, including watched folders, server URLs, upload concurrency, and pause policies, without restarting the app.
 - **Clear Window Controls**: `Close` hides the settings window, while `Quit` stops the app completely.
 - **Desktop Integration**:
-  - GTK4 / Libadwaita settings UI (dark mode by default).
+  - GTK4 / Libadwaita settings UI that follows the desktop theme.
   - StatusNotifierItem system tray icon (requires AppIndicator support on GNOME).
 
 ---
@@ -122,24 +123,24 @@ Launch Mimick from your Application Launcher. The settings window opens automati
 
 The window is split into two pages:
 
-* **Setup** for server details, behavior switches, watch folders, and folder rules
-* **Controls** for status, queue actions, manual sync, pause/resume, and diagnostics export
+* **Settings** for server details, behavior switches, watch folders, and folder rules
+* **Status** for sync health, queue actions, manual sync, pause/resume, and diagnostics export
 
 The UI is fully responsive and automatically adapts its layout for narrow widths (sub-360px), making it compatible with mobile Linux devices.
 
 1. **Internal URL** — LAN address (e.g., `http://192.168.1.50:2283`).
 2. **External URL** — WAN/Public address (e.g., `https://photos.example.com`). *At least one must be enabled.*
-3. **API Key** — Generate in Immich Web UI under Account Settings > API Keys. Needs **Asset** and **Album** read/create permissions.
+3. **API Key** — Generate in Immich Web UI under Account Settings > API Keys. Needs **Asset** read/create/update permissions and **Album** read/create/update permissions.
 4. **Watch Paths** — Add folders to monitor with the built-in folder picker. Each folder can be assigned a target Immich album.
 5. **Run on Startup** — Enable this in the **Behavior** section to start Mimick automatically when you log in.
 6. **Folder Rules** — Each watched folder can open a rules dialog to ignore hidden paths, set a max size in MB, or restrict uploads to specific extensions.
 7. **Sync Controls** — Use **Pause**, **Resume**, or **Sync Now** from the settings window or tray menu when you want manual control.
 8. **Queue Inspector** — Review recent queue events, inspect failed uploads, retry individual files, retry all failures, or clear the failed queue.
 9. **Export Diagnostics** — Create a support bundle from the settings window when troubleshooting sync issues.
-10. **Save & Restart** — Applies your settings and relaunches Mimick automatically.
+10. **Save Changes** — Applies your settings immediately without relaunching Mimick.
 11. **Close / Quit** — `Close` hides the settings window and leaves Mimick running; `Quit` fully exits the app.
 
-The bottom footer keeps **Close**, **Quit**, and **Save & Restart** visible even when the page content needs scrolling.
+The bottom footer keeps **Close**, **Quit**, and **Save Changes** visible even when the page content needs scrolling.
 
 ### Autostart
 
@@ -176,7 +177,7 @@ Mimick is a background app, so closing the settings window does not quit it.
 
 Mimick now includes a small control center for active troubleshooting and recovery.
 
-On the **Controls** page:
+On the **Status** page:
 
 * **Sync Now** reruns the watched-folder scan immediately.
 * **Pause** toggles upload activity without quitting Mimick.
