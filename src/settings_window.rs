@@ -1,4 +1,4 @@
-//! GTK4/Libadwaita settings window and status dashboard.
+//! Implements the GTK4/Libadwaita settings window and status dashboard.
 
 use crate::autostart;
 use crate::config::{FolderRules, StartupCatchupMode, WatchPathEntry};
@@ -26,7 +26,7 @@ use crate::queue_manager::QueueManager;
 use crate::state_manager::AppState;
 use crate::watch_path_display::{display_watch_path, watch_path_subtitle};
 
-/// GTK widgets kept around for a single watch-folder row in the settings list.
+/// Holds GTK widgets for a single watch-folder row in the settings list.
 struct FolderRowData {
     path: String,
     album_name: Rc<RefCell<String>>,

@@ -1,12 +1,12 @@
-//! Desktop notification helpers.
+//! Provides desktop notification helpers.
 //!
-//! All functions are best-effort: if `notify-send` is not installed the call is
-//! silently ignored.  No notification is fired more than once per concept per
+//! All functions are best-effort: if `notify-send` is not installed, the call is
+//! silently ignored. No notification is fired more than once per concept per
 //! session — callers are responsible for the guard logic.
 
 use std::process::Command;
 
-// ── Internal primitive ────────────────────────────────────────────────────────
+// ── Internal primitive ───────────────────────────────────────────────────────
 
 fn send_raw(title: &str, message: &str) {
     let mut cmd = Command::new("notify-send");
@@ -26,11 +26,11 @@ fn send_raw(title: &str, message: &str) {
     }
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// ── Public API ──────────────────────────────────────────────────────────────
 
 /// Fired once when the upload queue drains after an active sync cycle.
 ///
-/// `succeeded` and `failed` are the counts for that cycle.
+/// `succeeded` and `failed` are the counts for that sync cycle.
 pub fn send_sync_summary(succeeded: usize, failed: usize) {
     if succeeded == 0 && failed == 0 {
         return;
@@ -51,7 +51,7 @@ pub fn send_sync_summary(succeeded: usize, failed: usize) {
     send_raw(&title, &body);
 }
 
-/// Fired once per session when consecutive uploads all fail due to connectivity.
+/// Fired once per session when consecutive uploads all fail due to connectivity issues.
 pub fn send_connectivity_lost() {
     send_raw(
         "Mimick: Connection lost",

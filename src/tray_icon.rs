@@ -1,9 +1,9 @@
-//! StatusNotifier tray integration and its GTK-facing control signals.
+//! Integrates StatusNotifier tray functionality and provides GTK-facing control signals for tray actions.
 
 use ksni::TrayMethods;
 use tokio::sync::watch;
 
-/// Tray state shared with the ksni menu callbacks.
+/// Represents the tray state shared with ksni menu callbacks and GTK main loop.
 #[derive(Debug)]
 pub struct MimickTray {
     /// Sender used to signal the GTK main loop to open the settings window.
@@ -11,7 +11,7 @@ pub struct MimickTray {
     pub settings_tx: watch::Sender<bool>,
     /// Sender used to request a graceful application quit from the GTK main loop.
     pub quit_tx: watch::Sender<bool>,
-    /// Sender used to toggle paused state from the tray.
+    /// Sender used to toggle the paused state from the tray.
     pub pause_tx: watch::Sender<bool>,
     /// Sender used to request an immediate catch-up scan.
     pub sync_now_tx: watch::Sender<bool>,

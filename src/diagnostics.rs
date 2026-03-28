@@ -1,4 +1,4 @@
-//! Export a support-friendly diagnostics bundle with sensitive local data redacted.
+//! Exports a support-friendly diagnostics bundle with sensitive local data redacted for privacy.
 
 use crate::config::Config;
 use crate::queue_manager::FileTask;

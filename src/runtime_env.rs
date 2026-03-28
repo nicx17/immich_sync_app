@@ -1,10 +1,10 @@
-//! Best-effort system condition checks used to defer uploads when requested.
+//! Provides best-effort checks of system conditions to determine when uploads should be deferred.
 
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-/// Return whether the current primary network connection is metered.
+/// Returns true if the current primary network connection is metered.
 pub fn is_metered_connection() -> bool {
     let output = match Command::new("nmcli")
         .args([
@@ -24,7 +24,7 @@ pub fn is_metered_connection() -> bool {
     is_metered_connection_from_nmcli_output(&String::from_utf8_lossy(&output.stdout))
 }
 
-/// Return whether the system appears to be running on battery power.
+/// Returns true if the system appears to be running on battery power.
 pub fn is_on_battery_power() -> bool {
     let power_supply_root = Path::new("/sys/class/power_supply");
     let entries = match fs::read_dir(power_supply_root) {

@@ -1,10 +1,10 @@
-//! Helpers for displaying friendlier names for sandboxed portal-backed watch paths.
+//! Provides utilities for displaying user-friendly names for watch paths, especially those selected via Flatpak portals.
 
 use std::path::Path;
 
 const PORTAL_FOLDER_LABEL: &str = "Selected via Flatpak portal";
 
-/// Convert a stored watch path into the friendlier label shown in the UI and logs.
+/// Converts a stored watch path into a user-friendly label for display in the UI and logs.
 pub fn display_watch_path(path: &str) -> String {
     if is_document_portal_path(path) {
         Path::new(path)
@@ -18,7 +18,7 @@ pub fn display_watch_path(path: &str) -> String {
     }
 }
 
-/// Return an explanatory subtitle for special watch paths when needed.
+/// Returns an explanatory subtitle for special watch paths, if applicable.
 pub fn watch_path_subtitle(path: &str) -> Option<&'static str> {
     if is_document_portal_path(path) {
         Some(PORTAL_FOLDER_LABEL)
@@ -27,7 +27,7 @@ pub fn watch_path_subtitle(path: &str) -> Option<&'static str> {
     }
 }
 
-/// Detect document-portal paths returned by the Flatpak file chooser portal.
+/// Detects document-portal paths returned by the Flatpak file chooser portal.
 pub fn is_document_portal_path(path: &str) -> bool {
     path.starts_with("/run/user/") && path.contains("/doc/")
 }

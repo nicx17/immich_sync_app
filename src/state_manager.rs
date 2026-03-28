@@ -1,11 +1,11 @@
-//! Persistent status snapshots used to restore basic UI state across launches.
+//! Stores persistent status snapshots to restore basic UI state across application launches.
 
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-/// Rolling queue/event status used by the settings window inspector.
+/// Represents a rolling queue/event status used by the settings window inspector.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct QueueEvent {
     pub path: String,
@@ -17,7 +17,7 @@ pub struct QueueEvent {
     pub timestamp: f64,
 }
 
-/// Status of an individual watch folder.
+/// Represents the status of an individual watch folder.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct FolderSyncStatus {
     pub last_sync_at: Option<f64>,
@@ -26,7 +26,7 @@ pub struct FolderSyncStatus {
     pub last_error: Option<String>,
 }
 
-/// Shared progress counters exposed to the settings window.
+/// Contains shared progress counters exposed to the settings window.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppState {
     pub queue_size: usize,

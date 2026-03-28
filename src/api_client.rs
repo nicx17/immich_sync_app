@@ -1,4 +1,4 @@
-//! Immich API integration, connectivity failover, and album/cache helpers.
+//! Integrates with the Immich API, handles connectivity failover, and provides album/cache helpers.
 
 use chrono::{SecondsFormat, TimeZone, Utc};
 use reqwest::Client;
@@ -24,11 +24,11 @@ struct ApiClientSettings {
 pub struct ImmichApiClient {
     pub client: Client,
     settings: RwLock<ApiClientSettings>,
-    /// The currently active base URL selected by the last successful connectivity check.
+    /// The currently active base URL, selected by the last successful connectivity check.
     pub active_url: Mutex<Option<String>>,
-    /// Most recent actionable API/client problem for the dashboard and diagnostics.
+    /// Most recent actionable API/client problem, used for the dashboard and diagnostics.
     last_issue: Mutex<Option<ApiIssue>>,
-    /// Album name to album ID cache to avoid repeated list/create calls.
+    /// Caches album names to album IDs to avoid repeated list/create API calls.
     album_cache: Mutex<HashMap<String, String>>,
     albums_fetched: Mutex<bool>,
 }

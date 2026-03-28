@@ -1,4 +1,4 @@
-//! Live filesystem monitoring, file-settling checks, and checksum generation.
+//! Provides live filesystem monitoring, file-settling checks, and checksum generation for watched paths.
 
 use crate::config::{WatchPathEntry, best_matching_watch_entry};
 use crate::watch_path_display::display_watch_path;
@@ -11,12 +11,12 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-/// Whitelisted media extensions accepted for upload.
+/// List of allowed media file extensions accepted for upload.
 pub(crate) const MEDIA_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "heic", "mp4", "mov", "gif", "webp", "tiff", "tif", "raw", "arw", "dng",
 ];
 
-/// Consecutive stable size checks required before a file is considered complete.
+/// Number of consecutive stable size checks required before a file is considered complete.
 const REQUIRED_STABLE_COUNTS: u32 = 3;
 const CHECK_INTERVAL_MS: u64 = 1000;
 const IDLE_TIMEOUT_SECS: u64 = 300;
