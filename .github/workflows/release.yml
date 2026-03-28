@@ -84,7 +84,35 @@ jobs:
 
           sha256sum dist/mimick.flatpakrepo > dist/SHA256SUMS.txt
 
-      - name: Extract release notes
+      - name: Find latest draft release
+        id: draft_release
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+
+            const drafts = releases
+              .filter((release) => release.draft)
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            const draft = drafts[0];
+            if (!draft) {
+              core.info("No draft release found. Falling back to CHANGELOG.md.");
+              core.setOutput("found", "false");
+              return;
+            }
+
+            core.info(`Using draft release #${draft.id} (${draft.name || draft.tag_name})`);
+            core.setOutput("found", "true");
+            core.setOutput("id", String(draft.id));
+            core.setOutput("body", draft.body || "");
+
+      - name: Extract fallback release notes from changelog
+        if: steps.draft_release.outputs.found != 'true'
         shell: bash
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
@@ -94,10 +122,57 @@ jobs:
             capture { print }
           ' CHANGELOG.md | sed '/./,$!d' > dist/release-notes.md
 
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: dist/release-notes.md
-          files: |
-            dist/mimick.flatpakrepo
-            dist/SHA256SUMS.txt
+      - name: Write draft release notes
+        if: steps.draft_release.outputs.found == 'true'
+        shell: bash
+        run: |
+          cat <<'EOF' > dist/release-notes.md
+          ${{ steps.draft_release.outputs.body }}
+          EOF
+
+      - name: Publish latest draft release
+        if: steps.draft_release.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+
+          jq -n \
+            --arg tag_name "${GITHUB_REF_NAME}" \
+            --arg target_commitish "${GITHUB_SHA}" \
+            --arg name "${TAG_VERSION}" \
+            --rawfile body dist/release-notes.md \
+            '{
+              tag_name: $tag_name,
+              target_commitish: $target_commitish,
+              name: $name,
+              body: $body,
+              draft: false,
+              prerelease: false,
+              make_latest: "true"
+            }' > dist/release-payload.json
+
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${GITHUB_REPOSITORY}/releases/${{ steps.draft_release.outputs.id }}" \
+            --input dist/release-payload.json
+
+          gh release upload "${GITHUB_REF_NAME}" \
+            dist/mimick.flatpakrepo \
+            dist/SHA256SUMS.txt \
+            --clobber
+
+      - name: Publish GitHub release from changelog fallback
+        if: steps.draft_release.outputs.found != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/mimick.flatpakrepo \
+            dist/SHA256SUMS.txt \
+            --title "${TAG_VERSION}" \
+            --notes-file dist/release-notes.md
