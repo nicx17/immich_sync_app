@@ -1,4 +1,4 @@
-//! Application bootstrap, single-instance wiring, and daemon startup flow.
+//! Handles application bootstrap, single-instance wiring, and daemon startup flow.
 
 use gtk::prelude::*;
 use libadwaita as adw;
@@ -33,13 +33,13 @@ use tray_icon::build_tray;
 
 use flexi_logger::{FileSpec, Logger, WriteMode, colored_detailed_format, detailed_format};
 
-/// Queue manager handle retained so the graceful shutdown path can flush pending retries.
+/// Retains the queue manager handle so the graceful shutdown path can flush pending retries.
 static QM_HANDLE: std::sync::OnceLock<Arc<QueueManager>> = std::sync::OnceLock::new();
-/// Shared API client reused by the settings window and startup scan.
+/// Shared API client instance reused by the settings window and startup scan.
 static API_CLIENT_HANDLE: std::sync::OnceLock<Arc<ImmichApiClient>> = std::sync::OnceLock::new();
 /// Live monitor handle used to update watched folders without restarting the daemon.
 static MONITOR_HANDLE: std::sync::OnceLock<Arc<MonitorHandle>> = std::sync::OnceLock::new();
-/// Requests an immediate startup-style catch-up scan from UI or tray controls.
+/// Used to request an immediate startup-style catch-up scan from the UI or tray controls.
 static MANUAL_SYNC_TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<()>> =
     std::sync::OnceLock::new();
 

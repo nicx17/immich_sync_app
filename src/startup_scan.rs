@@ -1,4 +1,4 @@
-//! Startup catch-up scan for files that were missed while Mimick was not running.
+//! Performs a startup catch-up scan for files that were missed while Mimick was not running.
 
 use crate::api_client::ImmichApiClient;
 use crate::config::StartupCatchupMode;
@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-/// A file discovered during the startup scan and staged for queue submission.
+/// Represents a file discovered during the startup scan and staged for queue submission.
 #[derive(Clone)]
 struct ScanCandidate {
     path: String,
@@ -22,7 +22,7 @@ struct ScanCandidate {
     checksum: Option<String>,
 }
 
-/// Scan watch folders at startup and queue new, changed, or retargeted files.
+/// Scans watch folders at startup and queues new, changed, or retargeted files for upload.
 pub async fn queue_unsynced_files(
     watch_paths: Vec<WatchPathEntry>,
     queue_manager: Arc<QueueManager>,

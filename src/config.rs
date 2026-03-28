@@ -1,11 +1,11 @@
-//! Persistent configuration loading plus desktop keyring access helpers.
+//! Handles persistent configuration loading and provides desktop keyring access helpers.
 
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-/// Per-folder filters and guardrails applied before a file is queued for upload.
+/// Defines per-folder filters and guardrails applied before a file is queued for upload.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct FolderRules {
     #[serde(default)]

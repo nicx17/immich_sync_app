@@ -1,4 +1,4 @@
-//! Persistent index of previously synced files used by startup rescans.
+//! Maintains a persistent index of files that have been previously synced, supporting efficient startup rescans.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -7,7 +7,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// On-disk record for a synced file and the album target it was last associated with.
+/// Represents a record stored on disk for a synced file, including the last associated album target.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct SyncedFileRecord {
     pub size: u64,
@@ -19,14 +19,14 @@ pub struct SyncedFileRecord {
     pub album_id: Option<String>,
 }
 
-/// The current target album a file should belong to.
+/// Describes the intended album target for a file during sync operations.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SyncTarget {
     pub album_name: Option<String>,
     pub album_id: Option<String>,
 }
 
-/// Result of comparing a file on disk against the saved sync index.
+/// Indicates the result of comparing a file on disk with the saved sync index.
 pub enum SyncDecision {
     UpToDate,
     NeedsUpload,
@@ -44,7 +44,7 @@ pub struct SyncIndex {
 }
 
 impl SyncIndex {
-    /// Load the sync index from the default Mimick cache path.
+    /// Loads the sync index from the default Mimick cache path.
     pub fn new() -> Self {
         let index_file = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))

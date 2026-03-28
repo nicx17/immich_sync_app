@@ -1,4 +1,4 @@
-//! Upload queue orchestration, retry persistence, and sync-index updates.
+//! Manages upload queue orchestration, retry persistence, and sync-index updates.
 
 use crate::api_client::ImmichApiClient;
 use crate::notifications;
@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, mpsc};
 
-/// A unit of work for the upload queue.
+/// Represents a unit of work for the upload queue.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FileTask {
     pub path: String,
@@ -26,20 +26,20 @@ pub struct FileTask {
     /// Album name to look up or create.
     #[serde(default)]
     pub album_name: Option<String>,
-    /// True when the file already exists on the server and only album reassociation is needed.
+    /// True if the file already exists on the server and only album reassociation is needed.
     #[serde(default)]
     pub reassociate_only: bool,
 }
 
 pub struct QueueManager {
     sender: mpsc::Sender<FileTask>,
-    /// Shared in-memory state that both workers and the UI read/update directly.
+    /// Shared in-memory state accessed by both workers and the UI.
     shared_state: Arc<std::sync::Mutex<AppState>>,
-    /// Failed tasks accumulated in memory and flushed on graceful shutdown.
+    /// Failed tasks accumulated in memory and flushed during graceful shutdown.
     retry_list: Arc<std::sync::Mutex<Vec<FileTask>>>,
     /// Paths already queued or awaiting retry.
     ///
-    /// This prevents duplicate entries when the startup scan and live watcher both
+    /// Prevents duplicate entries when the startup scan and live watcher both
     /// notice the same file in a short time window.
     pending_paths: Arc<std::sync::Mutex<HashSet<String>>>,
     retry_path: PathBuf,
