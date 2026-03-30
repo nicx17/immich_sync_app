@@ -44,7 +44,10 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 | **Ping Test Dialog** | **Tray Icon** |
 | ![Ping Test Dialog](docs/screenshots/ping_test_screenshot.png) | ![Tray Icon](docs/screenshots/tray_icon_screenshot.png) |
 
+
 ## Features
+
+- **Expanded Media Format Support**: Now recognizes and uploads all Immich-compatible image and video formats, including AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, MKV, MP2T, MXF, and more.
 
 - **File Monitoring**: Watches selected folders for new files and waits for stable size before uploading.
 - **SHA-1 Checksumming**: Deduplication via checksum before upload — exact same logic as the Immich mobile apps.

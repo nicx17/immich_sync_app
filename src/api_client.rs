@@ -817,14 +817,29 @@ fn mime_for_path(path: &Path) -> &'static str {
         .map(|e| e.to_string_lossy().to_lowercase())
         .as_deref()
     {
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("png") => "image/png",
-        Some("mp4") => "video/mp4",
-        Some("mov") => "video/quicktime",
+        Some("avif") => "image/avif",
+        Some("bmp") => "image/bmp",
         Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
         Some("heic") => "image/heic",
-        Some("tiff") | Some("tif") => "image/tiff",
+        Some("heif") => "image/heif",
+        Some("insp") | Some("jpe") | Some("jpeg") | Some("jpg") => "image/jpeg",
+        Some("jp2") => "image/jp2",
+        Some("jxl") => "image/jxl",
+        Some("png") => "image/png",
+        Some("psd") => "image/vnd.adobe.photoshop",
+        Some("svg") => "image/svg+xml",
+        Some("tif") | Some("tiff") => "image/tiff",
+        Some("webp") => "image/webp",
+        Some("3gp") | Some("3gpp") => "video/3gpp",
+        Some("avi") => "video/x-msvideo",
+        Some("flv") => "video/x-flv",
+        Some("insv") | Some("mp4") => "video/mp4",
+        Some("m2t") | Some("m2ts") | Some("mts") => "video/mp2t",
+        Some("m4v") => "video/x-m4v",
+        Some("mkv") => "video/x-matroska",
+        Some("mpe") | Some("mpeg") | Some("mpg") => "video/mpeg",
+        Some("mov") => "video/quicktime",
+        Some("mxf") => "application/mxf",
         _ => "application/octet-stream",
     }
 }
@@ -956,9 +971,22 @@ mod tests {
 
     #[test]
     fn test_mime_for_path() {
+        assert_eq!(mime_for_path(Path::new("test.avif")), "image/avif");
         assert_eq!(mime_for_path(Path::new("test.jpg")), "image/jpeg");
+        assert_eq!(mime_for_path(Path::new("test.jpe")), "image/jpeg");
+        assert_eq!(mime_for_path(Path::new("test.heif")), "image/heif");
+        assert_eq!(mime_for_path(Path::new("test.jp2")), "image/jp2");
+        assert_eq!(mime_for_path(Path::new("test.jxl")), "image/jxl");
         assert_eq!(mime_for_path(Path::new("test.PNG")), "image/png");
+        assert_eq!(
+            mime_for_path(Path::new("test.psd")),
+            "image/vnd.adobe.photoshop"
+        );
+        assert_eq!(mime_for_path(Path::new("test.svg")), "image/svg+xml");
         assert_eq!(mime_for_path(Path::new("test.mp4")), "video/mp4");
+        assert_eq!(mime_for_path(Path::new("test.insv")), "video/mp4");
+        assert_eq!(mime_for_path(Path::new("test.mkv")), "video/x-matroska");
+        assert_eq!(mime_for_path(Path::new("test.mxf")), "application/mxf");
         assert_eq!(
             mime_for_path(Path::new("test.unknown")),
             "application/octet-stream"

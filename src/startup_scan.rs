@@ -291,7 +291,9 @@ mod tests {
 
     #[test]
     fn test_supported_media_path_filter() {
+        assert!(is_supported_media_path(&PathBuf::from("image.avif")));
         assert!(is_supported_media_path(&PathBuf::from("image.jpg")));
+        assert!(is_supported_media_path(&PathBuf::from("movie.mkv")));
         assert!(is_supported_media_path(&PathBuf::from("movie.mp4")));
         assert!(!is_supported_media_path(&PathBuf::from("notes.txt")));
     }
