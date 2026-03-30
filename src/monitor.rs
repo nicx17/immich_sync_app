@@ -13,7 +13,9 @@ use tokio::sync::mpsc;
 
 /// List of allowed media file extensions accepted for upload.
 pub(crate) const MEDIA_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "heic", "mp4", "mov", "gif", "webp", "tiff", "tif", "raw", "arw", "dng",
+    "3gp", "3gpp", "arw", "avif", "avi", "bmp", "dng", "flv", "gif", "heic", "heif", "insp",
+    "insv", "jp2", "jpe", "jpeg", "jpg", "jxl", "m2t", "m2ts", "m4v", "mkv", "mov", "mp4", "mpe",
+    "mpeg", "mpg", "mts", "mxf", "png", "psd", "raw", "rw2", "svg", "tif", "tiff", "webp",
 ];
 
 /// Number of consecutive stable size checks required before a file is considered complete.
@@ -336,7 +338,9 @@ pub(crate) fn is_temporary_file(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_sha1_chunked, is_flatpak_sandbox, is_temporary_file};
+    use super::{
+        compute_sha1_chunked, is_flatpak_sandbox, is_supported_media_path, is_temporary_file,
+    };
     use std::io::Write;
     use std::path::Path;
     use tempfile::NamedTempFile;
@@ -362,5 +366,19 @@ mod tests {
         assert!(is_temporary_file(Path::new("/tmp/upload.jpg.tmp")));
         assert!(is_temporary_file(Path::new("/tmp/image.png~")));
         assert!(!is_temporary_file(Path::new("/tmp/final.jpg")));
+    }
+
+    #[test]
+    fn test_supported_media_extensions_include_new_immich_formats() {
+        assert!(is_supported_media_path(Path::new("photo.avif")));
+        assert!(is_supported_media_path(Path::new("photo.heif")));
+        assert!(is_supported_media_path(Path::new("photo.jp2")));
+        assert!(is_supported_media_path(Path::new("photo.jxl")));
+        assert!(is_supported_media_path(Path::new("photo.psd")));
+        assert!(is_supported_media_path(Path::new("photo.svg")));
+        assert!(is_supported_media_path(Path::new("video.3gp")));
+        assert!(is_supported_media_path(Path::new("video.avi")));
+        assert!(is_supported_media_path(Path::new("video.mkv")));
+        assert!(is_supported_media_path(Path::new("video.mxf")));
     }
 }

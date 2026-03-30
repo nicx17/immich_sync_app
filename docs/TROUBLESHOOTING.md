@@ -38,6 +38,7 @@ If a file seems to be ignored completely:
 - Large files can be skipped by the max-size rule.
 - Extension allowlists only accept matching file extensions after normalization.
 - Temporary files are ignored until the final media filename appears.
+- **New:** Only Immich-compatible image and video formats are recognized. See `formats.md` for the full list of supported extensions. Unsupported formats will be skipped automatically.
 
 ## Logs & Diagnostics
 
