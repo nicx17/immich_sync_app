@@ -110,7 +110,9 @@ Release Drafter is configured by:
 
 It helps maintain a draft GitHub release based on merged PR labels and categories.
 
-Tagged releases now prefer the latest Release Drafter draft body when publishing a GitHub release. If no draft release exists, the release workflow falls back to the matching section in [CHANGELOG.md](../CHANGELOG.md).
+The workflow now serializes draft updates and avoids running a redundant PR-close pass, which helps prevent duplicate draft releases during merges.
+
+Tagged releases now prefer the Release Drafter draft whose tag or title matches the version being published. If no matching draft release exists, the release workflow falls back to the matching section in [CHANGELOG.md](../CHANGELOG.md).
 
 ## Dependabot Auto Merge
 
