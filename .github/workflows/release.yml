@@ -84,11 +84,13 @@ jobs:
 
           sha256sum dist/mimick.flatpakrepo > dist/SHA256SUMS.txt
 
-      - name: Find latest draft release
+      - name: Find matching draft release
         id: draft_release
         uses: actions/github-script@v8
         with:
           script: |
+            const tagName = process.env.GITHUB_REF_NAME;
+            const releaseName = tagName.replace(/^v/, "");
             const releases = await github.paginate(github.rest.repos.listReleases, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -99,9 +101,11 @@ jobs:
               .filter((release) => release.draft)
               .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-            const draft = drafts[0];
+            const draft = drafts.find((release) =>
+              release.tag_name === tagName || release.name === releaseName
+            );
             if (!draft) {
-              core.info("No draft release found. Falling back to CHANGELOG.md.");
+              core.info(`No draft release found for ${tagName}. Falling back to CHANGELOG.md.`);
               core.setOutput("found", "false");
               return;
             }
@@ -130,7 +134,7 @@ jobs:
           ${{ steps.draft_release.outputs.body }}
           EOF
 
-      - name: Publish latest draft release
+      - name: Publish matching draft release
         if: steps.draft_release.outputs.found == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
