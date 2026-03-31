@@ -8,7 +8,7 @@ Welcome to Mimick for Linux! This guide provides detailed instructions on how to
 
 ### The System Tray Icon
 
-Once the application is running, a blue "Immich" icon will appear in your system tray (usually at the top right on GNOME/KDE).
+Once the application is running, the Mimick tray icon will appear in your system tray (usually at the top right on GNOME/KDE).
 
 *If you are using GNOME and don't see system tray icons, ensure you have the "AppIndicator and KStatusNotifierItem Support" GNOME extension enabled. Stock GNOME does not support StatusNotifier tray icons out of the box.*
 
@@ -33,6 +33,8 @@ The settings window is split into two pages:
 
 * **Settings**: server details, behavior switches, watch folders, and folder rules
 * **Status**: sync status, queue tools, pause/resume, manual sync, and diagnostics export
+
+The window follows your desktop appearance preference, so it can render in either light mode or dark mode depending on the system theme.
 
 ### Connectivity & Server Details
 

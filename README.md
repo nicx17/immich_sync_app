@@ -75,7 +75,7 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 - **Live Settings Apply**: `Save Changes` updates the running configuration in place, including watched folders, server URLs, upload concurrency, and pause policies, without restarting the app.
 - **Clear Window Controls**: `Close` hides the settings window, while `Quit` stops the app completely.
 - **Desktop Integration**:
-  - GTK4 / Libadwaita settings UI that follows the desktop theme.
+  - GTK4 / Libadwaita settings UI that follows the desktop light/dark appearance preference.
   - StatusNotifierItem system tray icon (requires AppIndicator support on GNOME)
 - **Media Format Support**: Recognizes and uploads all Immich-compatible image and video formats, including AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, MKV, MP2T, MXF, and more.  
 

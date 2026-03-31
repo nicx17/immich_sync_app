@@ -80,7 +80,7 @@ pub fn build_settings_window(
 
     let status_page = adw::PreferencesPage::builder()
         .title("Status")
-        .icon_name("view-dashboard-symbolic")
+        .icon_name("dialog-information-symbolic")
         .build();
     window.add(&status_page);
 
