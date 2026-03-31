@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+- Expanded supported media formats to match latest Immich server: AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, Matroska (MKV), MP2T, MXF, and more. The app now recognizes and uploads all Immich-compatible image and video extensions.
+
+
 ## [9.0.0] - 2026-03-29
 
 ### Fixed
@@ -17,11 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Save & Restart` has been replaced with live `Save Changes` behavior that updates the running API client, queue policy, upload worker count, and watched folders without relaunching Mimick.
 - Watch-folder changes now reconfigure the live filesystem monitor in place, so adding or removing folders takes effect immediately after saving.
 
-
-## [Unreleased]
-
-### Added
-- Expanded supported media formats to match latest Immich server: AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, Matroska (MKV), MP2T, MXF, and more. The app now recognizes and uploads all Immich-compatible image and video extensions.
 
 ## [8.0.0] - 2026-03-25
 
