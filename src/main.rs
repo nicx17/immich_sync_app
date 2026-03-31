@@ -101,6 +101,8 @@ async fn main() {
         is_primary_instance_clone.store(true, Ordering::SeqCst);
 
         log::info!("Mimick primary instance initializing");
+        // Always follow the desktop's light/dark preference.
+        adw::StyleManager::default().set_color_scheme(adw::ColorScheme::Default);
 
         // Keep the process alive when the settings window is hidden.
         Box::leak(Box::new(app.hold()));
