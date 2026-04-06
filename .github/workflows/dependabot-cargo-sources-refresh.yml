@@ -77,8 +77,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --upgrade pip
-          python3 -m pip install "aiohttp<4.0.0,>=3.9.5" "PyYAML<7.0.0,>=6.0.2" "tomlkit>=0.13.3,<1.0"
+          python3 -m pip install --disable-pip-version-check --no-input \
+            aiohttp==3.9.5 \
+            PyYAML==6.0.2 \
+            tomlkit==0.13.3
 
       - name: Regenerate cargo-sources.json
         if: steps.precheck.outputs.needs_refresh == 'true'

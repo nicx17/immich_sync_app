@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Validate desktop entry
         run: desktop-file-validate setup/io.github.nicx17.mimick.desktop
@@ -90,7 +90,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build Flatpak repository
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        uses: flatpak/flatpak-github-actions/flatpak-builder@92ae9851ad316786193b1fd3f40c4b51eb5cb101 # v6
         env:
           GNUPGHOME: ${{ steps.signing_key.outputs.gpg_homedir }}
         with:
@@ -133,7 +133,7 @@ jobs:
           cp site/icon.png repo/icon.png
 
       - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: repo
 
@@ -146,8 +146,8 @@ jobs:
 
     steps:
       - name: Setup GitHub Pages
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
