@@ -91,3 +91,6 @@ sstool.py
 aur.md
 .codex
 formats.md
+workflowfix.md
+docs/REPOSITORY_AUTOMATION.md
+docs/RELEASE_PROCESS.md
