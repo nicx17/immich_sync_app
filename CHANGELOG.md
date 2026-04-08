@@ -8,12 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [9.1.0] - 2026-04-08
+
 ### Added
 - Expanded supported media formats to match latest Immich server: AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, Matroska (MKV), MP2T, MXF, and more. The app now recognizes and uploads all Immich-compatible image and video extensions.
 
 ### Changed
 - The settings window now explicitly follows the desktop light/dark appearance preference at startup, allowing light mode when the system theme is light.
 - The `Status` page now uses a standard symbolic page icon for more consistent rendering across icon themes.
+- Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.
 
 
 ## [9.0.0] - 2026-03-29

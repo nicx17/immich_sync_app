@@ -11,7 +11,7 @@ Be welcoming, kind, and keep feedback constructive.
 ### 1. Reporting Bugs
 
 Open an Issue on GitHub. Include:
-* Your OS and desktop environment (e.g., Ubuntu 24.04, GNOME Wayland 49).
+* Your OS and desktop environment (e.g., Ubuntu 24.04, GNOME Wayland 50).
 * Rust and GTK4/Libadwaita versions (`rustc --version`, `pkg-config --modversion gtk4`).
 * A clear description and steps to reproduce.
 * Logs from a terminal run (`RUST_LOG=debug mimick 2>&1`).
