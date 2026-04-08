@@ -74,6 +74,15 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+        <release version="9.1.0" date="2026-04-08">
+          <description>
+            <ul>
+              <li>Expanded supported media formats to match the latest Immich server compatibility list, including AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, Matroska (MKV), MP2T, MXF, and more.</li>
+              <li>The settings window now follows the desktop light and dark appearance preference at startup, and the status page uses a standard symbolic icon for more consistent rendering across icon themes.</li>
+              <li>Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.</li>
+            </ul>
+          </description>
+        </release>
         <release version="9.0.0" date="2026-03-29">
           <description>
             <ul>

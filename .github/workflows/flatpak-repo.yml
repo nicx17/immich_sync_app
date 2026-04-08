@@ -29,7 +29,7 @@ jobs:
   build-repo:
     runs-on: ubuntu-24.04
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-49
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
       options: --privileged
 
     steps:
@@ -97,7 +97,7 @@ jobs:
           manifest-path: io.github.nicx17.mimick.local.yml
           build-bundle: false
           upload-artifact: false
-          cache-key: flatpak-builder-gnome49-${{ hashFiles('io.github.nicx17.mimick.local.yml', 'Cargo.lock', 'cargo-sources.json') }}
+          cache-key: flatpak-builder-gnome50-${{ hashFiles('io.github.nicx17.mimick.local.yml', 'Cargo.lock', 'cargo-sources.json') }}
           gpg-sign: ${{ steps.signing_key.outputs.gpg_key_id }}
           verbose: true
 
