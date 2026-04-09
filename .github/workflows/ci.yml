@@ -72,7 +72,9 @@ jobs:
           toolchain: stable
 
       - name: Install cargo-audit
-        uses: taiki-e/install-action@2e5e45e985ec9321fdd2b05aa8de0872b125c29f # cargo-audit
+        uses: taiki-e/install-action@v2.75.1
+        with:
+          tool: cargo-audit
 
       - name: Run cargo audit
         run: cargo audit --deny warnings
