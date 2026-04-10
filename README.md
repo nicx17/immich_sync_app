@@ -5,7 +5,7 @@
 
 <img src="src/assets/icon.png" width="128" alt="Mimick Logo">
 
-![Status](https://img.shields.io/badge/Status-beta-FF90C3?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-stable-FF90C3?style=for-the-badge)
 [![GitHub Release](https://img.shields.io/github/v/release/nicx17/mimick?include_prereleases&style=for-the-badge&logo=github&color=FF90C3)](https://github.com/nicx17/mimick/releases/latest)
 [![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://github.com/rust-lang/rust)
 [![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/torvalds/linux)

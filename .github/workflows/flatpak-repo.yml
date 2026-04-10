@@ -1,15 +1,8 @@
 name: Build and Deploy Flatpak Repo
 
 on:
-  push:
-    branches: ["main"]
-    paths-ignore:
-      - "docs/**"
-      - "wiki/**"
-      - "README.md"
-      - "CONTRIBUTING.md"
-      - "SECURITY.md"
-      - "roadmap.md"
+  release:
+    types: [published]
   workflow_dispatch:
 
 concurrency:
@@ -118,6 +111,7 @@ jobs:
           cat << EOF > repo/mimick.flatpakrepo
           [Flatpak Repo]
           Title=Mimick Repository
+          DefaultBranch=stable
           Url=https://nicx17.github.io/mimick/
           Homepage=https://github.com/nicx17/mimick
           Comment=Official repository for the Mimick Immich sync daemon
