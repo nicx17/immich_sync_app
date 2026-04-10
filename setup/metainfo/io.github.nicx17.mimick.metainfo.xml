@@ -74,6 +74,16 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="9.1.1" date="2026-04-10">
+      <description>
+        <ul>
+          <li>Fixed an internal GTK focus assertion error in the folder rules configuration dialog.</li>
+          <li>Fixed a bug where discarded failed uploads could leave a persistent "Pending: 1" ghost label across application restarts.</li>
+          <li>Promoted application repository to correctly advertise as a stable channel instead of beta.</li>
+          <li>Reconfigured the Flatpak repository builder workflow to deploy on new tag releases rather than on every push to the main branch.</li>
+        </ul>
+      </description>
+    </release>
         <release version="9.1.0" date="2026-04-08">
           <description>
             <ul>

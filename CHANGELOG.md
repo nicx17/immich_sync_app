@@ -8,10 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [9.1.1] - 2026-04-10
+
+### Changed
+- Switched Flatpak repository to correctly advertise as `stable` instead of defaulting to a `beta` channel badge.
+- Reconfigured the Flatpak repository builder workflow (`flatpak-repo.yml`) to exclusively deploy on new tag releases rather than on every push to the `main` branch.
+
 ### Fixed
 - Fixed an internal GTK critical focus assertion error (`box != NULL`) that occurred when opening the folder rules configuration dialog.
 - Fixed a bug where a discarded failed-upload task could leave a persistent "Pending: 1" ghost label on the folder configuration UI across application restarts.
-
 
 ## [9.1.0] - 2026-04-08
 

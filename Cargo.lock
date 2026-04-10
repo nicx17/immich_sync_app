@@ -1359,7 +1359,7 @@ dependencies = [
 
 [[package]]
 name = "mimick"
-version = "9.1.0"
+version = "9.1.1"
 dependencies = [
  "ashpd",
  "chrono",
