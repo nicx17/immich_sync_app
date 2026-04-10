@@ -1398,12 +1398,19 @@ fn show_folder_rules_dialog(
 
     let current = rules_state.borrow().clone();
 
+    let list_box = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .css_classes(vec![String::from("boxed-list")])
+        .build();
+
     let ignore_hidden = adw::SwitchRow::builder()
         .title("Ignore Hidden Files / Folders")
         .subtitle("Skip paths that contain hidden components such as .cache or .thumbnails.")
         .active(current.ignore_hidden)
         .build();
-    content.append(&ignore_hidden);
+
+    list_box.append(&ignore_hidden);
+    content.append(&list_box);
 
     let max_size_entry = Entry::builder()
         .placeholder_text("Max file size in MB, leave blank for no limit")
