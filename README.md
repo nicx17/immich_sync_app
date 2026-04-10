@@ -6,10 +6,10 @@
 <img src="src/assets/icon.png" width="128" alt="Mimick Logo">
 
 ![Status](https://img.shields.io/badge/Status-beta-FF90C3?style=for-the-badge)
-![GitHub Release](https://img.shields.io/github/v/release/nicx17/mimick?include_prereleases&style=for-the-badge&logo=github&color=FF90C3)
-![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
-![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
-![GTK4](https://img.shields.io/badge/GTK4-7DF12B?style=for-the-badge&logo=gtk&logoColor=white)
+[![GitHub Release](https://img.shields.io/github/v/release/nicx17/mimick?include_prereleases&style=for-the-badge&logo=github&color=FF90C3)](https://github.com/nicx17/mimick/releases/latest)
+[![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://github.com/rust-lang/rust)
+[![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/torvalds/linux)
+[![GTK4](https://img.shields.io/badge/GTK4-7DF12B?style=for-the-badge&logo=gtk&logoColor=white)](https://gitlab.gnome.org/GNOME/gtk)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-green.svg?style=for-the-badge)](LICENSE)
 
 </div>
@@ -23,7 +23,6 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 [![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](docs/USER_GUIDE.md)
 [![Configuration](https://img.shields.io/badge/Configuration-Guide-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](docs/CONFIGURATION.md)
 [![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Help-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
-[![Repo Automation](https://img.shields.io/badge/Repo-Automation-444444?style=for-the-badge&labelColor=444444)](docs/REPOSITORY_AUTOMATION.md)
 [![Project Wiki](https://img.shields.io/badge/Project-Wiki-444444?style=for-the-badge&labelColor=444444)](https://github.com/nicx17/mimick/wiki)
 
 
@@ -271,7 +270,6 @@ flatpak run io.github.nicx17.mimick
 [![Development](https://img.shields.io/badge/Development-Guide-B8860B?style=for-the-badge&labelColor=B8860B)](docs/DEVELOPMENT.md)
 [![Testing](https://img.shields.io/badge/Testing-Guide-0E7490?style=for-the-badge&labelColor=0E7490)](docs/TESTING.md)
 [![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Guide-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
-[![Repo Automation](https://img.shields.io/badge/Repo-Automation-444444?style=for-the-badge&labelColor=444444)](docs/REPOSITORY_AUTOMATION.md)
 [![Security](https://img.shields.io/badge/Security-Policy-5B8C5A?style=for-the-badge&labelColor=5B8C5A)](SECURITY.md)
 
 </div>
