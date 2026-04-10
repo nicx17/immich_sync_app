@@ -84,6 +84,10 @@ async fn main() {
         saved.failed_count = 0; // Will be repopulated from retries.json if any
         saved.current_file = None;
 
+        for status in saved.folder_statuses.values_mut() {
+            status.pending_count = 0;
+        }
+
         // Reset volatile fields that shouldn't survive a restart
         AppState {
             status: "idle".to_string(),
