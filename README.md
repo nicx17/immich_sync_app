@@ -28,10 +28,7 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 
 </div>
 
-> [!NOTE]
-> **This project is in BETA.** Core features are stable and tested. Please report any issues or edge cases you encounter.
-
-**Status:** Beta. Supports Immich v1.118+.
+**Status:** Supports Immich v1.118+.
 
 ## Screenshots
 
