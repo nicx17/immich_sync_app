@@ -41,5 +41,3 @@ Admins are not enforced, so your own PRs remain practical to merge when needed.
 - [`.github/workflows/docs-links.yml`](../.github/workflows/docs-links.yml)
 - [`.github/workflows/release-drafter.yml`](../.github/workflows/release-drafter.yml)
 - [`.github/workflows/dependabot-auto-merge.yml`](../.github/workflows/dependabot-auto-merge.yml)
-
-For the fuller maintainer-facing explanation, see [`docs/REPOSITORY_AUTOMATION.md`](../docs/REPOSITORY_AUTOMATION.md).
