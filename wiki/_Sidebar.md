@@ -13,8 +13,3 @@
 - [Architecture](Architecture)
 - [Development](Development)
 - [Testing](Testing)
-
-### Maintaining Mimick
-
-- [Repository Automation](Repository-Automation)
-- [Release Operations](Release-Operations)
