@@ -61,37 +61,7 @@ test_about.py
 
 
 # Added by cargo
-
 /target
-pyimplement/setup.py
-pyimplement/src/__init__.py
-pyimplement/src/api_client.py
-pyimplement/src/config.py
-pyimplement/src/log_setup.py
-pyimplement/src/main.py
-pyimplement/src/monitor.py
-pyimplement/src/notifications.py
-pyimplement/src/queue_manager.py
-pyimplement/src/settings_main.py
-pyimplement/src/settings_window.py
-pyimplement/src/state_manager.py
-pyimplement/src/tray_icon.py
-pyimplement/src/utils.py
-pyimplement/src/assets/icon_128.png
-pyimplement/src/assets/icon.png
-pyimplement/src/assets/icon.svg
-keyring_test
-keyring_test
-aidir.md
-back.md
-docs/PRIVATE_RELEASES.md
-plan.md
-tree.txt
-sstool.py
-aur.md
+
 .codex
-formats.md
-workflowfix.md
-docs/REPOSITORY_AUTOMATION.md
-docs/RELEASE_PROCESS.md
-failed_upload_bug.md
+/pv_docs

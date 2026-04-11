@@ -36,6 +36,13 @@ jobs:
           ref: flatpak-repo-storage
           path: repo
 
+      - name: Initialize OSTree if empty
+        run: |
+          if [ ! -d "repo/objects" ]; then
+            echo "Initializing empty OSTree repository in the storage branch..."
+            ostree init --repo=repo --mode=archive-z2
+          fi
+
       - name: Validate desktop entry
         run: desktop-file-validate setup/io.github.nicx17.mimick.desktop
 
