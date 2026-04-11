@@ -1,9 +1,12 @@
-name: Build and Deploy Flatpak Repo
+name: Build and Deploy Flatpak Beta
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: ["main"]
+    paths-ignore:
+      - "docs/**"
+      - "wiki/**"
+      - "*.md"
   workflow_dispatch:
 
 concurrency:
@@ -11,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -94,10 +97,10 @@ jobs:
         env:
           GNUPGHOME: ${{ steps.signing_key.outputs.gpg_homedir }}
         with:
-          manifest-path: io.github.nicx17.mimick.local.yml
+          manifest-path: io.github.nicx17.mimick.beta.yml
           build-bundle: false
           upload-artifact: false
-          cache-key: flatpak-builder-gnome50-${{ hashFiles('io.github.nicx17.mimick.local.yml', 'Cargo.lock', 'cargo-sources.json') }}
+          cache-key: flatpak-builder-gnome50-${{ hashFiles('io.github.nicx17.mimick.beta.yml', 'Cargo.lock', 'cargo-sources.json') }}
           gpg-sign: ${{ steps.signing_key.outputs.gpg_key_id }}
           verbose: true
 
@@ -139,7 +142,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Update Flatpak repository: ${{ github.sha }}" || echo "No changes to commit"
+          git commit -m "Update Flatpak beta repository: ${{ github.sha }}" || echo "No changes to commit"
           git push -u origin flatpak-repo-storage
 
       - name: Upload GitHub Pages artifact

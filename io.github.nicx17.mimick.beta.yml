@@ -1,0 +1,57 @@
+app-id: io.github.nicx17.mimick
+default-branch: beta
+branch: beta
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: mimick
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/mimick/cargo
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Suppress harmless Mesa/Vulkan console warnings by forcing OpenGL
+  - --env=GSK_RENDERER=gl
+  # Inter-process communication
+  - --share=ipc
+  # System tray integration
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Network access for syncing to Immich server
+  - --share=network
+  # Folder access is granted per-directory via the file chooser portal
+
+modules:
+  - name: mimick
+    buildsystem: simple
+    build-commands:
+      # Fix the config deprecation warning coming from cargo-sources.json
+      - mv cargo/config cargo/config.toml
+      # Build and manually install the binary
+      - cargo --offline build --release
+      - install -Dm755 target/release/mimick /app/bin/mimick
+      
+      # Install desktop integration
+      - install -Dm644 setup/io.github.nicx17.mimick.desktop /app/share/applications/io.github.nicx17.mimick.desktop
+      
+      # Install icons
+      - install -Dm644 src/assets/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.nicx17.mimick.svg
+      
+      # Install metainfo
+      - install -Dm644 setup/metainfo/io.github.nicx17.mimick.metainfo.xml /app/share/metainfo/io.github.nicx17.mimick.metainfo.xml
+      
+    sources:
+      - type: dir
+        path: .
+        skip:
+          - .git
+          - build-dir
+          - target
+      - cargo-sources.json

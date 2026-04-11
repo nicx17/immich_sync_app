@@ -92,8 +92,14 @@ flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/m
 
 # 2. Install the application
 
+**Stable Channel (Recommended)**
 ```bash
 flatpak install --user mimick-repo io.github.nicx17.mimick
+```
+
+**Beta Channel (Bleeding Edge)**
+```bash
+flatpak install --user mimick-repo io.github.nicx17.mimick//beta
 ```
 
 ### Verify the Flatpak Repo Key
