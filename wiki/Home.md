@@ -5,7 +5,7 @@ Welcome to the Mimick project wiki.
 Mimick is a Linux background app that watches selected folders and syncs photos and videos to an Immich server. It supports native Linux installs and Flatpak, uses a GTK4/Libadwaita settings window, and keeps syncing reliable with retries, startup catch-up scans, and duplicate-aware uploads.
 
 <div align="center">
-  <img src="../docs/screenshots/setup_window.png" width="80%" alt="Mimick Settings Window" />
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/setup_window.png" width="80%" alt="Mimick Settings Window" />
 </div>
 
 ## Start Here

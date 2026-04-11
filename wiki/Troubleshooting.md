@@ -24,11 +24,11 @@ Check:
 
 > **Check the Queue Inspector**
 > The built-in Queue Inspector can tell you instantly if files are failing to upload.
-> ![Queue Inspector](../docs/screenshots/queue_inspector_window.png)
+> ![Queue Inspector](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/queue_inspector_window.png)
 
 > **Test Connection**
 > If you suspect network issues, use the Ping Test dialog to test server reachability.
-> ![Ping Test](../docs/screenshots/ping_test_screenshot.png)
+> ![Ping Test](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/ping_test_screenshot.png)
 
 ## Diagnostics Bundle
 

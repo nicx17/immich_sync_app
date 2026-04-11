@@ -16,7 +16,7 @@ The `Controls` page is for live actions after setup, including `Sync Now`, `Paus
 
 > **System Tray Integration**
 > Below is how Mimick integrates into your desktop environment.
-> ![Tray Menu](../docs/screenshots/control_window.png)
+> ![Tray Menu](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/control_window.png)
 
 ## Watch Folders
 
