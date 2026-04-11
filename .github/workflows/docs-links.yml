@@ -39,6 +39,7 @@ jobs:
             --no-progress
             --verbose
             --exclude 'https://img.shields.io/.*'
+            --exclude '^file:///.*/wiki/[^/.]+$'
             README.md docs wiki
           fail: true
           jobSummary: true
