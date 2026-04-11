@@ -14,6 +14,10 @@ At least one URL must stay enabled.
 
 The `Controls` page is for live actions after setup, including `Sync Now`, `Pause / Resume`, `Queue Inspector`, and `Export Diagnostics`.
 
+> **System Tray Integration**
+> Below is how Mimick integrates into your desktop environment.
+> ![Tray Menu](../docs/screenshots/control_window.png)
+
 ## Watch Folders
 
 Each watch folder can:

@@ -41,39 +41,33 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 | ![Ping Test Dialog](docs/screenshots/ping_test_screenshot.png) | ![Tray Icon](docs/screenshots/tray_icon_screenshot.png) |
 
 
-## Features
+## Core Architecture & Features
 
+### Sync Engine
+- **Asynchronous Concurrent Uploads**: Configurable parallel worker tasks (1–10 streams) stream files from disk, maintaining flat memory usage footprints.
+- **SHA-1 Deduplication**: Verifies files locally via checksum prior to upload, utilizing payload logic identical to official Immich mobile apps.
+- **Atomic File Monitoring**: Delays queuing until file sizes stabilize and physical write locks are released, preventing partial data uploads.
+- **One-Way Mirroring**: Maintains strictly read-only access to local system files.
 
+### Reliability & State Management
+- **Persistent Offline Storage**: Upload network failures are safely serialized to disk (`~/.cache/mimick/retries.json`) and gracefully replayed during subsequent daemon lifecycles.
+- **Local State Indexing**: Unmodified, previously uploaded media is aggressively skipped during startup catch-up scans using local indexes to minimize disk I/O overhead.
+- **Queue Inspector**: Interactive UI module to interpret active error payloads, selectively retry specific dropped files, or flush the active failure queue.
+- **Dynamic Endpoint Resolution**: Automatically negotiates requests between configured Internal (LAN) and External (WAN) URI addresses based on immediate network topologies and heartbeat reachability.
 
-- **File Monitoring**: Watches selected folders for new files and waits for stable size before uploading.
-- **SHA-1 Checksumming**: Deduplication via checksum before upload — exact same logic as the Immich mobile apps.
-- **Concurrent Uploads**: Configurable parallel worker tasks (1–10) stream files directly from disk, keeping RAM usage constant.
-- **Offline Reliability**: Failed uploads are persisted to `~/.cache/mimick/retries.json` and replayed automatically on next launch.
-- **Offline Sync Stability**: Prevents already-synced files from being incorrectly re-queued for reassociation when the server is unreachable, avoiding endless sync loops during network outages.
-- **Queue Inspector & Retry Tools**: Inspect recent queue activity, retry one failed file, retry all failed uploads, or clear the failed queue from the settings window.
-- **Batch Notifications**: Receives a single summary notification when a sync cycle completes, replacing per-file spam. Dedicated alerts for connectivity loss help you stay informed without being overwhelmed.
-- **Sync Controls**: Pause or resume uploads and trigger a manual `Sync Now` pass from either the tray or the settings window.
-- **Connectivity**: Automatically switches between **Internal (LAN)** and **External (WAN)** URLs based on availability. At least one must be enabled (enforced by the UI).
-- **Per-Folder Rules**: Each watched folder can optionally ignore hidden paths, cap file size, or allow only selected file extensions.
-- **Quiet Hours**: Define a window of time during which uploads should be globally paused to reserve bandwidth or system resources.
-- **Diagnostics Export**: Generate a redacted support bundle with queue state, sync summaries, and a human-readable report without exposing raw logs, URLs, or full local paths.
-- **Network / Power Awareness**: Optionally defer uploads while on a metered connection or running on battery power.
-- **Custom Album Mapping**: Select an existing remote album, type a custom name, or let the app create an album from the local folder name (e.g., `~/Pictures/Vacation 2024` → Album `Vacation 2024`). A searchable modal picker lets you filter albums or create new ones inline.
-- **First-Run Wizard**: When no API key is detected, Mimick opens the Settings page automatically with a welcome prompt and places the API-key help at the top of the configuration flow.
-- **Health Dashboard & Status**: See global network connectivity and errors on the Status page, alongside Per-Folder Status showing pending queue size and last sync time directly next to each watched directory.
-- **Actionable Errors & Permission Checks**: Emits specific UI warnings instead of generic timeouts, such as alerting you if Flatpak portal access to a watched folder is lost or an API key expires.
-- **One-Way Sync**: Uploads media without modifying local files.
-- **Security**: API Key stored in the system keyring via `secret-tool` (libsecret).
-- **Autostart**: Optional login startup with desktop-portal permission inside Flatpak and native autostart integration outside Flatpak.
-- **Startup Catch-Up Controls**: On launch, Mimick scans watched folders for media that has not been synced yet. Users can optimize disk I/O by limiting this scan strictly to recent files (last 7 days) or new files only.
-- **Mobile Responsive UI**: The settings window is built with `adw::PreferencesWindow` and adaptive `gtk::FlowBox` layouts, allowing it to scale down to 360px width. Fully usable on mobile Linux environments like Phosh or small desktop monitors.
-- **Expander-Based Folder Rows**: Watch folder entries use `adw::ExpanderRow` to logically group settings (Album, Rules, Remove), keeping the interface clean and navigable on small screens.
-- **Live Settings Apply**: `Save Changes` updates the running configuration in place, including watched folders, server URLs, upload concurrency, and pause policies, without restarting the app.
-- **Clear Window Controls**: `Close` hides the settings window, while `Quit` stops the app completely.
-- **Desktop Integration**:
-  - GTK4 / Libadwaita settings UI that follows the desktop light/dark appearance preference.
-  - StatusNotifierItem system tray icon (requires AppIndicator support on GNOME)
-- **Media Format Support**: Recognizes and uploads all Immich-compatible image and video formats, including AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, MKV, MP2T, MXF, and more.  
+### Environment & Desktop Integration
+- **Native Implementation**: Developed purely in Rust, utilizing GTK4 and Libadwaita bindings alongside an AppIndicator system tray for headless daemon control.
+- **Hardware Awareness**: Integrates with `nmcli` and `/sys/class/power_supply` to identify running states and optionally defer daemon I/O operations strictly during explicitly metered networks or active battery deployments.
+- **Sandbox Security**: Employs Flatpak desktop portal file-choosers to grant the application isolated, per-directory access without requesting system-wide filesystem permissons.
+- **Encrypted Keystore**: Active session configurations isolate user API keys exclusively inside `secret-tool` (libsecret) to prevent plaintext credential exposure.
+- **Quiet Hours**: Configurable chronological barriers to globally suspend daemon uploads.
+
+### Directory Scoping & Filtering
+Each watched directory operates with isolated logical constraints:
+- Static or dynamically generated Immich album targets.
+- Pre-flight omission of hidden paths (dotfiles).
+- Predetermined allowance lists strictly for explicit file extensions (e.g. `.avif`, `.mp4`).
+- Upper-bound maximum file size ceilings.
 
 ---
 

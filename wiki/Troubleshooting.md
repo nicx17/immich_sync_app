@@ -22,6 +22,14 @@ Check:
 5. folder rules are not excluding the file
 6. Mimick is not paused because of manual control, metered networking, or battery-only behavior
 
+> **Check the Queue Inspector**
+> The built-in Queue Inspector can tell you instantly if files are failing to upload.
+> ![Queue Inspector](../docs/screenshots/queue_inspector_window.png)
+
+> **Test Connection**
+> If you suspect network issues, use the Ping Test dialog to test server reachability.
+> ![Ping Test](../docs/screenshots/ping_test_screenshot.png)
+
 ## Diagnostics Bundle
 
 Use `Export Diagnostics` from the Controls page to collect:

@@ -115,6 +115,7 @@ jobs:
         env:
           GNUPGHOME: ${{ steps.signing_key.outputs.gpg_homedir }}
         run: |
+          mkdir -p repo/refs/remotes repo/refs/mirrors repo/refs/heads repo/objects repo/state
           flatpak build-update-repo repo \
             --generate-static-deltas \
             --gpg-sign="${{ steps.signing_key.outputs.gpg_key_id }}" \
