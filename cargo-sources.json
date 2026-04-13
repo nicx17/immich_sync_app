@@ -925,14 +925,14 @@
     {
         "type": "archive",
         "archive-type": "tar-gzip",
-        "url": "https://static.crates.io/crates/glib/glib-0.22.4.crate",
-        "sha256": "02856b71413e175be50eff37fe0aefa53e227054ee3d96196faee8a0823cac80",
-        "dest": "cargo/vendor/glib-0.22.4"
+        "url": "https://static.crates.io/crates/glib/glib-0.22.5.crate",
+        "sha256": "a1b7df55594e0e787d1560e23f7e12d7360d0b22e7b7c228ec2488b9e59b1b6b",
+        "dest": "cargo/vendor/glib-0.22.5"
     },
     {
         "type": "inline",
-        "contents": "{\"package\": \"02856b71413e175be50eff37fe0aefa53e227054ee3d96196faee8a0823cac80\", \"files\": {}}",
-        "dest": "cargo/vendor/glib-0.22.4",
+        "contents": "{\"package\": \"a1b7df55594e0e787d1560e23f7e12d7360d0b22e7b7c228ec2488b9e59b1b6b\", \"files\": {}}",
+        "dest": "cargo/vendor/glib-0.22.5",
         "dest-filename": ".cargo-checksum.json"
     },
     {
@@ -1523,14 +1523,14 @@
     {
         "type": "archive",
         "archive-type": "tar-gzip",
-        "url": "https://static.crates.io/crates/ksni/ksni-0.3.3.crate",
-        "sha256": "b5b29c089f14ce24c5b25d9bdcb265413b5e0c3df0871823e0d96bd83bc52a24",
-        "dest": "cargo/vendor/ksni-0.3.3"
+        "url": "https://static.crates.io/crates/ksni/ksni-0.3.4.crate",
+        "sha256": "a7ca513d0be42df5edb485af9f44a12b2cb85af773d91c27dc796d1c58b78edc",
+        "dest": "cargo/vendor/ksni-0.3.4"
     },
     {
         "type": "inline",
-        "contents": "{\"package\": \"b5b29c089f14ce24c5b25d9bdcb265413b5e0c3df0871823e0d96bd83bc52a24\", \"files\": {}}",
-        "dest": "cargo/vendor/ksni-0.3.3",
+        "contents": "{\"package\": \"a7ca513d0be42df5edb485af9f44a12b2cb85af773d91c27dc796d1c58b78edc\", \"files\": {}}",
+        "dest": "cargo/vendor/ksni-0.3.4",
         "dest-filename": ".cargo-checksum.json"
     },
     {
