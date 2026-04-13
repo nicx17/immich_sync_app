@@ -84,26 +84,26 @@
         </ul>
       </description>
     </release>
-        <release version="9.1.0" date="2026-04-08">
-          <description>
-            <ul>
-              <li>Expanded supported media formats to match the latest Immich server compatibility list, including AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, Matroska (MKV), MP2T, MXF, and more.</li>
-              <li>The settings window now follows the desktop light and dark appearance preference at startup, and the status page uses a standard symbolic icon for more consistent rendering across icon themes.</li>
-              <li>Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.</li>
-            </ul>
-          </description>
-        </release>
-        <release version="9.0.0" date="2026-03-29">
-          <description>
-            <ul>
-              <li>Fixed an Immich asset timestamp regression where newly uploaded files could land at the wrong timeline time or lose their intended timezone after server-side metadata processing.</li>
-              <li>Upload metadata handling now preserves filesystem-based creation times more reliably and reapplies the local timezone after upload so Immich keeps the correct asset date placement.</li>
-              <li>The settings window now uses <code>Status</code> and <code>Settings</code> pages, shows the first-run API-key guidance at the top of the configuration flow, and no longer forces dark mode.</li>
-              <li><code>Save &amp; Restart</code> has been replaced with live <code>Save Changes</code> behavior that updates the running API client, queue policy, upload worker count, and watched folders without relaunching Mimick.</li>
-              <li>Watch-folder changes now reconfigure the live filesystem monitor in place, so adding or removing folders takes effect immediately after saving.</li>
-            </ul>
-          </description>
-        </release>
+    <release version="9.1.0" date="2026-04-08">
+      <description>
+        <ul>
+          <li>Expanded supported media formats to match the latest Immich server compatibility list, including AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, Matroska (MKV), MP2T, MXF, and more.</li>
+          <li>The settings window now follows the desktop light and dark appearance preference at startup, and the status page uses a standard symbolic icon for more consistent rendering across icon themes.</li>
+          <li>Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="9.0.0" date="2026-03-29">
+      <description>
+        <ul>
+          <li>Fixed an Immich asset timestamp regression where newly uploaded files could land at the wrong timeline time or lose their intended timezone after server-side metadata processing.</li>
+          <li>Upload metadata handling now preserves filesystem-based creation times more reliably and reapplies the local timezone after upload so Immich keeps the correct asset date placement.</li>
+          <li>The settings window now uses <code>Status</code> and <code>Settings</code> pages, shows the first-run API-key guidance at the top of the configuration flow, and no longer forces dark mode.</li>
+          <li><code>Save &amp; Restart</code> has been replaced with live <code>Save Changes</code> behavior that updates the running API client, queue policy, upload worker count, and watched folders without relaunching Mimick.</li>
+          <li>Watch-folder changes now reconfigure the live filesystem monitor in place, so adding or removing folders takes effect immediately after saving.</li>
+        </ul>
+      </description>
+    </release>
     <release version="8.0.0" date="2026-03-25">
       <description>
         <ul>

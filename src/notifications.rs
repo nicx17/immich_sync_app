@@ -1,32 +1,8 @@
-//! Provides desktop notification helpers.
+//! Provides desktop notification helpers using the GIO notification portal.
 //!
-//! All functions are best-effort: if `notify-send` is not installed, the call is
-//! silently ignored. No notification is fired more than once per concept per
-//! session — callers are responsible for the guard logic.
-
-use std::process::Command;
-
-// ── Internal primitive ───────────────────────────────────────────────────────
-
-fn send_raw(title: &str, message: &str) {
-    let mut cmd = Command::new("notify-send");
-    cmd.arg("--app-name").arg("Mimick");
-    cmd.arg(title);
-    cmd.arg(message);
-
-    match cmd.spawn() {
-        Ok(mut child) => {
-            let _ = child.wait();
-            log::debug!("Notification sent: {} - {}", title, message);
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // notify-send is optional.
-        }
-        Err(e) => log::error!("Failed to send notification: {}", e),
-    }
-}
-
-// ── Public API ──────────────────────────────────────────────────────────────
+//! All functions are best-effort: if no running `gio::Application` is available,
+//! the call is silently ignored. No notification is fired more than once per
+//! concept per session -- callers are responsible for the guard logic.
 
 /// Fired once when the upload queue drains after an active sync cycle.
 ///
@@ -48,13 +24,45 @@ pub fn send_sync_summary(succeeded: usize, failed: usize) {
             succeeded, failed
         )
     };
-    send_raw(&title, &body);
+    send_gio(&title, &body, "sync-complete");
 }
 
 /// Fired once per session when consecutive uploads all fail due to connectivity issues.
 pub fn send_connectivity_lost() {
-    send_raw(
+    send_gio(
         "Mimick: Connection lost",
         "Could not reach the Immich server. Uploads will resume automatically when connectivity is restored.",
+        "connectivity-lost",
     );
+}
+
+// ── Internal primitive ───────────────────────────────────────────────────────
+
+/// Send a desktop notification via `gio::Notification`.
+///
+/// This uses the XDG notification portal under Flatpak and the native
+/// desktop notification daemon on bare-metal installs. The themed icon
+/// ensures the app icon renders correctly in both scenarios.
+fn send_gio(title: &str, body: &str, notification_id: &str) {
+    let title = title.to_string();
+    let body = body.to_string();
+    let id = notification_id.to_string();
+
+    glib::idle_add_once(move || {
+        use gtk::prelude::ApplicationExt;
+
+        let Some(app) = gtk::gio::Application::default() else {
+            log::debug!("No default GIO application; skipping notification.");
+            return;
+        };
+
+        let notification = gtk::gio::Notification::new(&title);
+        notification.set_body(Some(&body));
+
+        let icon = gtk::gio::ThemedIcon::new("io.github.nicx17.mimick");
+        notification.set_icon(&icon);
+
+        app.send_notification(Some(&id), &notification);
+        log::debug!("Notification sent via GIO: {} - {}", title, body);
+    });
 }

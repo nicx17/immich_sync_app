@@ -396,11 +396,7 @@ pub fn build_settings_window(
         .build();
     behavior_group.add(&battery_row);
 
-    let catchup_model = gtk::StringList::new(&[
-        "Full Scan",
-        "Recent Changed Only (7 days)",
-        "New Files Only",
-    ]);
+    let catchup_model = gtk::StringList::new(&["Full Scan", "Recent Only (7d)", "New Files Only"]);
     let catchup_row = adw::ComboRow::builder()
         .title("Startup Catch-up Mode")
         .subtitle("Limits how aggressively Mimick scans for changes when launching.")

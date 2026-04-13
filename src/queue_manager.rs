@@ -295,9 +295,7 @@ impl QueueManager {
                                     let mut notified = connectivity_notified_ref.lock().unwrap();
                                     if !*notified {
                                         *notified = true;
-                                        tokio::task::spawn_blocking(|| {
-                                            notifications::send_connectivity_lost();
-                                        });
+                                        notifications::send_connectivity_lost();
                                     }
                                 }
                             }
@@ -342,9 +340,7 @@ impl QueueManager {
                             };
 
                             if let Some((succeeded, failed)) = summary {
-                                tokio::task::spawn_blocking(move || {
-                                    notifications::send_sync_summary(succeeded, failed);
-                                });
+                                notifications::send_sync_summary(succeeded, failed);
                             }
                         }
                         None => {

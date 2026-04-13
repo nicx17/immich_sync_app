@@ -1,5 +1,4 @@
 app-id: io.github.nicx17.mimick
-default-branch: stable
 branch: stable
 runtime: org.gnome.Platform
 runtime-version: '50'
