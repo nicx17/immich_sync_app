@@ -74,6 +74,18 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="9.2.0" date="2026-04-14">
+      <description>
+        <ul>
+          <li>Migrated desktop notifications from the `notify-send` system command to native `gio::Notification`, fixing the issue where notifications would silently fail inside the Flatpak sandbox.</li>
+          <li>Notifications now correctly display the app's SVG icon natively via the XDG Notification Portal constraint.</li>
+          <li>Removed redundant async blocking wrappers (`tokio::task::spawn_blocking`) around notification dispatches, delegating instead directly to `glib::idle_add_once`.</li>
+          <li>Added `SingleMainWindow=true` to the `.desktop` launcher to better integrate with GNOME 50+ dock contexts preventing redundant "New Window" options.</li>
+          <li>Cleaned up redundant branch metadata keys in the Flatpak manifests to optimize build parsing.</li>
+          <li>Refined the "Startup Catch-up Mode" drop-down label length in the Settings UI so it no longer visually clips within its ComboRow box.</li>
+        </ul>
+      </description>
+    </release>  
     <release version="9.1.1" date="2026-04-10">
       <description>
         <ul>
