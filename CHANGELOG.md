@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Migrated desktop notifications from the `notify-send` system command to native `gio::Notification`, fixing the issue where notifications would silently fail inside the Flatpak sandbox.
+- Notifications now correctly display the app's SVG icon natively via the XDG Notification Portal constraint.
+- Removed redundant async blocking wrappers (`tokio::task::spawn_blocking`) around notification dispatches, delegating instead directly to `glib::idle_add_once`.
+- Added `SingleMainWindow=true` to the `.desktop` launcher to better integrate with GNOME 50+ dock contexts preventing redundant "New Window" options.
+- Cleaned up redundant branch metadata keys in the Flatpak manifests to optimize build parsing.
+- Refined the "Startup Catch-up Mode" drop-down label length in the Settings UI so it no longer visually clips within its ComboRow box.
 
 ## [9.1.1] - 2026-04-10
 

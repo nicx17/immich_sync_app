@@ -19,7 +19,7 @@ jobs:
   update-release-draft:
     runs-on: ubuntu-24.04
     concurrency:
-      group: release-drafter
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
 
     steps:
