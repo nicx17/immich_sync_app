@@ -45,17 +45,6 @@
 flatpak install --user mimick-repo io.github.nicx17.mimick</code></pre>
             </section>
 
-            <section class="install-card">
-                <div class="install-header">
-                    <p class="install-label">Install Beta (Bleeding Edge)</p>
-                    <button class="copy-button" type="button" data-copy-target="install-beta-command">
-                        Copy
-                    </button>
-                </div>
-                <pre><code id="install-beta-command">flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
-flatpak install --user mimick-repo io.github.nicx17.mimick//beta</code></pre>
-            </section>
-
             <section class="links-container" aria-label="Repository links">
                 <a class="link-block" href="mimick.flatpakrepo">
                     <span class="link-icon">01</span>
@@ -90,31 +79,22 @@ flatpak install --user mimick-repo io.github.nicx17.mimick//beta</code></pre>
     </footer>
 
     <script>
-        const copyButton = document.querySelector(".copy-button");
-
-        if (copyButton) {
-            copyButton.addEventListener("click", async () => {
-                const targetId = copyButton.getAttribute("data-copy-target");
+        document.querySelectorAll(".copy-button").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+                const targetId = btn.getAttribute("data-copy-target");
                 const codeBlock = targetId ? document.getElementById(targetId) : null;
+                if (!codeBlock) return;
 
-                if (!codeBlock) {
-                    return;
-                }
-
-                const originalLabel = copyButton.textContent;
-
+                const originalLabel = btn.textContent;
                 try {
                     await navigator.clipboard.writeText(codeBlock.textContent.trim());
-                    copyButton.textContent = "Copied";
+                    btn.textContent = "Copied";
                 } catch {
-                    copyButton.textContent = "Failed";
+                    btn.textContent = "Failed";
                 }
-
-                window.setTimeout(() => {
-                    copyButton.textContent = originalLabel;
-                }, 1600);
+                setTimeout(() => { btn.textContent = originalLabel; }, 1600);
             });
-        }
+        });
     </script>
 </body>
 </html>

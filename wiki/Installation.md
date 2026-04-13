@@ -4,15 +4,9 @@ The recommended install method is the official Flatpak repository.
 
 ## Flatpak
 
-**Stable Channel (Recommended)**
 ```bash
 flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
 flatpak install --user mimick-repo io.github.nicx17.mimick
-```
-
-**Beta Channel (Bleeding Edge)**
-```bash
-flatpak install --user mimick-repo io.github.nicx17.mimick//beta
 ```
 
 ## Verify the Repo Signing Key

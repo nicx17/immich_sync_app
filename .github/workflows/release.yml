@@ -71,16 +71,16 @@ jobs:
         run: |
           mkdir -p dist
 
-          cat << EOF > dist/mimick.flatpakrepo
-          [Flatpak Repo]
-          Title=Mimick Repository
-          Url=https://nicx17.github.io/mimick/
-          Homepage=https://github.com/nicx17/mimick
-          Comment=Official repository for the Mimick Immich sync daemon
-          Description=A daemon-based synchronization tool for uploading media files from a Linux desktop to an Immich server.
-          Icon=https://nicx17.github.io/mimick/icon.png
-          GPGKey=$REPO_GPG_KEY
-          EOF
+          {
+            printf '[Flatpak Repo]\n'
+            printf 'Title=Mimick Repository\n'
+            printf 'Url=https://nicx17.github.io/mimick/\n'
+            printf 'Homepage=https://github.com/nicx17/mimick\n'
+            printf 'Comment=Official repository for the Mimick Immich sync daemon\n'
+            printf 'Description=A daemon-based synchronization tool for uploading media files from a Linux desktop to an Immich server.\n'
+            printf 'Icon=https://nicx17.github.io/mimick/icon.png\n'
+            printf 'GPGKey=%s\n' "$REPO_GPG_KEY"
+          } > dist/mimick.flatpakrepo
 
           sha256sum dist/mimick.flatpakrepo > dist/SHA256SUMS.txt
 
