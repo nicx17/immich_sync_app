@@ -114,6 +114,10 @@ fn build_summary(config: &Config, state: &AppState) -> String {
         "Pause on battery power: {}",
         config.data.pause_on_battery_power
     ));
+    lines.push(format!(
+        "Notifications enabled: {}",
+        config.data.notifications_enabled
+    ));
     lines.push(
         "Sensitive data policy: URLs, API key, logs, and full local paths omitted".to_string(),
     );
@@ -148,6 +152,7 @@ struct RedactedConfigExport {
     delete_after_sync: bool,
     pause_on_metered_network: bool,
     pause_on_battery_power: bool,
+    notifications_enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -224,6 +229,7 @@ fn build_config_export(config: &Config) -> RedactedConfigExport {
         delete_after_sync: config.data.delete_after_sync,
         pause_on_metered_network: config.data.pause_on_metered_network,
         pause_on_battery_power: config.data.pause_on_battery_power,
+        notifications_enabled: config.data.notifications_enabled,
     }
 }
 

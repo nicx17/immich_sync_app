@@ -159,6 +159,9 @@ async fn main() {
             },
         ));
 
+        // Apply the user's notification preference before any notification can fire.
+        crate::notifications::set_enabled(config.data.notifications_enabled);
+
         // Start the live filesystem watcher immediately.
         let (tx, mut rx) = mpsc::channel(32);
         let monitor = Monitor::new(config.data.watch_paths.clone());

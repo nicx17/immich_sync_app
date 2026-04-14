@@ -148,6 +148,9 @@ pub struct ConfigData {
     pub pause_on_metered_network: bool,
     #[serde(default)]
     pub pause_on_battery_power: bool,
+    /// Whether desktop notifications (sync summary, connectivity lost, etc.) are shown.
+    #[serde(default = "default_true")]
+    pub notifications_enabled: bool,
     #[serde(default)]
     pub startup_catchup_mode: StartupCatchupMode,
     /// Number of parallel upload workers (1–10). Defaults to 3.
@@ -174,6 +177,7 @@ impl Default for ConfigData {
             delete_after_sync: false,
             pause_on_metered_network: false,
             pause_on_battery_power: false,
+            notifications_enabled: true,
             startup_catchup_mode: StartupCatchupMode::default(),
             upload_concurrency: default_upload_concurrency(),
             quiet_hours_start: None,
