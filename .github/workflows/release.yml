@@ -74,6 +74,7 @@ jobs:
           {
             printf '[Flatpak Repo]\n'
             printf 'Title=Mimick Repository\n'
+            printf 'RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo\n'
             printf 'Url=https://nicx17.github.io/mimick/\n'
             printf 'Homepage=https://github.com/nicx17/mimick\n'
             printf 'Comment=Official repository for the Mimick Immich sync daemon\n'
