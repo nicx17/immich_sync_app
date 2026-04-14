@@ -396,6 +396,12 @@ pub fn build_settings_window(
         .build();
     behavior_group.add(&battery_row);
 
+    let notifications_row = adw::SwitchRow::builder()
+        .title("Enable Notifications")
+        .subtitle("Show desktop notifications for sync events and connectivity issues.")
+        .build();
+    behavior_group.add(&notifications_row);
+
     let catchup_model = gtk::StringList::new(&["Full Scan", "Recent Only (7d)", "New Files Only"]);
     let catchup_row = adw::ComboRow::builder()
         .title("Startup Catch-up Mode")
@@ -764,6 +770,8 @@ pub fn build_settings_window(
         #[weak]
         battery_row,
         #[weak]
+        notifications_row,
+        #[weak]
         concurrency_row,
         #[weak]
         quiet_hours_row,
@@ -797,6 +805,7 @@ pub fn build_settings_window(
             let run_on_startup = startup_row.is_active();
             let pause_on_metered_network = metered_row.is_active();
             let pause_on_battery_power = battery_row.is_active();
+            let notifications_enabled = notifications_row.is_active();
             let upload_concurrency = concurrency_row.value() as u8;
             let quiet_hours_enabled = quiet_hours_row.is_active();
             let quiet_hours_start = quiet_hours_enabled.then(|| quiet_start_row.value() as u8);
@@ -903,6 +912,7 @@ pub fn build_settings_window(
                     new_config.data.run_on_startup = run_on_startup;
                     new_config.data.pause_on_metered_network = pause_on_metered_network;
                     new_config.data.pause_on_battery_power = pause_on_battery_power;
+                    new_config.data.notifications_enabled = notifications_enabled;
                     new_config.data.startup_catchup_mode = catchup_mode;
                     new_config.data.upload_concurrency = upload_concurrency;
                     new_config.data.quiet_hours_start = quiet_hours_start;
@@ -954,6 +964,8 @@ pub fn build_settings_window(
                         });
                     }
 
+                    crate::notifications::set_enabled(notifications_enabled);
+
                     if let Some(monitor) = monitor_handle.clone() {
                         monitor.replace_watch_paths(watch_paths.clone());
                     }
@@ -1000,6 +1012,7 @@ pub fn build_settings_window(
     startup_row.set_active(config.data.run_on_startup);
     metered_row.set_active(config.data.pause_on_metered_network);
     battery_row.set_active(config.data.pause_on_battery_power);
+    notifications_row.set_active(config.data.notifications_enabled);
     concurrency_row.set_value(config.data.upload_concurrency as f64);
     let qh_enabled = config.data.quiet_hours_start.is_some();
     quiet_hours_row.set_active(qh_enabled);
