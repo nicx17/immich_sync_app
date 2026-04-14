@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- New notification toggle. Allow user to enable or disable the notifications sent through the app
+
 ## [9.2.0] - 2026-04-14
 
 ### Changed
