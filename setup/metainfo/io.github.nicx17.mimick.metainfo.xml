@@ -21,7 +21,7 @@
       <li>User-Centric UI: Provides a graphical dashboard and tray menu for manual sync, settings, and status monitoring.</li>
     </ul>
   </description>
-  
+
   <screenshots>
     <screenshot type="default">
       <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/setup_window.png</image>
@@ -59,21 +59,37 @@
     <control>pointing</control>
     <control>touch</control>
   </recommends>
-  
+
   <url type="homepage">https://github.com/nicx17/mimick</url>
   <url type="bugtracker">https://github.com/nicx17/mimick/issues</url>
   <url type="vcs-browser">https://github.com/nicx17/mimick</url>
-  
+
   <provides>
     <binary>mimick</binary>
   </provides>
-  
+
   <categories>
     <category>Utility</category>
     <category>Network</category>
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="9.3.0" date="2026-04-14">
+      <description>
+        <ul>
+          <li>Added a notification toggle to let users enable or disable app notifications.</li>
+          <li>Switched from <code>secret-tool</code> (libsecret CLI) to the pure-Rust <code>oo7</code> crate for credential storage. Credentials are now stored in a portal-encrypted file inside the Flatpak sandbox, or in the system keyring on native installs. This fixes the <code>user interaction failed</code> error with Flatpak.</li>
+          <li>The <code>.flatpakrepo</code> now includes a <code>RuntimeRepo</code> directive for automatic GNOME Platform runtime resolution on systems without Flathub pre-configured.</li>
+          <li>Removed <code>libsecret</code> build dependencies and unnecessary D-Bus permissions from Flatpak manifests.</li>
+          <li>Removed hardcoded <code>GSK_RENDERER=gl</code>; GTK4 now auto-selects the best renderer.</li>
+          <li>Added <code>MESA_LOG_LEVEL=error</code> to Flatpak manifests to suppress harmless Mesa driver warnings.</li>
+          <li>Consolidated all documentation into the project wiki and removed local markdown files.</li>
+          <li>Fixed duplicate URL toggle validation handlers that could cause multiple error dialogs.</li>
+          <li>Added missing config fields to diagnostics export and summary.</li>
+          <li>Fixed Flatpak install failures on systems missing Flathub by default.</li>
+        </ul>
+      </description>
+    </release>
     <release version="9.2.0" date="2026-04-14">
       <description>
         <ul>
@@ -85,7 +101,7 @@
           <li>Refined the "Startup Catch-up Mode" drop-down label length in the Settings UI so it no longer visually clips within its ComboRow box.</li>
         </ul>
       </description>
-    </release>  
+    </release>
     <release version="9.1.1" date="2026-04-10">
       <description>
         <ul>
@@ -111,7 +127,8 @@
           <li>Fixed an Immich asset timestamp regression where newly uploaded files could land at the wrong timeline time or lose their intended timezone after server-side metadata processing.</li>
           <li>Upload metadata handling now preserves filesystem-based creation times more reliably and reapplies the local timezone after upload so Immich keeps the correct asset date placement.</li>
           <li>The settings window now uses <code>Status</code> and <code>Settings</code> pages, shows the first-run API-key guidance at the top of the configuration flow, and no longer forces dark mode.</li>
-          <li><code>Save &amp; Restart</code> has been replaced with live <code>Save Changes</code> behavior that updates the running API client, queue policy, upload worker count, and watched folders without relaunching Mimick.</li>
+          <li>
+            <code>Save &amp; Restart</code> has been replaced with live <code>Save Changes</code> behavior that updates the running API client, queue policy, upload worker count, and watched folders without relaunching Mimick.</li>
           <li>Watch-folder changes now reconfigure the live filesystem monitor in place, so adding or removing folders takes effect immediately after saving.</li>
         </ul>
       </description>
