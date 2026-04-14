@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - New notification toggle. Allow user to enable or disable the notifications sent through the app
 
+### Fixed
+- Fixed duplicate URL toggle validation handlers that caused two error dialogs to appear when disabling the last enabled URL switch.
+- Added missing config fields (`startup_catchup_mode`, `upload_concurrency`, `quiet_hours_start`, `quiet_hours_end`) to the diagnostics redacted export and plain-text summary.
+
 ## [9.2.0] - 2026-04-14
 
 ### Changed

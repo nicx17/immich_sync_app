@@ -207,44 +207,6 @@ pub fn build_settings_window(
     external_row.add_suffix(&external_entry);
     conn_group.add(&external_row);
 
-    // Toggle validation: prevent both switches being OFF at the same time
-    // Mirrors Python's _validate_toggles logic
-    internal_switch.connect_active_notify(clone!(
-        #[weak]
-        external_switch,
-        #[weak]
-        window,
-        move |sw| {
-            if !sw.is_active() && !external_switch.is_active() {
-                sw.set_active(true);
-                let dialog = gtk::AlertDialog::builder()
-                    .message("At least one URL required")
-                    .detail("You must keep at least one URL switch enabled.")
-                    .buttons(["OK"])
-                    .build();
-                dialog.show(Some(&window));
-            }
-        }
-    ));
-
-    external_switch.connect_active_notify(clone!(
-        #[weak]
-        internal_switch,
-        #[weak]
-        window,
-        move |sw| {
-            if !sw.is_active() && !internal_switch.is_active() {
-                sw.set_active(true);
-                let dialog = gtk::AlertDialog::builder()
-                    .message("At least one URL required")
-                    .detail("You must keep at least one URL switch enabled.")
-                    .buttons(["OK"])
-                    .build();
-                dialog.show(Some(&window));
-            }
-        }
-    ));
-
     // API Key
     let api_key_row = adw::ActionRow::builder().title("API Key").build();
     let api_key_entry = PasswordEntry::builder()
