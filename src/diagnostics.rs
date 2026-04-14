@@ -118,6 +118,30 @@ fn build_summary(config: &Config, state: &AppState) -> String {
         "Notifications enabled: {}",
         config.data.notifications_enabled
     ));
+    lines.push(format!(
+        "Startup catchup mode: {:?}",
+        config.data.startup_catchup_mode
+    ));
+    lines.push(format!(
+        "Upload concurrency: {}",
+        config.data.upload_concurrency
+    ));
+    lines.push(format!(
+        "Quiet hours start: {}",
+        config
+            .data
+            .quiet_hours_start
+            .map(|h| h.to_string())
+            .unwrap_or_else(|| "disabled".to_string())
+    ));
+    lines.push(format!(
+        "Quiet hours end: {}",
+        config
+            .data
+            .quiet_hours_end
+            .map(|h| h.to_string())
+            .unwrap_or_else(|| "disabled".to_string())
+    ));
     lines.push(
         "Sensitive data policy: URLs, API key, logs, and full local paths omitted".to_string(),
     );
@@ -153,6 +177,10 @@ struct RedactedConfigExport {
     pause_on_metered_network: bool,
     pause_on_battery_power: bool,
     notifications_enabled: bool,
+    startup_catchup_mode: String,
+    upload_concurrency: u8,
+    quiet_hours_start: Option<u8>,
+    quiet_hours_end: Option<u8>,
 }
 
 #[derive(Serialize)]
@@ -230,6 +258,10 @@ fn build_config_export(config: &Config) -> RedactedConfigExport {
         pause_on_metered_network: config.data.pause_on_metered_network,
         pause_on_battery_power: config.data.pause_on_battery_power,
         notifications_enabled: config.data.notifications_enabled,
+        startup_catchup_mode: format!("{:?}", config.data.startup_catchup_mode),
+        upload_concurrency: config.data.upload_concurrency,
+        quiet_hours_start: config.data.quiet_hours_start,
+        quiet_hours_end: config.data.quiet_hours_end,
     }
 }
 
