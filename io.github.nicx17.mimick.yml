@@ -17,8 +17,8 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  # Suppress harmless Mesa/Vulkan console warnings by forcing OpenGL
-  - --env=GSK_RENDERER=gl
+  # Suppress harmless Mesa driver developer warnings (FINISHME notes)
+  - --env=MESA_LOG_LEVEL=error
   # Inter-process communication
   - --share=ipc
   # System tray integration (ksni relies on org.kde.StatusNotifierWatcher)

@@ -12,6 +12,21 @@ Instead, folders are granted one at a time through the file chooser portal. Insi
 
 The Mimick UI and logs convert those into friendlier folder names where possible.
 
+## Credential Storage
+
+Mimick uses the [oo7](https://github.com/linux-credentials/oo7) crate for secure API key storage. The backend is selected automatically:
+
+- **Inside Flatpak**: Credentials are stored in an encrypted file within the sandbox (`~/.var/app/io.github.nicx17.mimick/data/keyrings/`). The encryption key is retrieved from the `org.freedesktop.portal.Secret` portal. This avoids exposing secrets to other sandboxed applications.
+- **Outside Flatpak (native)**: Credentials are stored in the desktop's Secret Service (GNOME Keyring, KWallet) via the `org.freedesktop.secrets` D-Bus interface.
+
+### D-Bus Permissions
+
+The Flatpak manifest grants the following D-Bus talk permissions:
+
+| Permission | Purpose |
+|---|---|
+| `org.kde.StatusNotifierWatcher` | System tray icon integration |
+
 ## Tray Integration
 
 Mimick uses StatusNotifier support for its tray icon.

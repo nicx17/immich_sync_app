@@ -2,12 +2,22 @@
 
 The recommended install method is the official Flatpak repository.
 
-## Flatpak
+## Prerequisites
+
+- **Flatpak** must be installed on your system.
+- The **[Flathub](https://flathub.org/setup)** remote must be configured (required for the GNOME runtime dependency). Follow the setup guide for your distribution at [flathub.org/setup](https://flathub.org/setup).
+
+## Install Mimick
 
 ```bash
+# Add the official Mimick repository
 flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
+
+# Install the application
 flatpak install --user mimick-repo io.github.nicx17.mimick
 ```
+
+Flatpak will automatically resolve and download the required GNOME Platform runtime from Flathub during installation.
 
 ## Verify the Repo Signing Key
 
@@ -26,6 +36,8 @@ gpg --show-keys --fingerprint /tmp/mimick-repo-public.gpg
 ```
 
 Compare the resulting fingerprint to the value above. Treat the fingerprint, not the email address on the key, as the identity marker.
+
+## Running
 
 Run the app with:
 
@@ -63,5 +75,6 @@ flatpak-builder --user --install --force-clean build-dir io.github.nicx17.mimick
 
 - Application ID: `io.github.nicx17.mimick`
 - Binary: `mimick`
-- Config file: `~/.config/mimick/config.json`
-- Cache directory: `~/.cache/mimick/`
+- Config file: `~/.config/mimick/config.json` (native) or `~/.var/app/io.github.nicx17.mimick/config/mimick/config.json` (Flatpak)
+- Cache directory: `~/.cache/mimick/` (native) or `~/.var/app/io.github.nicx17.mimick/cache/mimick/` (Flatpak)
+- Keyring: Managed by `oo7` -- encrypted file inside the sandbox (Flatpak) or D-Bus Secret Service (native)

@@ -255,58 +255,66 @@ impl Config {
         }
     }
 
-    /// Look up the API key from the desktop keyring via `secret-tool`.
+    /// Look up the API key from the desktop keyring via oo7.
+    ///
+    /// Automatically selects the correct backend:
+    /// - Flatpak sandbox: encrypted file via the Secret portal
+    /// - Native: D-Bus Secret Service (GNOME Keyring, KWallet)
     pub fn get_api_key(&self) -> Option<String> {
-        // Use secret-tool directly to avoid desktop-environment-specific keyring issues.
-        match std::process::Command::new("secret-tool")
-            .arg("lookup")
-            .arg("service")
-            .arg("mimick")
-            .arg("account")
-            .arg("api_key")
-            .output()
-        {
-            Ok(output) if output.status.success() => {
-                let key = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !key.is_empty() {
-                    log::debug!("API key retrieved via secret-tool.");
-                    return Some(key);
+        let result = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let keyring = oo7::Keyring::new().await?;
+                let attributes = vec![("service", "mimick"), ("account", "api_key")];
+                let items = keyring.search_items(&attributes).await?;
+                if let Some(item) = items.first() {
+                    let secret = item.secret().await?;
+                    let key = String::from_utf8_lossy(&secret).trim().to_string();
+                    if !key.is_empty() {
+                        return Ok::<Option<String>, oo7::Error>(Some(key));
+                    }
                 }
+                Ok(None)
+            })
+        });
+
+        match result {
+            Ok(key) => {
+                if key.is_some() {
+                    log::debug!("API key retrieved via oo7 keyring.");
+                }
+                key
             }
-            Ok(out) => log::debug!("secret-tool lookup empty or failed: {:?}", out.status),
-            Err(e) => log::debug!("secret-tool not available or failed: {:?}", e),
+            Err(e) => {
+                log::debug!("oo7 keyring lookup failed: {:?}", e);
+                None
+            }
         }
-        None
     }
 
-    /// Store the API key in the desktop keyring via `secret-tool`.
+    /// Store the API key in the desktop keyring via oo7.
     pub fn set_api_key(&self, key: &str) -> bool {
-        use std::io::Write;
-        let mut cmd = std::process::Command::new("secret-tool");
-        cmd.arg("store")
-            .arg("--label=Mimick API Key")
-            .arg("service")
-            .arg("mimick")
-            .arg("account")
-            .arg("api_key")
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+        let secret = key.to_string();
+        let result = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let keyring = oo7::Keyring::new().await?;
+                let attributes = vec![("service", "mimick"), ("account", "api_key")];
+                keyring
+                    .create_item("Mimick API Key", &attributes, secret.as_bytes(), true)
+                    .await?;
+                Ok::<(), oo7::Error>(())
+            })
+        });
 
-        if let Ok(mut child) = cmd.spawn() {
-            if let Some(mut stdin) = child.stdin.take() {
-                let _ = stdin.write_all(key.as_bytes());
+        match result {
+            Ok(()) => {
+                log::info!("API key saved via oo7 keyring.");
+                true
             }
-            if let Ok(status) = child.wait()
-                && status.success()
-            {
-                log::info!("API key saved via secret-tool.");
-                return true;
+            Err(e) => {
+                log::error!("Failed to save API key via oo7 keyring: {:?}", e);
+                false
             }
         }
-
-        log::error!("Failed to save API key via secret-tool.");
-        false
     }
 
     /// Return all configured watch paths as plain strings for the live monitor.
