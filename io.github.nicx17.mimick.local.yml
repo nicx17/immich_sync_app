@@ -16,10 +16,9 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  - --env=GSK_RENDERER=gl
+  - --env=MESA_LOG_LEVEL=error
   - --share=ipc
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --talk-name=org.freedesktop.secrets
   - --share=network
   # Folder access is granted per-directory via the file chooser portal
 

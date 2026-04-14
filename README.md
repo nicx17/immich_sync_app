@@ -20,9 +20,9 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 <div align="center">
 
 [![Install Guide](https://img.shields.io/badge/Install-Guide-1F6FEB?style=for-the-badge&labelColor=1F6FEB)](https://github.com/nicx17/mimick/wiki/Installation)
-[![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](docs/USER_GUIDE.md)
-[![Configuration](https://img.shields.io/badge/Configuration-Guide-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](docs/CONFIGURATION.md)
-[![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Help-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
+[![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](wiki/Configuration-and-First-Run.md)
+[![Wiki](https://img.shields.io/badge/Wiki-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](wiki/Home.md)
+[![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Help-CB4B16?style=for-the-badge&labelColor=CB4B16)](wiki/Troubleshooting.md)
 [![Project Wiki](https://img.shields.io/badge/Project-Wiki-444444?style=for-the-badge&labelColor=444444)](https://github.com/nicx17/mimick/wiki)
 
 
@@ -59,7 +59,7 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 - **Native Implementation**: Developed purely in Rust, utilizing GTK4 and Libadwaita bindings alongside an AppIndicator system tray for headless daemon control.
 - **Hardware Awareness**: Integrates with `nmcli` and `/sys/class/power_supply` to identify running states and optionally defer daemon I/O operations strictly during explicitly metered networks or active battery deployments.
 - **Sandbox Security**: Employs Flatpak desktop portal file-choosers to grant the application isolated, per-directory access without requesting system-wide filesystem permissons.
-- **Encrypted Keystore**: Active session configurations isolate user API keys exclusively inside `secret-tool` (libsecret) to prevent plaintext credential exposure.
+- **Encrypted Keystore**: API keys are stored securely via the [oo7](https://github.com/linux-credentials/oo7) keyring library. Inside Flatpak, credentials are kept in a portal-encrypted file within the sandbox. On native installs, the desktop's Secret Service (GNOME Keyring, KWallet) is used.
 - **Quiet Hours**: Configurable chronological barriers to globally suspend daemon uploads.
 
 ### Directory Scoping & Filtering
@@ -75,18 +75,13 @@ Each watched directory operates with isolated logical constraints:
 
 The easiest and official way to install Mimick on any Linux distribution is via our Flatpak repository. This ensures you receive automatic updates whenever a new version is released.
 
-Run these commands in your terminal:
-
-
-# 1. Add the official Mimick repository
+**Prerequisites**: Flatpak must be installed and the [Flathub](https://flathub.org/setup) remote must be configured on your system (required for GNOME runtime dependencies).
 
 ```bash
+# Add the official Mimick repository
 flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
-```
 
-# 2. Install the application
-
-```bash
+# Install the application
 flatpak install --user mimick-repo io.github.nicx17.mimick
 ```
 
@@ -256,11 +251,11 @@ flatpak run io.github.nicx17.mimick
 
 [![Wiki Home](https://img.shields.io/badge/Wiki-Home-444444?style=for-the-badge&labelColor=444444)](https://github.com/nicx17/mimick/wiki)
 [![Installation](https://img.shields.io/badge/Installation-Guide-1F6FEB?style=for-the-badge&labelColor=1F6FEB)](https://github.com/nicx17/mimick/wiki/Installation)
-[![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](docs/USER_GUIDE.md)
-[![Configuration](https://img.shields.io/badge/Configuration-Guide-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](docs/CONFIGURATION.md)
-[![Development](https://img.shields.io/badge/Development-Guide-B8860B?style=for-the-badge&labelColor=B8860B)](docs/DEVELOPMENT.md)
-[![Testing](https://img.shields.io/badge/Testing-Guide-0E7490?style=for-the-badge&labelColor=0E7490)](docs/TESTING.md)
-[![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Guide-CB4B16?style=for-the-badge&labelColor=CB4B16)](docs/TROUBLESHOOTING.md)
+[![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](wiki/Configuration-and-First-Run.md)
+[![Wiki](https://img.shields.io/badge/Wiki_Documentation-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](wiki/Home.md)
+[![Development](https://img.shields.io/badge/Development-Guide-B8860B?style=for-the-badge&labelColor=B8860B)](wiki/Development.md)
+[![Testing](https://img.shields.io/badge/Testing-Guide-0E7490?style=for-the-badge&labelColor=0E7490)](wiki/Testing.md)
+[![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Guide-CB4B16?style=for-the-badge&labelColor=CB4B16)](wiki/Troubleshooting.md)
 [![Security](https://img.shields.io/badge/Security-Policy-5B8C5A?style=for-the-badge&labelColor=5B8C5A)](SECURITY.md)
 
 </div>

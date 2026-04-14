@@ -11,9 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - New notification toggle. Allow user to enable or disable the notifications sent through the app
 
+### Changed
+- Replaced `secret-tool` (libsecret CLI) with the `oo7` Rust crate for credential storage. Inside Flatpak, credentials are now stored in a portal-encrypted file within the sandbox. On native installs, the desktop's D-Bus Secret Service (GNOME Keyring, KWallet) is used directly. This eliminates the `user interaction failed` error that occurred when `secret-tool` tried to render a prompter dialog across the Flatpak sandbox boundary.
+- The `.flatpakrepo` file now includes a `RuntimeRepo` directive pointing to Flathub. This allows Flatpak to automatically resolve and download the required GNOME Platform runtime on systems where Flathub is not pre-configured (notably Ubuntu 25+ and certain Fedora spins).
+- Removed `libsecret` / `libsecret-1-dev` from build prerequisites. The `oo7` crate is pure Rust and requires no system-level keyring library at build time.
+- Removed hardcoded `GSK_RENDERER=gl` from Flatpak manifests. GTK4 now auto-detects the best renderer (Vulkan, NGL, GL) for the host GPU.
+- Removed unnecessary `--talk-name=org.freedesktop.secrets` from Flatpak manifests. The `oo7` crate uses the Secret portal inside the sandbox and does not need direct D-Bus access to the host keyring.
+- Added `MESA_LOG_LEVEL=error` to Flatpak manifests to suppress harmless Mesa driver developer warnings (FINISHME notes) from cluttering application logs.
+- Consolidated all documentation from `docs/` into the project wiki. The `docs/` markdown files have been removed to prevent drift.
+
 ### Fixed
 - Fixed duplicate URL toggle validation handlers that caused two error dialogs to appear when disabling the last enabled URL switch.
 - Added missing config fields (`startup_catchup_mode`, `upload_concurrency`, `quiet_hours_start`, `quiet_hours_end`) to the diagnostics redacted export and plain-text summary.
+- Fixed Flatpak installation failing with `org.gnome.Platform was not found` on fresh Ubuntu and Fedora installations that do not ship Flathub enabled by default.
 
 ## [9.2.0] - 2026-04-14
 
