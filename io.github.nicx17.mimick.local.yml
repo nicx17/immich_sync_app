@@ -19,6 +19,7 @@ finish-args:
   - --env=GSK_RENDERER=gl
   - --share=ipc
   - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.secrets
   - --share=network
   # Folder access is granted per-directory via the file chooser portal
 
