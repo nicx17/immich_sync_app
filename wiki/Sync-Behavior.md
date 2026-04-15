@@ -36,4 +36,4 @@ If the old album was deleted or the stored album ID is stale, Mimick refreshes a
 - Failed uploads are stored in `~/.cache/mimick/retries.json` and retried on the next run.
 - Duplicate detection uses SHA-1 checksums and Immich's upload-check behavior.
 - Existing assets can be looked up and reused instead of uploading the file bytes again.
-- The Controls page can pause/resume syncing, trigger `Sync Now`, and expose queue recovery actions while Mimick is already running.
+- The Status page can pause/resume syncing, trigger `Sync Now`, and expose queue recovery actions while Mimick is already running.

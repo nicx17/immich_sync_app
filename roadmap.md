@@ -8,7 +8,7 @@
 - [x] SHA-1 checksumming per file for Immich deduplication (64KB chunked, low RAM).
 - [x] One-way sync — never delete local files or download from server.
 - [x] File type whitelist (JPG, PNG, HEIC, MP4, MOV, GIF, WEBP, TIFF, RAW, ARW, DNG). Sidecars ignored.
-- [x] 10 concurrent streaming upload workers (constant RAM use regardless of file size).
+- [x] Configurable streaming upload workers (1-10, default 3) with constant RAM use regardless of file size.
 - [x] Persistent retry queue (`~/.cache/mimick/retries.json`) — failed uploads survive reboots.
 - [x] **Offline Sync Stability** — Prevented already-synced files from being re-queued for reassociation when the application is offline or unable to reach the server.
 - [x] **Accurate Progress Tracking** — Fixed the processed file counter to only increment on successful uploads, preventing "ghost" progress during network outages.
@@ -24,7 +24,7 @@
 
 ### Configuration & Security
 - [x] Config file at `~/.config/mimick/config.json` (serde_json).
-- [x] API key stored via `secret-tool` (libsecret) — never written to disk in plain text.
+- [x] API key stored via `oo7` keyring crate (encrypted portal file in Flatpak, D-Bus Secret Service native) -- never written to disk in plain text.
 - [x] Multiple watch directories with per-folder album config.
 - [x] `WatchPathEntry` supports both plain path strings and per-folder album configs.
 
@@ -45,16 +45,13 @@
 - [x] Graceful fallback when `org.kde.StatusNotifierWatcher` is unavailable (GNOME without extension).
 
 ### Desktop Integration
-- [x] `systemd` user service (`setup/mimick.service`) with journal logging.
-- [x] `.desktop` file with Settings action (`setup/mimick.desktop`).
-- [x] Native desktop notifications (`libnotify`).
-- [x] PKGBUILD for Arch Linux / AUR.
-- [x] AppImage packaging (`build_test_appimage.sh`).
+- [x] `.desktop` file with Settings and Quit actions (`setup/io.github.nicx17.mimick.desktop`).
+- [x] Native desktop notifications (`gio::Notification` via XDG notification portal).
 
 ### Rust Port (v2.0)
 - [x] Full rewrite from Python to Rust (Tokio + GTK4-rs + Libadwaita-rs).
 - [x] No Python runtime dependency — single statically-linked binary.
-- [x] 11 unit tests across `api_client`, `config`, `monitor`, `queue_manager`, `state_manager`.
+- [x] 47 unit tests across 13 modules (`api_client`, `autostart`, `config`, `diagnostics`, `main`, `monitor`, `queue_manager`, `runtime_env`, `settings_window`, `startup_scan`, `state_manager`, `sync_index`, `watch_path_display`).
 - [x] All GTK4 widgets updated to 4.10+ standards (no deprecated `ComboBoxText`, `MessageDialog`).
 
 ---

@@ -199,21 +199,21 @@ If you prefer to compile Mimick yourself, you can build it natively or package i
 **Ubuntu / Debian:**
 
 ```bash
-sudo apt install libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential libsecret-1-dev
+sudo apt install libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential
 
 ```
 
 **Fedora:**
 
 ```bash
-sudo dnf install gtk4-devel libadwaita-devel libsecret-devel pkg-config
+sudo dnf install gtk4-devel libadwaita-devel pkg-config
 
 ```
 
 **Arch Linux:**
 
 ```bash
-sudo pacman -S gtk4 libadwaita libsecret pkgconf base-devel
+sudo pacman -S gtk4 libadwaita pkgconf base-devel
 
 ```
 
