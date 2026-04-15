@@ -48,7 +48,7 @@ Open an Issue on GitHub. Include:
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Install GTK system dependencies (Ubuntu/Debian)
-sudo apt install libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential libsecret-1-dev
+sudo apt install libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential
 
 # Build and run
 cargo run -- --settings

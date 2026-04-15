@@ -31,7 +31,7 @@ Mimick is a Linux background app that watches selected folders and syncs photos 
 
 ## Current App Highlights
 
-- Two-page `Setup` / `Controls` settings window
+- Two-page `Settings` / `Status` settings window
 - Queue inspector with retry actions
 - Per-folder rules for hidden paths, size limits, and extension filters
 - Diagnostics bundle export for support and bug reports

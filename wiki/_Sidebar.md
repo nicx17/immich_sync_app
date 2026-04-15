@@ -13,3 +13,8 @@
 - [Architecture](Architecture)
 - [Development](Development)
 - [Testing](Testing)
+
+### Maintainer
+
+- [Release Operations](Release-Operations)
+- [Repository Automation](Repository-Automation)

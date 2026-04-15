@@ -87,15 +87,15 @@ rm -f ~/.cache/mimick/retries.json
 *(In Flatpak, use `~/.var/app/io.github.nicx17.mimick/cache/mimick/retries.json`)*
 
 ### Export a Diagnostics Bundle
-Use `Export Diagnostics` from the Controls page to collect:
+Use `Export Diagnostics` from the Status page to collect:
 - `summary.txt`
-- `config.json`
-- `status.json`
-- `retries.json`
-- `synced_index.json`
-- `mimick.log`
+- `privacy-note.txt`
+- `config.redacted.json`
+- `status.redacted.json`
+- `retries.redacted.json`
+- `synced_index.redacted.json`
 
-This is the easiest way to gather support details without exposing the API key, raw logs, full local paths, or raw server URLs. This is generated securely to a timestamped `mimick-diagnostics-*` folder.
+API keys, raw logs, full local paths, and raw server URLs are intentionally omitted. The bundle is written to a timestamped `mimick-diagnostics-*` folder.
 
 ### Useful Logs
 
