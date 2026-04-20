@@ -4,7 +4,7 @@ version = "9.3.0"
 edition = "2024"
 
 [dependencies]
-ashpd = { version = "0.13.9", features = ["background", "gtk4"] }
+ashpd = { version = "0.13.10", features = ["background", "gtk4"] }
 chrono = "0.4.44"
 dirs = "6.0.0"
 glib = "0.22.5"
@@ -14,13 +14,13 @@ lazy_static = "1.5.0"
 libadwaita = { version = "0.9.1", features = ["v1_4"] }
 log = "0.4.29"
 notify = "8.2.0"
-oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_crypto"] }
+oo7 = { version = "0.6.0", default-features = false, features = ["tokio", "native_crypto"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["native-tls", "charset", "http2", "json", "multipart", "stream"] }
 tokio-util = { version = "0.7.18", features = ["codec"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 sha1 = "0.11.0" 
-tokio = { version = "1.51.1", features = ["rt-multi-thread", "sync", "time", "fs", "macros", "io-util", "process"] }
+tokio = { version = "1.52.1", features = ["rt-multi-thread", "sync", "time", "fs", "macros", "io-util", "process"] }
 flexi_logger = "0.31.8"
 
 [dev-dependencies]
