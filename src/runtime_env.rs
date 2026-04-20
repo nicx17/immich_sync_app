@@ -64,10 +64,8 @@ fn is_on_battery_power_from_statuses(
 
     for (supply_type, online, status) in statuses {
         match supply_type.as_deref() {
-            Some("Mains") | Some("USB") | Some("USB_C") => {
-                if online.unwrap_or(false) {
-                    mains_online = true;
-                }
+            Some("Mains") | Some("USB") | Some("USB_C") if online.unwrap_or(false) => {
+                mains_online = true;
             }
             Some("Battery") => {
                 found_battery = true;
