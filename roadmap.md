@@ -100,3 +100,4 @@
 - [ ] **Exponential backoff** — Smarter retry scheduling instead of immediate replay on restart.
 - [ ] **Progress notifications** — Desktop notifications with counts and outcomes, not just logs.
 - [ ] **Tray icon dynamic states** — Distinct icons for idle, syncing, paused, and error conditions.
+- [ ] **Background Sync Toggle** — Make background sync optional by providing a toggle in the control menu... will be on by default.
