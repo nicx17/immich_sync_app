@@ -26,10 +26,14 @@ const FLATPAK_POLL_INTERVAL_MS: u64 = 2000;
 
 pub struct Monitor {
     watch_paths: Vec<WatchPathEntry>,
+    background_sync_enabled: bool,
 }
 
 enum MonitorCommand {
-    ReplaceWatchPaths(Vec<WatchPathEntry>),
+    ReplaceWatchPaths {
+        watch_paths: Vec<WatchPathEntry>,
+        background_sync_enabled: bool,
+    },
 }
 
 #[derive(Clone)]
@@ -38,13 +42,17 @@ pub struct MonitorHandle {
 }
 
 impl Monitor {
-    pub fn new(watch_paths: Vec<WatchPathEntry>) -> Self {
-        Self { watch_paths }
+    pub fn new(watch_paths: Vec<WatchPathEntry>, background_sync_enabled: bool) -> Self {
+        Self {
+            watch_paths,
+            background_sync_enabled,
+        }
     }
 
     /// Start the watcher thread and emit `(path, sha1_hex)` tuples for ready files.
     pub fn start(&self, tx: mpsc::Sender<(String, String)>) -> MonitorHandle {
         let watch_paths = self.watch_paths.clone();
+        let background_sync_enabled = self.background_sync_enabled;
         let handle = tokio::runtime::Handle::current();
         let (command_tx, command_rx) = std::sync::mpsc::channel();
 
@@ -59,8 +67,14 @@ impl Monitor {
             };
 
             let mut watch_paths = watch_paths;
+            let mut background_sync_enabled = background_sync_enabled;
             let mut watched_roots = Vec::<PathBuf>::new();
-            replace_watches(&mut *watcher, &mut watched_roots, &watch_paths);
+            replace_watches(
+                &mut *watcher,
+                &mut watched_roots,
+                &watch_paths,
+                background_sync_enabled,
+            );
 
             // Debounce map: path -> last seen instant
             let mut debounce_map: HashMap<String, Instant> = HashMap::new();
@@ -74,9 +88,18 @@ impl Monitor {
             loop {
                 while let Ok(command) = command_rx.try_recv() {
                     match command {
-                        MonitorCommand::ReplaceWatchPaths(new_paths) => {
+                        MonitorCommand::ReplaceWatchPaths {
+                            watch_paths: new_paths,
+                            background_sync_enabled: new_background_sync_enabled,
+                        } => {
                             watch_paths = new_paths;
-                            replace_watches(&mut *watcher, &mut watched_roots, &watch_paths);
+                            background_sync_enabled = new_background_sync_enabled;
+                            replace_watches(
+                                &mut *watcher,
+                                &mut watched_roots,
+                                &watch_paths,
+                                background_sync_enabled,
+                            );
                         }
                     }
                 }
@@ -192,11 +215,15 @@ impl Monitor {
 }
 
 impl MonitorHandle {
-    pub fn replace_watch_paths(&self, watch_paths: Vec<WatchPathEntry>) {
-        if let Err(err) = self
-            .command_tx
-            .send(MonitorCommand::ReplaceWatchPaths(watch_paths))
-        {
+    pub fn replace_watch_paths(
+        &self,
+        watch_paths: Vec<WatchPathEntry>,
+        background_sync_enabled: bool,
+    ) {
+        if let Err(err) = self.command_tx.send(MonitorCommand::ReplaceWatchPaths {
+            watch_paths,
+            background_sync_enabled,
+        }) {
             log::warn!("Could not update watch paths on the live monitor: {}", err);
         }
     }
@@ -206,6 +233,7 @@ fn replace_watches(
     watcher: &mut dyn Watcher,
     watched_roots: &mut Vec<PathBuf>,
     watch_paths: &[WatchPathEntry],
+    background_sync_enabled: bool,
 ) {
     for path in watched_roots.drain(..) {
         if let Err(err) = watcher.unwatch(&path) {
@@ -231,7 +259,11 @@ fn replace_watches(
     }
 
     if !any_watching {
-        log::warn!("No valid watch paths. File monitoring is idle until a folder is added.");
+        if background_sync_enabled {
+            log::warn!("No valid watch paths. File monitoring is idle until a folder is added.");
+        } else {
+            log::info!("Background sync disabled. File monitoring is idle until it is enabled.");
+        }
     }
 }
 

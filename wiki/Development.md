@@ -48,12 +48,31 @@ Mimick uses `flexi_logger` and writes logs to both:
 - `~/.cache/mimick/mimick.log`
 
 Detailed timestamps are enabled for both outputs.
+Console logs are colorized by level (error/warn/info/debug/trace).
+File logging rotates automatically (approximately 2 MB per file, 5 files kept).
 
 Increase verbosity with:
 
 ```bash
 RUST_LOG=debug cargo run
 ```
+
+## Settings UX & Apply Behavior
+
+- Most UI changes in the Settings window are now applied live (auto-apply). This includes:
+	- upload worker count
+	- quiet hours start/end
+	- folder add/remove
+	- per-folder album target and folder rules
+
+- Connectivity fields (API Key, Internal/External server URLs) are treated as save-only. Changes to these fields are applied only when the user clicks **Save** in the Connectivity section to avoid partially-applied network credentials during configuration edits.
+
+See `/implementation.md` for the prioritized UX plan and acceptance criteria.
+
+## Notifications
+
+- Per-upload notifications were noisy when many workers were active. Mimick now aggregates worker outcomes into a single batch summary that states how many files were processed successfully and how many failed for the batch. Connectivity-related notifications (such as "Connection Lost") still fire independently to alert the user of network failures.
+
 
 ## Packaging
 

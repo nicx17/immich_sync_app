@@ -11,6 +11,7 @@ use gtk::{
     ScrolledWindow, Switch,
 };
 use libadwaita as adw;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
@@ -223,6 +224,13 @@ pub fn build_settings_window(
         .build();
     conn_group.add(&test_btn);
 
+    let save_btn = Button::builder()
+        .label("Save Connection Settings")
+        .css_classes(vec!["suggested-action".to_string()])
+        .margin_top(6)
+        .build();
+    conn_group.add(&save_btn);
+
     // Clone before moving into test_btn closure so api_client is still available below
     let api_client_for_test = api_client.clone();
     test_btn.connect_clicked(clone!(
@@ -346,6 +354,12 @@ pub fn build_settings_window(
         .build();
     behavior_group.add(&startup_row);
 
+    let background_sync_row = adw::SwitchRow::builder()
+        .title("Background Sync")
+        .subtitle("Automatically watch folders in the background after launch.")
+        .build();
+    behavior_group.add(&background_sync_row);
+
     let metered_row = adw::SwitchRow::builder()
         .title("Pause on Metered Network")
         .subtitle("Defer uploads while the active connection is marked as metered.")
@@ -421,9 +435,312 @@ pub fn build_settings_window(
         .build();
     settings_page.add(&folders_group);
 
-    let startup_initial = config.data.run_on_startup;
+    let startup_state = Rc::new(RefCell::new(config.data.run_on_startup));
+    let background_sync_state = Rc::new(RefCell::new(config.data.background_sync_enabled));
+    let apply_in_flight = Rc::new(Cell::new(false));
     let tracked_rows = Rc::new(RefCell::new(Vec::<FolderRowData>::new()));
     let albums: Rc<RefCell<Vec<(String, String)>>> = Rc::new(RefCell::new(Vec::new()));
+
+    let apply_settings = Rc::new(clone!(
+        #[weak]
+        window,
+        #[weak]
+        startup_row,
+        #[weak]
+        internal_switch,
+        #[weak]
+        external_switch,
+        #[weak]
+        internal_entry,
+        #[weak]
+        external_entry,
+        #[weak]
+        api_key_entry,
+        #[weak]
+        metered_row,
+        #[weak]
+        battery_row,
+        #[weak]
+        notifications_row,
+        #[weak]
+        concurrency_row,
+        #[weak]
+        quiet_hours_row,
+        #[weak]
+        quiet_start_row,
+        #[weak]
+        quiet_end_row,
+        #[weak]
+        catchup_row,
+        #[weak]
+        background_sync_row,
+        #[strong]
+        tracked_rows,
+        #[strong]
+        albums,
+        #[strong]
+        shared_state,
+        #[strong]
+        api_client,
+        #[strong]
+        queue_manager,
+        #[strong]
+        monitor_handle,
+        #[strong]
+        sync_now_tx,
+        #[strong]
+        startup_state,
+        #[strong]
+        background_sync_state,
+        #[strong]
+        apply_in_flight,
+        move |include_connectivity: bool| {
+            if apply_in_flight.get() {
+                return;
+            }
+            apply_in_flight.set(true);
+
+            let existing = Config::new();
+            let mut internal_url_enabled = existing.data.internal_url_enabled;
+            let mut external_url_enabled = existing.data.external_url_enabled;
+            let mut internal_url = existing.data.internal_url.clone();
+            let mut external_url = existing.data.external_url.clone();
+            let mut api_key = existing.get_api_key().unwrap_or_default();
+            if include_connectivity {
+                internal_url_enabled = internal_switch.is_active();
+                external_url_enabled = external_switch.is_active();
+                internal_url = internal_entry.text().to_string();
+                external_url = external_entry.text().to_string();
+                api_key = api_key_entry.text().to_string();
+            }
+            let run_on_startup = startup_row.is_active();
+            let pause_on_metered_network = metered_row.is_active();
+            let pause_on_battery_power = battery_row.is_active();
+            let notifications_enabled = notifications_row.is_active();
+            let upload_concurrency = concurrency_row.value() as u8;
+            let quiet_hours_enabled = quiet_hours_row.is_active();
+            let quiet_hours_start = quiet_hours_enabled.then(|| quiet_start_row.value() as u8);
+            let quiet_hours_end = quiet_hours_enabled.then(|| quiet_end_row.value() as u8);
+            let background_sync_enabled = background_sync_row.is_active();
+            let catchup_mode = match catchup_row.selected() {
+                1 => StartupCatchupMode::RecentOnly,
+                2 => StartupCatchupMode::NewFilesOnly,
+                _ => StartupCatchupMode::Full,
+            };
+
+            let mut watch_paths = Vec::new();
+            let albums_map: HashMap<String, String> = albums.borrow().iter().cloned().collect();
+            for row_data in tracked_rows.borrow().iter() {
+                let folder = row_data.path.clone();
+                let rules = row_data.rules.borrow().clone();
+                let has_rules = rules != FolderRules::default();
+                let album_name = row_data.album_name.borrow().clone();
+
+                if (album_name.is_empty() || album_name == DEFAULT_ALBUM_LABEL) && !has_rules {
+                    watch_paths.push(WatchPathEntry::Simple(folder));
+                } else {
+                    let album_id = albums_map.get(&album_name).cloned();
+                    watch_paths.push(WatchPathEntry::WithConfig {
+                        path: folder,
+                        album_id,
+                        album_name: if album_name.is_empty() || album_name == DEFAULT_ALBUM_LABEL {
+                            None
+                        } else {
+                            Some(album_name)
+                        },
+                        rules,
+                    });
+                }
+            }
+
+            let runtime_internal_url = if internal_url_enabled {
+                internal_url.clone()
+            } else {
+                String::new()
+            };
+            let runtime_external_url = if external_url_enabled {
+                external_url.clone()
+            } else {
+                String::new()
+            };
+
+            let previous_startup = *startup_state.borrow();
+            let previous_background_sync = *background_sync_state.borrow();
+
+            glib::MainContext::default().spawn_local(clone!(
+                #[weak]
+                window,
+                #[weak]
+                startup_row,
+                #[strong]
+                shared_state,
+                #[strong]
+                api_client,
+                #[strong]
+                queue_manager,
+                #[strong]
+                monitor_handle,
+                #[strong]
+                sync_now_tx,
+                #[strong]
+                startup_state,
+                #[strong]
+                background_sync_state,
+                #[strong]
+                apply_in_flight,
+                async move {
+                    if run_on_startup != previous_startup {
+                        match autostart::apply(&window, run_on_startup).await {
+                            Ok(granted) if granted == run_on_startup => {}
+                            Ok(_) => {
+                                startup_row.set_active(previous_startup);
+                                apply_in_flight.set(false);
+
+                                let dialog = adw::MessageDialog::builder()
+                                    .transient_for(&window)
+                                    .heading("Startup Permission Needed")
+                                    .body("Mimick was not allowed to start automatically at login.")
+                                    .build();
+                                dialog.add_response("ok", "OK");
+                                dialog.present();
+                                return;
+                            }
+                            Err(err) => {
+                                startup_row.set_active(previous_startup);
+                                apply_in_flight.set(false);
+
+                                let dialog = adw::MessageDialog::builder()
+                                    .transient_for(&window)
+                                    .heading("Could Not Update Startup Setting")
+                                    .body(&err)
+                                    .build();
+                                dialog.add_response("ok", "OK");
+                                dialog.present();
+                                return;
+                            }
+                        }
+                    }
+
+                    let mut new_config = Config::new();
+                    new_config.data.internal_url_enabled = internal_url_enabled;
+                    new_config.data.external_url_enabled = external_url_enabled;
+                    new_config.data.internal_url = internal_url;
+                    new_config.data.external_url = external_url;
+                    new_config.data.watch_paths = watch_paths.clone();
+                    new_config.data.run_on_startup = run_on_startup;
+                    new_config.data.background_sync_enabled = background_sync_enabled;
+                    new_config.data.pause_on_metered_network = pause_on_metered_network;
+                    new_config.data.pause_on_battery_power = pause_on_battery_power;
+                    new_config.data.notifications_enabled = notifications_enabled;
+                    new_config.data.startup_catchup_mode = catchup_mode;
+                    new_config.data.upload_concurrency = upload_concurrency;
+                    new_config.data.quiet_hours_start = quiet_hours_start;
+                    new_config.data.quiet_hours_end = quiet_hours_end;
+
+                    if include_connectivity
+                        && !api_key.is_empty()
+                        && !new_config.set_api_key(&api_key)
+                    {
+                        apply_in_flight.set(false);
+
+                        let dialog = adw::MessageDialog::builder()
+                            .transient_for(&window)
+                            .heading("Could Not Save API Key")
+                            .body("Mimick could not store the API key in your desktop keyring.")
+                            .build();
+                        dialog.add_response("ok", "OK");
+                        dialog.present();
+                        return;
+                    }
+
+                    if !new_config.save() {
+                        apply_in_flight.set(false);
+
+                        let dialog = adw::MessageDialog::builder()
+                            .transient_for(&window)
+                            .heading("Could Not Save Settings")
+                            .body("Mimick could not write the updated configuration to disk.")
+                            .build();
+                        dialog.add_response("ok", "OK");
+                        dialog.present();
+                        return;
+                    }
+
+                    *startup_state.borrow_mut() = run_on_startup;
+                    *background_sync_state.borrow_mut() = background_sync_enabled;
+
+                    if let Some(client) = api_client.clone() {
+                        client
+                            .update_settings(
+                                runtime_internal_url.clone(),
+                                runtime_external_url.clone(),
+                                api_key.clone(),
+                            )
+                            .await;
+                    }
+
+                    if let Some(qm) = queue_manager.clone() {
+                        qm.set_worker_limit(upload_concurrency);
+                        qm.update_environment_policy(crate::queue_manager::EnvironmentPolicy {
+                            pause_on_metered_network,
+                            pause_on_battery_power,
+                            quiet_hours_start,
+                            quiet_hours_end,
+                        });
+                    }
+
+                    crate::notifications::set_enabled(notifications_enabled);
+
+                    if previous_background_sync != background_sync_enabled {
+                        let mut state = shared_state.lock().unwrap();
+                        if !background_sync_enabled && state.status != "uploading" && !state.paused
+                        {
+                            state.status = "idle".to_string();
+                            state.pause_reason = None;
+                        }
+                    }
+
+                    if let Some(monitor) = monitor_handle.clone() {
+                        let monitor_paths = if background_sync_enabled {
+                            watch_paths.clone()
+                        } else {
+                            Vec::new()
+                        };
+                        monitor.replace_watch_paths(monitor_paths, background_sync_enabled);
+                    }
+
+                    if background_sync_enabled
+                        && previous_background_sync != background_sync_enabled
+                        && let Some(tx) = sync_now_tx.as_ref()
+                    {
+                        let _ = tx.send(());
+                    }
+
+                    {
+                        let mut state = shared_state.lock().unwrap();
+                        state.watched_folder_count = watch_paths.len();
+                        let current_paths = watch_paths
+                            .iter()
+                            .map(|entry| entry.path().to_string())
+                            .collect::<std::collections::HashSet<_>>();
+                        state
+                            .folder_statuses
+                            .retain(|path, _| current_paths.contains(path));
+                    }
+
+                    apply_in_flight.set(false);
+                }
+            ));
+        }
+    ));
+
+    let auto_apply_settings: Rc<dyn Fn()> = Rc::new(clone!(
+        #[strong]
+        apply_settings,
+        move || {
+            (apply_settings)(false);
+        }
+    ));
 
     // Reuse the application-wide API client — do NOT create a new one here.
     // Creating a new reqwest Client per window open allocates a new connection pool
@@ -469,19 +786,27 @@ pub fn build_settings_window(
     // Add existing paths to listbox with album dropdown
     for entry in &config.data.watch_paths {
         #[allow(deprecated)]
-        add_folder_row(&folders_list, entry, albums.clone(), &tracked_rows);
+        add_folder_row(
+            &folders_list,
+            entry,
+            albums.clone(),
+            &tracked_rows,
+            auto_apply_settings.clone(),
+        );
     }
 
     let folders_list_clone = folders_list.clone();
     let window_clone = window.clone();
     let tracked_rows_clone = tracked_rows.clone();
     let albums_clone = albums.clone();
+    let apply_settings_for_add = auto_apply_settings.clone();
 
     add_folder_btn.connect_clicked(move |_| {
         let dialog = FileDialog::builder().title("Select Watch Folder").build();
         let list_clone = folders_list_clone.clone();
         let tracked_clone = tracked_rows_clone.clone();
         let albums_ref = albums_clone.clone();
+        let apply_settings_for_add = apply_settings_for_add.clone();
 
         dialog.select_folder(
             Some(&window_clone),
@@ -500,7 +825,9 @@ pub fn build_settings_window(
                         &WatchPathEntry::Simple(path_str),
                         albums_ref.clone(),
                         &tracked_clone,
+                        apply_settings_for_add.clone(),
                     );
+                    (apply_settings_for_add)();
                 }
             },
         );
@@ -550,7 +877,7 @@ pub fn build_settings_window(
     settings_page.add(&app_group);
 
     let app_flow = gtk::FlowBox::builder()
-        .homogeneous(true)
+        .homogeneous(false)
         .min_children_per_line(1)
         .max_children_per_line(3)
         .selection_mode(gtk::SelectionMode::None)
@@ -563,48 +890,24 @@ pub fn build_settings_window(
 
     let about_btn = Button::builder()
         .label("About Mimick")
-        .hexpand(true)
+        .hexpand(false)
+        .width_request(320)
+        .halign(gtk::Align::Start)
         .build();
     app_flow.insert(&about_btn, -1);
 
     let quit_btn = Button::builder()
         .label("Quit")
         .css_classes(vec!["destructive-action".to_string()])
-        .hexpand(true)
+        .hexpand(false)
+        .width_request(320)
+        .halign(gtk::Align::Start)
         .build();
     app_flow.insert(&quit_btn, -1);
-
-    let save_btn = Button::builder()
-        .label("Save Changes")
-        .css_classes(vec!["suggested-action".to_string()])
-        .hexpand(true)
-        .build();
-    app_flow.insert(&save_btn, -1);
 
     let window_clone_about = window.clone();
     about_btn.connect_clicked(move |_| {
         show_about_dialog(&window_clone_about);
-    });
-
-    let update_save_btn_state = clone!(
-        #[weak]
-        api_key_entry,
-        #[weak]
-        save_btn,
-        move || {
-            let has_key = !api_key_entry.text().is_empty();
-            save_btn.set_sensitive(has_key);
-
-            if has_key {
-                save_btn.add_css_class("suggested-action");
-            } else {
-                save_btn.remove_css_class("suggested-action");
-            }
-        }
-    );
-    update_save_btn_state();
-    api_key_entry.connect_changed(move |_| {
-        update_save_btn_state();
     });
 
     if let Some(qm) = queue_manager.clone() {
@@ -639,6 +942,14 @@ pub fn build_settings_window(
     } else {
         sync_now_btn.set_sensitive(false);
     }
+
+    background_sync_row.connect_active_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
 
     export_btn.connect_clicked(clone!(
         #[weak]
@@ -713,254 +1024,10 @@ pub fn build_settings_window(
     ));
 
     save_btn.connect_clicked(clone!(
-        #[weak]
-        window,
-        #[weak]
-        internal_switch,
-        #[weak]
-        external_switch,
-        #[weak]
-        internal_entry,
-        #[weak]
-        external_entry,
-        #[weak]
-        api_key_entry,
-        #[weak]
-        startup_row,
-        #[weak]
-        metered_row,
-        #[weak]
-        battery_row,
-        #[weak]
-        notifications_row,
-        #[weak]
-        concurrency_row,
-        #[weak]
-        quiet_hours_row,
-        #[weak]
-        quiet_start_row,
-        #[weak]
-        quiet_end_row,
-        #[weak]
-        catchup_row,
-        #[weak]
-        save_btn,
         #[strong]
-        tracked_rows,
-        #[strong]
-        albums,
-        #[strong]
-        shared_state,
-        #[strong]
-        api_client,
-        #[strong]
-        queue_manager,
-        #[strong]
-        monitor_handle,
+        apply_settings,
         move |_| {
-            save_btn.set_sensitive(false);
-
-            let internal_url_enabled = internal_switch.is_active();
-            let external_url_enabled = external_switch.is_active();
-            let internal_url = internal_entry.text().to_string();
-            let external_url = external_entry.text().to_string();
-            let run_on_startup = startup_row.is_active();
-            let pause_on_metered_network = metered_row.is_active();
-            let pause_on_battery_power = battery_row.is_active();
-            let notifications_enabled = notifications_row.is_active();
-            let upload_concurrency = concurrency_row.value() as u8;
-            let quiet_hours_enabled = quiet_hours_row.is_active();
-            let quiet_hours_start = quiet_hours_enabled.then(|| quiet_start_row.value() as u8);
-            let quiet_hours_end = quiet_hours_enabled.then(|| quiet_end_row.value() as u8);
-            let catchup_mode = match catchup_row.selected() {
-                1 => StartupCatchupMode::RecentOnly,
-                2 => StartupCatchupMode::NewFilesOnly,
-                _ => StartupCatchupMode::Full,
-            };
-            let mut watch_paths = Vec::new();
-            let albums_map: HashMap<String, String> = albums.borrow().iter().cloned().collect();
-
-            for row_data in tracked_rows.borrow().iter() {
-                let folder = row_data.path.clone();
-                let rules = row_data.rules.borrow().clone();
-                let has_rules = rules != FolderRules::default();
-
-                let album_name = row_data.album_name.borrow().clone();
-
-                if (album_name.is_empty() || album_name == DEFAULT_ALBUM_LABEL) && !has_rules {
-                    watch_paths.push(WatchPathEntry::Simple(folder));
-                } else {
-                    let album_id = albums_map.get(&album_name).cloned();
-                    watch_paths.push(WatchPathEntry::WithConfig {
-                        path: folder,
-                        album_id,
-                        album_name: if album_name.is_empty() || album_name == DEFAULT_ALBUM_LABEL {
-                            None
-                        } else {
-                            Some(album_name)
-                        },
-                        rules,
-                    });
-                }
-            }
-
-            let api_key = api_key_entry.text().to_string();
-            let runtime_internal_url = if internal_url_enabled {
-                internal_url.clone()
-            } else {
-                String::new()
-            };
-            let runtime_external_url = if external_url_enabled {
-                external_url.clone()
-            } else {
-                String::new()
-            };
-            let startup_changed = run_on_startup != startup_initial;
-
-            glib::MainContext::default().spawn_local(clone!(
-                #[weak]
-                window,
-                #[weak]
-                startup_row,
-                #[weak]
-                save_btn,
-                #[strong]
-                shared_state,
-                #[strong]
-                api_client,
-                #[strong]
-                queue_manager,
-                #[strong]
-                monitor_handle,
-                async move {
-                    if startup_changed {
-                        match autostart::apply(&window, run_on_startup).await {
-                            Ok(granted) if granted == run_on_startup => {}
-                            Ok(_) => {
-                                startup_row.set_active(false);
-                                save_btn.set_sensitive(true);
-
-                                let dialog = adw::MessageDialog::builder()
-                                    .transient_for(&window)
-                                    .heading("Startup Permission Needed")
-                                    .body("Mimick was not allowed to start automatically at login.")
-                                    .build();
-                                dialog.add_response("ok", "OK");
-                                dialog.present();
-                                return;
-                            }
-                            Err(err) => {
-                                startup_row.set_active(startup_initial);
-                                save_btn.set_sensitive(true);
-
-                                let dialog = adw::MessageDialog::builder()
-                                    .transient_for(&window)
-                                    .heading("Could Not Update Startup Setting")
-                                    .body(&err)
-                                    .build();
-                                dialog.add_response("ok", "OK");
-                                dialog.present();
-                                return;
-                            }
-                        }
-                    }
-
-                    let mut new_config = Config::new();
-                    new_config.data.internal_url_enabled = internal_url_enabled;
-                    new_config.data.external_url_enabled = external_url_enabled;
-                    new_config.data.internal_url = internal_url;
-                    new_config.data.external_url = external_url;
-                    new_config.data.watch_paths = watch_paths.clone();
-                    new_config.data.run_on_startup = run_on_startup;
-                    new_config.data.pause_on_metered_network = pause_on_metered_network;
-                    new_config.data.pause_on_battery_power = pause_on_battery_power;
-                    new_config.data.notifications_enabled = notifications_enabled;
-                    new_config.data.startup_catchup_mode = catchup_mode;
-                    new_config.data.upload_concurrency = upload_concurrency;
-                    new_config.data.quiet_hours_start = quiet_hours_start;
-                    new_config.data.quiet_hours_end = quiet_hours_end;
-
-                    if !api_key.is_empty() && !new_config.set_api_key(&api_key) {
-                        save_btn.set_sensitive(true);
-
-                        let dialog = adw::MessageDialog::builder()
-                            .transient_for(&window)
-                            .heading("Could Not Save API Key")
-                            .body("Mimick could not store the API key in your desktop keyring.")
-                            .build();
-                        dialog.add_response("ok", "OK");
-                        dialog.present();
-                        return;
-                    }
-
-                    if !new_config.save() {
-                        save_btn.set_sensitive(true);
-
-                        let dialog = adw::MessageDialog::builder()
-                            .transient_for(&window)
-                            .heading("Could Not Save Settings")
-                            .body("Mimick could not write the updated configuration to disk.")
-                            .build();
-                        dialog.add_response("ok", "OK");
-                        dialog.present();
-                        return;
-                    }
-
-                    if let Some(client) = api_client.clone() {
-                        client
-                            .update_settings(
-                                runtime_internal_url.clone(),
-                                runtime_external_url.clone(),
-                                api_key.clone(),
-                            )
-                            .await;
-                    }
-
-                    if let Some(qm) = queue_manager.clone() {
-                        qm.set_worker_limit(upload_concurrency);
-                        qm.update_environment_policy(crate::queue_manager::EnvironmentPolicy {
-                            pause_on_metered_network,
-                            pause_on_battery_power,
-                            quiet_hours_start,
-                            quiet_hours_end,
-                        });
-                    }
-
-                    crate::notifications::set_enabled(notifications_enabled);
-
-                    if let Some(monitor) = monitor_handle.clone() {
-                        monitor.replace_watch_paths(watch_paths.clone());
-                    }
-
-                    {
-                        let mut state = shared_state.lock().unwrap();
-                        state.watched_folder_count = watch_paths.len();
-                        let current_paths = watch_paths
-                            .iter()
-                            .map(|entry| entry.path().to_string())
-                            .collect::<std::collections::HashSet<_>>();
-                        state
-                            .folder_statuses
-                            .retain(|path, _| current_paths.contains(path));
-                    }
-
-                    save_btn.set_sensitive(true);
-                    save_btn.set_label("Saved");
-                    save_btn.remove_css_class("suggested-action");
-
-                    glib::timeout_add_local_once(
-                        Duration::from_secs(2),
-                        clone!(
-                            #[weak]
-                            save_btn,
-                            move || {
-                                save_btn.set_label("Save Changes");
-                                save_btn.add_css_class("suggested-action");
-                            }
-                        ),
-                    );
-                }
-            ));
+            (apply_settings)(true);
         }
     ));
 
@@ -974,6 +1041,7 @@ pub fn build_settings_window(
     startup_row.set_active(config.data.run_on_startup);
     metered_row.set_active(config.data.pause_on_metered_network);
     battery_row.set_active(config.data.pause_on_battery_power);
+    background_sync_row.set_active(config.data.background_sync_enabled);
     notifications_row.set_active(config.data.notifications_enabled);
     concurrency_row.set_value(config.data.upload_concurrency as f64);
     let qh_enabled = config.data.quiet_hours_start.is_some();
@@ -1034,6 +1102,78 @@ pub fn build_settings_window(
                 dialog.present();
             }
             external_entry.set_sensitive(switch.is_active());
+        }
+    ));
+
+    startup_row.connect_active_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
+    metered_row.connect_active_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
+    battery_row.connect_active_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
+    notifications_row.connect_active_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
+    catchup_row.connect_selected_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
+    concurrency_row.connect_value_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
+    quiet_hours_row.connect_active_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
+    quiet_start_row.connect_value_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
+    quiet_end_row.connect_value_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
         }
     ));
 
@@ -1203,6 +1343,7 @@ fn add_folder_row(
     entry: &WatchPathEntry,
     albums_ref: Rc<RefCell<Vec<(String, String)>>>,
     tracked_rows: &Rc<RefCell<Vec<FolderRowData>>>,
+    on_settings_changed: Rc<dyn Fn()>,
 ) {
     let path = entry.path().to_string();
     let base_subtitle = watch_path_subtitle(&path).unwrap_or_default().to_string();
@@ -1238,6 +1379,7 @@ fn add_folder_row(
     let picker_btn_clone = picker_btn.clone();
     let album_name_clone = album_name.clone();
     let albums_ref_clone = albums_ref.clone();
+    let on_settings_changed_for_picker = on_settings_changed.clone();
 
     picker_btn.connect_clicked(clone!(
         #[weak]
@@ -1251,6 +1393,7 @@ fn add_folder_row(
                 let albums_ref_clone = albums_ref_clone.clone();
                 let album_name_clone = album_name_clone.clone();
                 let picker_btn_clone = picker_btn_clone.clone();
+                let on_settings_changed_for_picker = on_settings_changed_for_picker.clone();
 
                 glib::idle_add_local_once(move || {
                     show_album_picker_dialog(
@@ -1258,6 +1401,7 @@ fn add_folder_row(
                         albums_ref_clone,
                         album_name_clone,
                         picker_btn_clone,
+                        on_settings_changed_for_picker,
                     );
                 });
             }
@@ -1284,6 +1428,7 @@ fn add_folder_row(
     let path_clone = path.clone();
     let rules_clone = rules.clone();
     let path_for_rules = path.clone();
+    let on_settings_changed_for_rules = on_settings_changed.clone();
 
     rules_btn.connect_clicked(clone!(
         #[weak]
@@ -1296,12 +1441,20 @@ fn add_folder_row(
                 let window = window.clone();
                 let path_for_rules = path_for_rules.clone();
                 let rules_clone = rules_clone.clone();
+                let on_settings_changed_for_rules = on_settings_changed_for_rules.clone();
                 glib::idle_add_local_once(move || {
-                    show_folder_rules_dialog(&window, &path_for_rules, rules_clone);
+                    show_folder_rules_dialog(
+                        &window,
+                        &path_for_rules,
+                        rules_clone,
+                        on_settings_changed_for_rules,
+                    );
                 });
             }
         }
     ));
+
+    let on_settings_changed_for_remove = on_settings_changed.clone();
 
     remove_btn.connect_clicked(clone!(
         #[weak]
@@ -1311,12 +1464,14 @@ fn add_folder_row(
             let tracked_clone = tracked_clone.clone();
             let path_clone = path_clone.clone();
             let expander_row = expander_row.clone();
+            let on_settings_changed_for_remove = on_settings_changed_for_remove.clone();
             glib::idle_add_local_once(move || {
                 if let Some(focus_target) = list_clone.first_child() {
                     focus_target.grab_focus();
                 }
                 list_clone.remove(&expander_row);
                 tracked_clone.borrow_mut().retain(|r| r.path != path_clone);
+                (on_settings_changed_for_remove)();
             });
         }
     ));
@@ -1343,6 +1498,7 @@ fn show_folder_rules_dialog(
     parent: &impl gtk::prelude::IsA<gtk::Window>,
     folder_path: &str,
     rules_state: Rc<RefCell<FolderRules>>,
+    on_settings_changed: Rc<dyn Fn()>,
 ) {
     let dialog = adw::Window::builder()
         .transient_for(parent)
@@ -1441,6 +1597,7 @@ fn show_folder_rules_dialog(
                 max_file_size_mb,
                 allowed_extensions,
             };
+            (on_settings_changed)();
             dialog.close();
         }
     ));
@@ -1625,6 +1782,7 @@ fn show_album_picker_dialog(
     albums_ref: Rc<RefCell<Vec<(String, String)>>>,
     target_album_state: Rc<RefCell<String>>,
     trigger_btn: Button,
+    on_settings_changed: Rc<dyn Fn()>,
 ) {
     let dialog = adw::Window::builder()
         .transient_for(parent)
@@ -1689,9 +1847,11 @@ fn show_album_picker_dialog(
                 let dialog_clone = dialog.clone();
                 let state_clone = target_album_state.clone();
                 let btn_clone = trigger_btn.clone();
+                let on_settings_changed_clone = on_settings_changed.clone();
                 default_row.connect_activated(move |_| {
                     *state_clone.borrow_mut() = DEFAULT_ALBUM_LABEL.to_string();
                     btn_clone.set_label(&format!("Album: {}", DEFAULT_ALBUM_LABEL));
+                    (on_settings_changed_clone)();
                     dialog_clone.close();
                 });
                 list_box.append(&default_row);
@@ -1707,9 +1867,11 @@ fn show_album_picker_dialog(
                 let dialog_clone = dialog.clone();
                 let state_clone = target_album_state.clone();
                 let btn_clone = trigger_btn.clone();
+                let on_settings_changed_clone = on_settings_changed.clone();
                 create_row.connect_activated(move |_| {
                     *state_clone.borrow_mut() = typed_raw.clone();
                     btn_clone.set_label(&format!("Album: {}", typed_raw));
+                    (on_settings_changed_clone)();
                     dialog_clone.close();
                 });
                 list_box.append(&create_row);
@@ -1730,9 +1892,11 @@ fn show_album_picker_dialog(
                     let state_clone = target_album_state.clone();
                     let btn_clone = trigger_btn.clone();
                     let album_name_clone = album_name.clone();
+                    let on_settings_changed_clone = on_settings_changed.clone();
                     row.connect_activated(move |_| {
                         *state_clone.borrow_mut() = album_name_clone.clone();
                         btn_clone.set_label(&format!("Album: {}", album_name_clone));
+                        (on_settings_changed_clone)();
                         dialog_clone.close();
                     });
                     list_box.append(&row);

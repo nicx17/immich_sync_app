@@ -23,17 +23,14 @@ pub fn send_sync_summary(succeeded: usize, failed: usize) {
     if succeeded == 0 && failed == 0 {
         return;
     }
-    let title = if failed == 0 {
-        "Sync complete".to_string()
-    } else {
-        format!("Sync complete ({} failed)", failed)
-    };
+    let title = "Sync complete".to_string();
+    let processed = succeeded.saturating_add(failed);
     let body = if failed == 0 {
-        format!("{} file(s) uploaded successfully.", succeeded)
+        format!("All {} file(s) processed. Idle.", processed)
     } else {
         format!(
-            "{} file(s) uploaded. {} file(s) failed and will be retried.",
-            succeeded, failed
+            "All {} file(s) processed. Idle. {} failed and will be retried.",
+            processed, failed
         )
     };
     send_gio(&title, &body, "sync-complete");

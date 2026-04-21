@@ -115,6 +115,10 @@ fn build_summary(config: &Config, state: &AppState) -> String {
         config.data.pause_on_battery_power
     ));
     lines.push(format!(
+        "Background sync enabled: {}",
+        config.data.background_sync_enabled
+    ));
+    lines.push(format!(
         "Notifications enabled: {}",
         config.data.notifications_enabled
     ));
@@ -176,6 +180,7 @@ struct RedactedConfigExport {
     delete_after_sync: bool,
     pause_on_metered_network: bool,
     pause_on_battery_power: bool,
+    background_sync_enabled: bool,
     notifications_enabled: bool,
     startup_catchup_mode: String,
     upload_concurrency: u8,
@@ -257,6 +262,7 @@ fn build_config_export(config: &Config) -> RedactedConfigExport {
         delete_after_sync: config.data.delete_after_sync,
         pause_on_metered_network: config.data.pause_on_metered_network,
         pause_on_battery_power: config.data.pause_on_battery_power,
+        background_sync_enabled: config.data.background_sync_enabled,
         notifications_enabled: config.data.notifications_enabled,
         startup_catchup_mode: format!("{:?}", config.data.startup_catchup_mode),
         upload_concurrency: config.data.upload_concurrency,

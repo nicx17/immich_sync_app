@@ -45,6 +45,17 @@ pub struct QueueManager {
     retry_path: PathBuf,
     policy: Arc<std::sync::Mutex<EnvironmentPolicy>>,
     worker_limit: Arc<AtomicUsize>,
+    batch_notify_state: Arc<std::sync::Mutex<BatchNotifyState>>,
+}
+
+#[derive(Debug, Default)]
+struct BatchNotifyState {
+    active: bool,
+    notify_scheduled: bool,
+    current_batch_id: u64,
+    last_notified_batch_id: u64,
+    start_processed: usize,
+    start_failed: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -98,8 +109,7 @@ impl QueueManager {
         ));
         let policy_ref = Arc::new(std::sync::Mutex::new(policy));
         let worker_limit = Arc::new(AtomicUsize::new(workers.clamp(1, MAX_WORKERS)));
-
-        let last_notify_completed = Arc::new(std::sync::Mutex::new(0usize));
+        let batch_notify_state = Arc::new(std::sync::Mutex::new(BatchNotifyState::default()));
         let connectivity_lost_notified = Arc::new(std::sync::Mutex::new(false));
         let consecutive_failures = Arc::new(std::sync::Mutex::new(0usize));
 
@@ -111,6 +121,7 @@ impl QueueManager {
             retry_path: retry_path.clone(),
             policy: policy_ref.clone(),
             worker_limit: worker_limit.clone(),
+            batch_notify_state: batch_notify_state.clone(),
         };
 
         for i in 0..MAX_WORKERS {
@@ -121,7 +132,7 @@ impl QueueManager {
             let retry_ref = retry_list.clone();
             let pending_ref = pending_paths.clone();
             let sync_index_ref = sync_index.clone();
-            let last_notify_ref = last_notify_completed.clone();
+            let batch_notify_ref = batch_notify_state.clone();
             let connectivity_notified_ref = connectivity_lost_notified.clone();
             let consec_fail_ref = consecutive_failures.clone();
             let policy_ref = policy_ref.clone();
@@ -207,6 +218,8 @@ impl QueueManager {
                                     );
                                     {
                                         let mut s = state_ref.lock().unwrap();
+                                        let mut batch_state = batch_notify_ref.lock().unwrap();
+                                        activate_batch_if_needed(&mut batch_state, &s);
                                         s.failed_count =
                                             s.failed_count.saturating_sub(retries.len());
                                         s.total_queued += retries.len();
@@ -301,7 +314,7 @@ impl QueueManager {
                             }
 
                             // Update processed count and determine idle state.
-                            let summary = {
+                            let summary_batch = {
                                 let mut s = state_ref.lock().unwrap();
                                 if success {
                                     s.processed_count += 1;
@@ -320,12 +333,17 @@ impl QueueManager {
                                     };
                                     s.progress = 100;
                                     log::info!("All {} file(s) processed. Idle.", s.total_queued);
-                                    let succeeded = s
-                                        .processed_count
-                                        .saturating_sub(*last_notify_ref.lock().unwrap());
-                                    let failed = s.failed_count;
-                                    *last_notify_ref.lock().unwrap() = s.processed_count;
-                                    Some((succeeded, failed))
+                                    let mut batch_state = batch_notify_ref.lock().unwrap();
+                                    if batch_state.active
+                                        && batch_state.current_batch_id
+                                            != batch_state.last_notified_batch_id
+                                        && !batch_state.notify_scheduled
+                                    {
+                                        batch_state.notify_scheduled = true;
+                                        Some(batch_state.current_batch_id)
+                                    } else {
+                                        None
+                                    }
                                 } else {
                                     s.queue_size = s.total_queued.saturating_sub(total_handled);
                                     s.progress = if s.total_queued > 0 {
@@ -339,8 +357,51 @@ impl QueueManager {
                                 }
                             };
 
-                            if let Some((succeeded, failed)) = summary {
-                                notifications::send_sync_summary(succeeded, failed);
+                            if let Some(batch_id) = summary_batch {
+                                let state_ref = state_ref.clone();
+                                let batch_notify_ref = batch_notify_ref.clone();
+                                tokio::spawn(async move {
+                                    // Debounce queue-drain notifications so bursts of single-file
+                                    // arrivals do not emit one desktop notification per upload.
+                                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+                                    let summary = {
+                                        let s = state_ref.lock().unwrap();
+                                        let mut batch_state = batch_notify_ref.lock().unwrap();
+                                        let total_handled = s.processed_count + s.failed_count;
+                                        let queue_idle = total_handled >= s.total_queued
+                                            && s.active_workers == 0;
+
+                                        if batch_state.active
+                                            && batch_state.notify_scheduled
+                                            && batch_state.current_batch_id == batch_id
+                                            && batch_state.current_batch_id
+                                                != batch_state.last_notified_batch_id
+                                            && queue_idle
+                                        {
+                                            let succeeded = s
+                                                .processed_count
+                                                .saturating_sub(batch_state.start_processed);
+                                            let failed = s
+                                                .failed_count
+                                                .saturating_sub(batch_state.start_failed);
+
+                                            batch_state.last_notified_batch_id = batch_id;
+                                            batch_state.notify_scheduled = false;
+                                            batch_state.active = false;
+                                            Some((succeeded, failed))
+                                        } else {
+                                            if batch_state.current_batch_id == batch_id {
+                                                batch_state.notify_scheduled = false;
+                                            }
+                                            None
+                                        }
+                                    };
+
+                                    if let Some((succeeded, failed)) = summary {
+                                        notifications::send_sync_summary(succeeded, failed);
+                                    }
+                                });
                             }
                         }
                         None => {
@@ -360,6 +421,8 @@ impl QueueManager {
             if !loaded_retries.is_empty() {
                 {
                     let mut s = state_ref2.lock().unwrap();
+                    let mut batch_state = batch_notify_state.lock().unwrap();
+                    activate_batch_if_needed(&mut batch_state, &s);
                     // Retry items are now being actively queued — reset failed_count.
                     s.failed_count = 0;
                     s.total_queued += loaded_retries.len();
@@ -388,6 +451,8 @@ impl QueueManager {
 
         {
             let mut s = self.shared_state.lock().unwrap();
+            let mut batch_state = self.batch_notify_state.lock().unwrap();
+            activate_batch_if_needed(&mut batch_state, &s);
             s.total_queued += 1;
             s.queue_size = s.total_queued.saturating_sub(s.processed_count);
 
@@ -532,6 +597,8 @@ impl QueueManager {
 
         {
             let mut state = self.shared_state.lock().unwrap();
+            let mut batch_state = self.batch_notify_state.lock().unwrap();
+            activate_batch_if_needed(&mut batch_state, &state);
             state.failed_count = state.failed_count.saturating_sub(tasks.len());
             state.total_queued += tasks.len();
             state.queue_size = state.total_queued.saturating_sub(state.processed_count);
@@ -563,6 +630,19 @@ fn current_attempt_count(state: &AppState, path: &str) -> u32 {
         .find(|event| event.path == path)
         .map(|event| event.attempts)
         .unwrap_or(1)
+}
+
+fn activate_batch_if_needed(batch_state: &mut BatchNotifyState, state: &AppState) {
+    if batch_state.active {
+        return;
+    }
+
+    // Start a fresh notification batch when work is (re)introduced.
+    batch_state.active = true;
+    batch_state.notify_scheduled = false;
+    batch_state.current_batch_id = batch_state.current_batch_id.saturating_add(1);
+    batch_state.start_processed = state.processed_count;
+    batch_state.start_failed = state.failed_count;
 }
 
 fn unix_timestamp_now() -> f64 {
@@ -840,6 +920,7 @@ mod tests {
                     quiet_hours_end: None,
                 })),
                 worker_limit: Arc::new(AtomicUsize::new(1)),
+                batch_notify_state: Arc::new(Mutex::new(BatchNotifyState::default())),
             },
             rx,
             shared_state,

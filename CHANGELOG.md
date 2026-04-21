@@ -6,8 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
----
+## [Unreleased] - 2026-04-21
+
+### Added
+- Settings: Live auto-apply for most preferences (workers, quiet hours, folder rules, per-folder album selection, watch-folders). Connectivity fields (API key and server URLs) are now applied only when explicitly saved from the Connectivity section.
+- Single-batch sync summary notification: multiple concurrent upload workers now aggregate results and emit a single "processed" summary notification when a sync batch completes.
+
+### Changed
+- Logging: Console output is colorized by level and file logs use a plain, machine-friendly formatter with automatic rotation (approx. 2 MB per file, keep 5). See README and wiki for configuration details.
+
 
 ## [9.3.0] - 2026-04-14
 

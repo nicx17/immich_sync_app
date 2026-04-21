@@ -2,6 +2,7 @@
 
 use gtk::prelude::*;
 use libadwaita as adw;
+use log::Record;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -31,7 +32,10 @@ use state_manager::{AppState, StateManager};
 use sync_index::SyncIndex;
 use tray_icon::build_tray;
 
-use flexi_logger::{FileSpec, Logger, WriteMode, colored_detailed_format, detailed_format};
+use flexi_logger::{
+    Cleanup, Criterion, DeferredNow, Duplicate, FileSpec, Logger, Naming, WriteMode, style,
+};
+use std::io::Write;
 
 /// Retains the queue manager handle so the graceful shutdown path can flush pending retries.
 static QM_HANDLE: std::sync::OnceLock<Arc<QueueManager>> = std::sync::OnceLock::new();
@@ -42,6 +46,45 @@ static MONITOR_HANDLE: std::sync::OnceLock<Arc<MonitorHandle>> = std::sync::Once
 /// Used to request an immediate startup-style catch-up scan from the UI or tray controls.
 static MANUAL_SYNC_TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<()>> =
     std::sync::OnceLock::new();
+
+fn format_log_location(record: &Record) -> String {
+    match (record.file(), record.line()) {
+        (Some(file), Some(line)) => format!(" {}:{}", file, line),
+        _ => String::new(),
+    }
+}
+
+fn detailed_plain_format(
+    w: &mut dyn Write,
+    now: &mut DeferredNow,
+    record: &Record,
+) -> Result<(), std::io::Error> {
+    write!(
+        w,
+        "[{}] {:<5} [{}] {}{}",
+        now.format("%Y-%m-%d %H:%M:%S%.6f %:z"),
+        record.level(),
+        record.target(),
+        record.args(),
+        format_log_location(record)
+    )
+}
+
+fn detailed_colored_format(
+    w: &mut dyn Write,
+    now: &mut DeferredNow,
+    record: &Record,
+) -> Result<(), std::io::Error> {
+    write!(
+        w,
+        "[{}] {} [{}] {}{}",
+        now.format("%Y-%m-%d %H:%M:%S%.6f %:z"),
+        style(record.level()).paint(format!("{:<5}", record.level())),
+        record.target(),
+        record.args(),
+        format_log_location(record)
+    )
+}
 
 #[tokio::main]
 async fn main() {
@@ -59,10 +102,15 @@ async fn main() {
                 .suppress_timestamp() // "mimick.log" instead of "mimick_2026-03-09_10-33-35.log"
                 .suffix("log"),
         )
-        .format_for_files(detailed_format)
-        .format_for_stdout(colored_detailed_format)
+        .format_for_files(detailed_plain_format)
+        .format_for_stdout(detailed_colored_format)
+        .rotate(
+            Criterion::Size(2_000_000),
+            Naming::Numbers,
+            Cleanup::KeepLogFiles(5),
+        )
         // Also print to stdout for systemd / terminal users
-        .duplicate_to_stdout(flexi_logger::Duplicate::All)
+        .duplicate_to_stdout(Duplicate::All)
         .write_mode(WriteMode::Direct)
         .start()
         .expect("Failed to initialize logger");
@@ -126,6 +174,8 @@ async fn main() {
             state.watched_folder_count = watch_folder_count;
         }
 
+        let background_sync_enabled = config.data.background_sync_enabled;
+
         let api_key = config.get_api_key().unwrap_or_default();
         let runtime_internal_url = if config.data.internal_url_enabled {
             config.data.internal_url.clone()
@@ -162,12 +212,21 @@ async fn main() {
         // Apply the user's notification preference before any notification can fire.
         crate::notifications::set_enabled(config.data.notifications_enabled);
 
-        // Start the live filesystem watcher immediately.
+        // Keep the watcher service alive, but optionally disable active folder watches.
         let (tx, mut rx) = mpsc::channel(32);
-        let monitor = Monitor::new(config.data.watch_paths.clone());
+        let monitor_paths = if background_sync_enabled {
+            config.data.watch_paths.clone()
+        } else {
+            Vec::new()
+        };
+        let monitor = Monitor::new(monitor_paths, background_sync_enabled);
         let monitor_handle = Arc::new(monitor.start(tx));
         let _ = MONITOR_HANDLE.set(monitor_handle);
-        log::info!("File monitor started");
+        if background_sync_enabled {
+            log::info!("File monitor started");
+        } else {
+            log::info!("Background sync is disabled; monitor started with no active watches");
+        }
 
         // Feed monitor events into the upload queue, preserving per-path album config
         let qm_clone = qm.clone();
@@ -215,22 +274,26 @@ async fn main() {
         let _ = QM_HANDLE.set(qm.clone());
 
         // The startup scan backfills anything that arrived while Mimick was not running.
-        let shared_state_startup_task = shared_state_startup.clone();
-        tokio::spawn(async move {
-            let startup_api = API_CLIENT_HANDLE
-                .get()
-                .cloned()
-                .expect("API client should be initialized before startup scan");
-            queue_unsynced_files(
-                startup_paths,
-                startup_qm,
-                startup_sync_index,
-                startup_api,
-                config::Config::new().data.startup_catchup_mode,
-                shared_state_startup_task,
-            )
-            .await;
-        });
+        if background_sync_enabled {
+            let shared_state_startup_task = shared_state_startup.clone();
+            tokio::spawn(async move {
+                let startup_api = API_CLIENT_HANDLE
+                    .get()
+                    .cloned()
+                    .expect("API client should be initialized before startup scan");
+                queue_unsynced_files(
+                    startup_paths,
+                    startup_qm,
+                    startup_sync_index,
+                    startup_api,
+                    config::Config::new().data.startup_catchup_mode,
+                    shared_state_startup_task,
+                )
+                .await;
+            });
+        } else {
+            log::info!("Background sync is disabled; skipping startup catch-up scan");
+        }
 
         let startup_state = shared_state_startup.clone();
         let status_api = API_CLIENT_HANDLE
