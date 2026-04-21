@@ -148,6 +148,9 @@ pub struct ConfigData {
     pub pause_on_metered_network: bool,
     #[serde(default)]
     pub pause_on_battery_power: bool,
+    /// Whether automatic background monitoring/upload discovery is enabled.
+    #[serde(default = "default_true")]
+    pub background_sync_enabled: bool,
     /// Whether desktop notifications (sync summary, connectivity lost, etc.) are shown.
     #[serde(default = "default_true")]
     pub notifications_enabled: bool,
@@ -177,6 +180,7 @@ impl Default for ConfigData {
             delete_after_sync: false,
             pause_on_metered_network: false,
             pause_on_battery_power: false,
+            background_sync_enabled: true,
             notifications_enabled: true,
             startup_catchup_mode: StartupCatchupMode::default(),
             upload_concurrency: default_upload_concurrency(),
@@ -363,7 +367,14 @@ mod tests {
         let data = ConfigData::default();
         assert!(data.internal_url_enabled);
         assert!(data.external_url_enabled);
+        assert!(data.background_sync_enabled);
         assert!(!data.album_sync); // default is false for bool
+    }
+
+    #[test]
+    fn test_config_data_background_sync_defaults_true_when_missing() {
+        let data: ConfigData = serde_json::from_str("{}").unwrap();
+        assert!(data.background_sync_enabled);
     }
 
     #[test]

@@ -174,6 +174,8 @@ async fn main() {
             state.watched_folder_count = watch_folder_count;
         }
 
+        let background_sync_enabled = config.data.background_sync_enabled;
+
         let api_key = config.get_api_key().unwrap_or_default();
         let runtime_internal_url = if config.data.internal_url_enabled {
             config.data.internal_url.clone()
@@ -210,12 +212,21 @@ async fn main() {
         // Apply the user's notification preference before any notification can fire.
         crate::notifications::set_enabled(config.data.notifications_enabled);
 
-        // Start the live filesystem watcher immediately.
+        // Keep the watcher service alive, but optionally disable active folder watches.
         let (tx, mut rx) = mpsc::channel(32);
-        let monitor = Monitor::new(config.data.watch_paths.clone());
+        let monitor_paths = if background_sync_enabled {
+            config.data.watch_paths.clone()
+        } else {
+            Vec::new()
+        };
+        let monitor = Monitor::new(monitor_paths, background_sync_enabled);
         let monitor_handle = Arc::new(monitor.start(tx));
         let _ = MONITOR_HANDLE.set(monitor_handle);
-        log::info!("File monitor started");
+        if background_sync_enabled {
+            log::info!("File monitor started");
+        } else {
+            log::info!("Background sync is disabled; monitor started with no active watches");
+        }
 
         // Feed monitor events into the upload queue, preserving per-path album config
         let qm_clone = qm.clone();
@@ -263,22 +274,26 @@ async fn main() {
         let _ = QM_HANDLE.set(qm.clone());
 
         // The startup scan backfills anything that arrived while Mimick was not running.
-        let shared_state_startup_task = shared_state_startup.clone();
-        tokio::spawn(async move {
-            let startup_api = API_CLIENT_HANDLE
-                .get()
-                .cloned()
-                .expect("API client should be initialized before startup scan");
-            queue_unsynced_files(
-                startup_paths,
-                startup_qm,
-                startup_sync_index,
-                startup_api,
-                config::Config::new().data.startup_catchup_mode,
-                shared_state_startup_task,
-            )
-            .await;
-        });
+        if background_sync_enabled {
+            let shared_state_startup_task = shared_state_startup.clone();
+            tokio::spawn(async move {
+                let startup_api = API_CLIENT_HANDLE
+                    .get()
+                    .cloned()
+                    .expect("API client should be initialized before startup scan");
+                queue_unsynced_files(
+                    startup_paths,
+                    startup_qm,
+                    startup_sync_index,
+                    startup_api,
+                    config::Config::new().data.startup_catchup_mode,
+                    shared_state_startup_task,
+                )
+                .await;
+            });
+        } else {
+            log::info!("Background sync is disabled; skipping startup catch-up scan");
+        }
 
         let startup_state = shared_state_startup.clone();
         let status_api = API_CLIENT_HANDLE
