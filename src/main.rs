@@ -2,6 +2,7 @@
 
 use gtk::prelude::*;
 use libadwaita as adw;
+use log::Record;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -31,7 +32,10 @@ use state_manager::{AppState, StateManager};
 use sync_index::SyncIndex;
 use tray_icon::build_tray;
 
-use flexi_logger::{FileSpec, Logger, WriteMode, colored_detailed_format, detailed_format};
+use flexi_logger::{
+    Cleanup, Criterion, DeferredNow, Duplicate, FileSpec, Logger, Naming, WriteMode, style,
+};
+use std::io::Write;
 
 /// Retains the queue manager handle so the graceful shutdown path can flush pending retries.
 static QM_HANDLE: std::sync::OnceLock<Arc<QueueManager>> = std::sync::OnceLock::new();
@@ -42,6 +46,45 @@ static MONITOR_HANDLE: std::sync::OnceLock<Arc<MonitorHandle>> = std::sync::Once
 /// Used to request an immediate startup-style catch-up scan from the UI or tray controls.
 static MANUAL_SYNC_TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<()>> =
     std::sync::OnceLock::new();
+
+fn format_log_location(record: &Record) -> String {
+    match (record.file(), record.line()) {
+        (Some(file), Some(line)) => format!(" {}:{}", file, line),
+        _ => String::new(),
+    }
+}
+
+fn detailed_plain_format(
+    w: &mut dyn Write,
+    now: &mut DeferredNow,
+    record: &Record,
+) -> Result<(), std::io::Error> {
+    write!(
+        w,
+        "[{}] {:<5} [{}] {}{}",
+        now.format("%Y-%m-%d %H:%M:%S%.6f %:z"),
+        record.level(),
+        record.target(),
+        record.args(),
+        format_log_location(record)
+    )
+}
+
+fn detailed_colored_format(
+    w: &mut dyn Write,
+    now: &mut DeferredNow,
+    record: &Record,
+) -> Result<(), std::io::Error> {
+    write!(
+        w,
+        "[{}] {} [{}] {}{}",
+        now.format("%Y-%m-%d %H:%M:%S%.6f %:z"),
+        style(record.level()).paint(format!("{:<5}", record.level())),
+        record.target(),
+        record.args(),
+        format_log_location(record)
+    )
+}
 
 #[tokio::main]
 async fn main() {
@@ -59,10 +102,15 @@ async fn main() {
                 .suppress_timestamp() // "mimick.log" instead of "mimick_2026-03-09_10-33-35.log"
                 .suffix("log"),
         )
-        .format_for_files(detailed_format)
-        .format_for_stdout(colored_detailed_format)
+        .format_for_files(detailed_plain_format)
+        .format_for_stdout(detailed_colored_format)
+        .rotate(
+            Criterion::Size(2_000_000),
+            Naming::Numbers,
+            Cleanup::KeepLogFiles(5),
+        )
         // Also print to stdout for systemd / terminal users
-        .duplicate_to_stdout(flexi_logger::Duplicate::All)
+        .duplicate_to_stdout(Duplicate::All)
         .write_mode(WriteMode::Direct)
         .start()
         .expect("Failed to initialize logger");
