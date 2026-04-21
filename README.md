@@ -231,7 +231,19 @@ cargo run -- --settings     # open the settings window immediately
 
 ```
 
-Logs written to the terminal and to `~/.cache/mimick/mimick.log` now include timestamps.
+Logs written to the terminal and to `~/.cache/mimick/mimick.log` include timestamps.
+Terminal logs are colorized by level, and file logs rotate automatically.
+
+## Logging & Notifications
+
+- **Logging**: Mimick now uses a colored console formatter for human-friendly terminal output and a plain file formatter for persistent logs. File logs are rotated automatically (approx. 2 MB per file; 5 files kept). Control verbosity with `RUST_LOG` (for example: `RUST_LOG=debug`). See [wiki/Development.md](wiki/Development.md) for details on the logger configuration.
+
+- **Notifications**: To reduce notification spam, Mimick aggregates multiple worker uploads into a single batch summary notification when a sync cycle completes. A separate "Connection Lost" notification is still emitted for connectivity failure events.
+
+### Settings behavior
+
+- Most settings (worker count, quiet hours, folder rules, per-folder album, watch-folder additions/removals) are applied live when changed in the Settings window.
+- Connectivity edits (API key and server URLs) are intentionally save-only and require clicking **Save** within the Connectivity group to take effect. This reduces accidental partial-configuration of server credentials during exploratory edits.
 
 ### Local Flatpak Build
 
