@@ -32,7 +32,7 @@ Mimick is a desktop Immich client for Linux, combining a persistent background d
 
 ## Screenshots
 
-| Settings Window | System Tray Menu |
+| Settings Window | Status page |
 | :---: | :---: |
 | ![Setup window](docs/screenshots/setup_window.png) | ![Control window](docs/screenshots/control_window.png) |
 | **Queue Inspector** | **About Dialog** |
