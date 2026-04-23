@@ -123,6 +123,24 @@ jobs:
             printf 'GPGKey=%s\n' "$REPO_GPG_KEY"
           } > repo/mimick.flatpakrepo
 
+      - name: Generate .flatpakref file
+        env:
+          REPO_GPG_KEY: ${{ steps.signing_key.outputs.public_key_b64 }}
+        run: |
+          {
+            printf '[Flatpak Ref]\n'
+            printf 'Title=Mimick\n'
+            printf 'Name=io.github.nicx17.mimick\n'
+            printf 'Branch=stable\n'
+            printf 'Url=https://nicx17.github.io/mimick/\n'
+            printf 'SuggestRemoteName=mimick\n'
+            printf 'Homepage=https://github.com/nicx17/mimick\n'
+            printf 'Icon=https://nicx17.github.io/mimick/icon.png\n'
+            printf 'RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo\n'
+            printf 'IsRuntime=false\n'
+            printf 'GPGKey=%s\n' "$REPO_GPG_KEY"
+          } > repo/mimick.flatpakref
+
       - name: Copy landing page assets
         run: |
           cp site/index.html repo/index.html
