@@ -85,7 +85,13 @@ You can easily install Mimick by downloading and opening the `.flatpakref` file.
 
 ### Command Line Install
 
-Alternatively, install using the terminal:
+Alternatively, install using the terminal. You can install directly via the `.flatpakref`:
+
+```bash
+flatpak install --user https://nicx17.github.io/mimick/mimick.flatpakref
+```
+
+Or by adding the repository manually:
 
 ```bash
 # Add the official Mimick repository
@@ -94,6 +100,8 @@ flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/m
 # Install the application
 flatpak install --user mimick-repo io.github.nicx17.mimick
 ```
+
+*Note: If Flatpak fails to install due to a missing `runtime/org.gnome.Platform`, ensure that you have the [Flathub](https://flathub.org/setup) remote configured on your system.*
 
 ### Verify the Flatpak Repo Key
 

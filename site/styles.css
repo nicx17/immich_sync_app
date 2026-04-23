@@ -171,6 +171,23 @@ code {
     font-size: 0.94rem;
 }
 
+.install-note {
+    margin-top: 1.1rem;
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.install-note a {
+    color: var(--accent-deep);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.install-note a:hover {
+    text-decoration: underline;
+}
+
 .links-container {
     display: grid;
     gap: 0.95rem;

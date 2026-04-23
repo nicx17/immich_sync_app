@@ -41,8 +41,15 @@
                         Copy
                     </button>
                 </div>
-                <pre><code id="install-command">flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
+                <pre><code id="install-command"># Install directly via flatpakref
+flatpak install --user https://nicx17.github.io/mimick/mimick.flatpakref
+
+# Or add the repo manually
+flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
 flatpak install --user mimick-repo io.github.nicx17.mimick</code></pre>
+                <p class="install-note">
+                    <strong>Note:</strong> If you receive a "Required runtime not found" error, ensure you have the <a href="https://flathub.org/setup" target="_blank" rel="noopener">Flathub</a> remote configured.
+                </p>
             </section>
 
             <section class="links-container" aria-label="Repository links">
