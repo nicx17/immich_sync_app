@@ -9,6 +9,14 @@ The recommended install method is the official Flatpak repository.
 
 ## Install Mimick
 
+### Graphical Install (One-Click)
+You can easily install Mimick by downloading and opening the `.flatpakref` file. Your system's software center (like GNOME Software or KDE Discover) should open it and handle adding the repository and installing the app automatically:
+
+[Download mimick.flatpakref](https://nicx17.github.io/mimick/mimick.flatpakref)
+
+### Command Line Install
+Alternatively, install using the terminal:
+
 ```bash
 # Add the official Mimick repository
 flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
