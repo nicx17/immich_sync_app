@@ -88,7 +88,7 @@ flatpak install --user mimick-repo io.github.nicx17.mimick</code></pre>
     <script>
         document.querySelectorAll(".copy-button").forEach((btn) => {
             btn.addEventListener("click", async () => {
-                const targetId = btn.getAttribute("data-copy-target");
+                const targetId = btn.dataset.copyTarget;
                 const codeBlock = targetId ? document.getElementById(targetId) : null;
                 if (!codeBlock) return;
 

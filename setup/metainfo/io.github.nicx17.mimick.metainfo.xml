@@ -74,6 +74,17 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="9.4.0" date="2026-04-23">
+      <description>
+        <ul>
+          <li>Settings: Live auto-apply for most preferences (workers, quiet hours, folder rules, per-folder album selection, watch-folders). Connectivity fields (API key and server URLs) are now applied only when explicitly saved from the Connectivity section.</li>
+          <li>Single-batch sync summary notification: multiple concurrent upload workers now aggregate results and emit a single "processed" summary notification when a sync batch completes.</li>
+          <li>Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.</li>
+          <li>GitHub Pages repository pipeline now dynamically generates a mimick.flatpakref file for one-click graphical installations.</li>
+          <li>Logging: Console output is colorized by level and file logs use a plain, machine-friendly formatter with automatic rotation.</li>
+        </ul>
+      </description>
+    </release>
     <release version="9.3.0" date="2026-04-14">
       <description>
         <ul>

@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased] - 2026-04-21
+## [9.4.0] - 2026-04-23
 
 ### Added
 - Settings: Live auto-apply for most preferences (workers, quiet hours, folder rules, per-folder album selection, watch-folders). Connectivity fields (API key and server URLs) are now applied only when explicitly saved from the Connectivity section.
