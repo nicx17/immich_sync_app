@@ -28,9 +28,9 @@ sudo pacman -S gtk4 libadwaita pkgconf base-devel
 
 If you plan to build or test the Flatpak bundle locally using `flatpak-builder`, you must install the following from [Flathub](https://flathub.org/setup):
 
-- **GNOME Platform 49 Runtime** (`org.gnome.Platform//49`)
-- **GNOME SDK 49** (`org.gnome.Sdk//49`)
-- **Freedesktop Rust Extension** (`org.freedesktop.Sdk.Extension.rust-stable//24.08`)
+- **GNOME Platform 50 Runtime** (`org.gnome.Platform//50`)
+- **GNOME SDK 50** (`org.gnome.Sdk//50`)
+- **Freedesktop Rust Extension** (`org.freedesktop.Sdk.Extension.rust-stable//25.08`)
 
 ## Build and Run
 
