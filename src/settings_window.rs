@@ -73,9 +73,10 @@ pub fn build_settings_window(
     let window = adw::PreferencesWindow::builder()
         .application(app)
         .search_enabled(false)
-        .default_width(660)
-        .default_height(840)
+        .default_width(520)
+        .default_height(780)
         .build();
+    window.set_size_request(360, 640);
     let app_clone = app.clone();
     let config = Config::new();
 
@@ -877,9 +878,9 @@ pub fn build_settings_window(
     settings_page.add(&app_group);
 
     let app_flow = gtk::FlowBox::builder()
-        .homogeneous(false)
+        .homogeneous(true)
         .min_children_per_line(1)
-        .max_children_per_line(3)
+        .max_children_per_line(2)
         .selection_mode(gtk::SelectionMode::None)
         .row_spacing(8)
         .column_spacing(8)
@@ -890,18 +891,14 @@ pub fn build_settings_window(
 
     let about_btn = Button::builder()
         .label("About Mimick")
-        .hexpand(false)
-        .width_request(320)
-        .halign(gtk::Align::Start)
+        .hexpand(true)
         .build();
     app_flow.insert(&about_btn, -1);
 
     let quit_btn = Button::builder()
         .label("Quit")
         .css_classes(vec!["destructive-action".to_string()])
-        .hexpand(false)
-        .width_request(320)
-        .halign(gtk::Align::Start)
+        .hexpand(true)
         .build();
     app_flow.insert(&quit_btn, -1);
 
@@ -911,6 +908,8 @@ pub fn build_settings_window(
     });
 
     if let Some(qm) = queue_manager.clone() {
+        pause_btn.set_label(if qm.is_paused() { "Resume" } else { "Pause" });
+
         let qm_for_inspector = qm.clone();
         queue_btn.connect_clicked(clone!(
             #[weak]
