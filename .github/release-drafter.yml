@@ -10,22 +10,6 @@ template: |
 
   $CONTRIBUTORS
 
-categories:
-  - title: 'Features'
-    labels:
-      - 'enhancement'
-  - title: 'Fixes'
-    labels:
-      - 'bug'
-  - title: 'Dependencies'
-    labels:
-      - 'dependencies'
-      - 'rust'
-      - 'github-actions'
-  - title: 'Documentation'
-    labels:
-      - 'documentation'
-
 exclude-labels:
   - 'skip-changelog'
 

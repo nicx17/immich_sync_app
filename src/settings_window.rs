@@ -67,6 +67,7 @@ pub fn build_settings_window(
     api_client: Option<Arc<ImmichApiClient>>,
     queue_manager: Option<Arc<QueueManager>>,
     monitor_handle: Option<Arc<MonitorHandle>>,
+    live_watch_paths: Option<Arc<Mutex<Vec<WatchPathEntry>>>>,
     sync_now_tx: Option<UnboundedSender<()>>,
 ) {
     // Use a PreferencesWindow for native Libadwaita mobile responsiveness and adaptive layouts
@@ -488,6 +489,8 @@ pub fn build_settings_window(
         #[strong]
         monitor_handle,
         #[strong]
+        live_watch_paths,
+        #[strong]
         sync_now_tx,
         #[strong]
         startup_state,
@@ -581,6 +584,10 @@ pub fn build_settings_window(
                 queue_manager,
                 #[strong]
                 monitor_handle,
+                #[strong]
+                albums,
+                #[strong]
+                live_watch_paths,
                 #[strong]
                 sync_now_tx,
                 #[strong]
@@ -678,6 +685,20 @@ pub fn build_settings_window(
                                 api_key.clone(),
                             )
                             .await;
+
+                        if include_connectivity && !api_key.is_empty() {
+                            match client.get_all_albums().await {
+                                Ok(fetched) => {
+                                    *albums.borrow_mut() = fetched;
+                                }
+                                Err(err) => {
+                                    log::warn!(
+                                        "Could not fetch albums after saving settings: {}",
+                                        err
+                                    );
+                                }
+                            }
+                        }
                     }
 
                     if let Some(qm) = queue_manager.clone() {
@@ -708,6 +729,10 @@ pub fn build_settings_window(
                             Vec::new()
                         };
                         monitor.replace_watch_paths(monitor_paths, background_sync_enabled);
+                    }
+
+                    if let Some(live_watch_paths) = live_watch_paths.as_ref() {
+                        *live_watch_paths.lock().unwrap() = watch_paths.clone();
                     }
 
                     if background_sync_enabled
@@ -942,14 +967,6 @@ pub fn build_settings_window(
         sync_now_btn.set_sensitive(false);
     }
 
-    background_sync_row.connect_active_notify(clone!(
-        #[strong]
-        auto_apply_settings,
-        move |_| {
-            (auto_apply_settings)();
-        }
-    ));
-
     export_btn.connect_clicked(clone!(
         #[weak]
         window,
@@ -1176,9 +1193,16 @@ pub fn build_settings_window(
         }
     ));
 
+    background_sync_row.connect_active_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
     // Background state poller — reads directly from in-memory shared state.
-    // No disk I/O; the timer tears itself down automatically when the window closes
-    // because the weak references to status_row / progress_bar fail to upgrade.
+    // No disk I/O; the timer tears itself down when the window is destroyed.
     glib::timeout_add_local(
         Duration::from_millis(500),
         clone!(
@@ -1218,9 +1242,40 @@ pub fn build_settings_window(
                     last_successful_sync_at,
                     last_error,
                     last_error_guidance,
-                    folder_statuses,
+                    folder_subtitles,
                 ) = {
                     let s = shared_state.lock().unwrap();
+                    let folder_subtitles = tracked_rows
+                        .borrow()
+                        .iter()
+                        .map(|row_data| {
+                            let mut final_subtitle = row_data.base_subtitle.clone();
+                            if !final_subtitle.is_empty() {
+                                final_subtitle.push('\n');
+                            }
+
+                            if let Some(folder_status) = s.folder_statuses.get(&row_data.path) {
+                                if let Some(err) = &folder_status.last_error {
+                                    final_subtitle.push_str(&format!("Error: {}", err));
+                                } else {
+                                    let mut txt =
+                                        format!("Pending: {}", folder_status.pending_count);
+                                    if let Some(t) = folder_status.last_sync_at {
+                                        txt.push_str(&format!(
+                                            " - Last Sync: {}",
+                                            format_sync_age(Some(t))
+                                        ));
+                                    }
+                                    final_subtitle.push_str(&txt);
+                                }
+                            } else {
+                                final_subtitle.push_str("Status: Idle");
+                            }
+
+                            (row_data.action_row.clone(), final_subtitle)
+                        })
+                        .collect::<Vec<_>>();
+
                     (
                         s.status.clone(),
                         s.progress,
@@ -1236,7 +1291,7 @@ pub fn build_settings_window(
                         s.last_successful_sync_at,
                         s.last_error.clone(),
                         s.last_error_guidance.clone(),
-                        s.folder_statuses.clone(),
+                        folder_subtitles,
                     )
                 }; // lock released here
 
@@ -1261,32 +1316,8 @@ pub fn build_settings_window(
                         .as_deref()
                         .unwrap_or("Uploads are healthy."),
                 );
-                for row_data in tracked_rows.borrow().iter() {
-                    let path = &row_data.path;
-                    let mut final_subtitle = row_data.base_subtitle.clone();
-                    if let Some(folder_status) = folder_statuses.get(path) {
-                        if !final_subtitle.is_empty() {
-                            final_subtitle.push('\n');
-                        }
-                        if let Some(err) = &folder_status.last_error {
-                            final_subtitle.push_str(&format!("⚠️ Error: {}", err));
-                        } else {
-                            let mut txt = format!("Pending: {}", folder_status.pending_count);
-                            if let Some(t) = folder_status.last_sync_at {
-                                txt.push_str(&format!(
-                                    " • Last Sync: {}",
-                                    format_sync_age(Some(t))
-                                ));
-                            }
-                            final_subtitle.push_str(&txt);
-                        }
-                    } else {
-                        if !final_subtitle.is_empty() {
-                            final_subtitle.push('\n');
-                        }
-                        final_subtitle.push_str("Status: Idle");
-                    }
-                    row_data.action_row.set_subtitle(&final_subtitle);
+                for (row, subtitle) in folder_subtitles {
+                    row.set_subtitle(&subtitle);
                 }
 
                 if status == "paused" || paused {
@@ -1324,16 +1355,6 @@ pub fn build_settings_window(
             }
         ),
     );
-    // Hide instead of destroy on close.
-    // The GTK widget tree (CSS caches, accessibility nodes, GSlice pools, GL state)
-    // is built once and reused on every open/close cycle — zero new allocations per open.
-    // open_settings_if_needed calls win.present() on the hidden window, which is
-    // guaranteed to be in app.windows() even when not visible.
-    window.connect_close_request(|win| {
-        win.set_visible(false);
-        glib::Propagation::Stop // prevent the default destroy
-    });
-
     window.present();
 }
 
@@ -1372,7 +1393,7 @@ fn add_folder_row(
     let picker_btn = Button::builder()
         .label(format!("Album: {}", album_name.borrow()))
         .valign(gtk::Align::Center)
-        .tooltip_text("Select or create an target Immich album")
+        .tooltip_text("Select or create a target Immich album")
         .build();
 
     let picker_btn_clone = picker_btn.clone();

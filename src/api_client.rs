@@ -21,6 +21,13 @@ struct ApiClientSettings {
     api_key: String,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct AlbumSummary {
+    id: String,
+    #[serde(rename = "albumName")]
+    album_name: String,
+}
+
 pub struct ImmichApiClient {
     pub client: Client,
     settings: RwLock<ApiClientSettings>,
@@ -464,14 +471,10 @@ impl ImmichApiClient {
             .await
         {
             Ok(resp) if resp.status().is_success() => {
-                if let Ok(albums) = resp.json::<Vec<serde_json::Value>>().await {
+                if let Ok(albums) = resp.json::<Vec<AlbumSummary>>().await {
                     let mut cache = self.album_cache.lock().await;
-                    for album in &albums {
-                        if let (Some(name), Some(id)) =
-                            (album["albumName"].as_str(), album["id"].as_str())
-                        {
-                            cache.insert(name.to_string(), id.to_string());
-                        }
+                    for album in albums {
+                        cache.insert(album.album_name, album.id);
                     }
                     *self.albums_fetched.lock().await = true;
                     self.clear_issue().await;
@@ -599,6 +602,19 @@ impl ImmichApiClient {
             return Err("Cannot fetch albums to verify existence".to_string());
         }
         self.create_album(album_name).await
+    }
+
+    /// Return an existing album ID without creating a new album as a side effect.
+    pub async fn get_album_id_if_exists(&self, album_name: &str) -> Result<Option<String>, String> {
+        if !*self.albums_fetched.lock().await {
+            self.fetch_all_albums().await;
+        }
+        if !*self.albums_fetched.lock().await {
+            return Err("Cannot fetch albums to verify existence".to_string());
+        }
+
+        let cache = self.album_cache.lock().await;
+        Ok(cache.get(album_name).cloned())
     }
 
     pub async fn resolve_album_by_name(

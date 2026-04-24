@@ -43,6 +43,9 @@ static QM_HANDLE: std::sync::OnceLock<Arc<QueueManager>> = std::sync::OnceLock::
 static API_CLIENT_HANDLE: std::sync::OnceLock<Arc<ImmichApiClient>> = std::sync::OnceLock::new();
 /// Live monitor handle used to update watched folders without restarting the daemon.
 static MONITOR_HANDLE: std::sync::OnceLock<Arc<MonitorHandle>> = std::sync::OnceLock::new();
+/// Latest watch-path configuration used to resolve live file events after settings changes.
+static LIVE_WATCH_PATHS: std::sync::OnceLock<Arc<Mutex<Vec<config::WatchPathEntry>>>> =
+    std::sync::OnceLock::new();
 /// Used to request an immediate startup-style catch-up scan from the UI or tray controls.
 static MANUAL_SYNC_TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<()>> =
     std::sync::OnceLock::new();
@@ -162,6 +165,8 @@ async fn main() {
         // Load config
         let config = Config::new();
         let watch_folder_count = config.data.watch_paths.len();
+        let live_watch_paths = Arc::new(Mutex::new(config.data.watch_paths.clone()));
+        let _ = LIVE_WATCH_PATHS.set(live_watch_paths.clone());
         log::info!(
             "Config: internal={} external={} paths={:?}",
             config.data.internal_url,
@@ -230,12 +235,13 @@ async fn main() {
 
         // Feed monitor events into the upload queue, preserving per-path album config
         let qm_clone = qm.clone();
-        let path_configs: Vec<_> = config.data.watch_paths.clone();
+        let live_watch_paths_for_queue = live_watch_paths.clone();
         tokio::spawn(async move {
             while let Some((path, checksum)) = rx.recv().await {
                 log::info!("Queuing: {} (sha1={})", path, checksum);
 
-                let (album_id, album_name, watch_path) =
+                let (album_id, album_name, watch_path) = {
+                    let path_configs = live_watch_paths_for_queue.lock().unwrap();
                     best_matching_watch_entry(std::path::Path::new(&path), &path_configs)
                         .map(|entry| match entry {
                             config::WatchPathEntry::WithConfig {
@@ -251,7 +257,8 @@ async fn main() {
                                 (None, None, entry.path().to_string())
                             }
                         })
-                        .unwrap_or((None, None, String::new()));
+                        .unwrap_or((None, None, String::new()))
+                };
 
                 let _ = qm_clone
                     .add_to_queue(FileTask {
@@ -371,6 +378,7 @@ async fn main() {
                 let client = API_CLIENT_HANDLE.get().cloned();
                 let qm = QM_HANDLE.get().cloned();
                 let monitor = MONITOR_HANDLE.get().cloned();
+                let live_watch_paths = LIVE_WATCH_PATHS.get().cloned();
                 let sync_now_tx = MANUAL_SYNC_TX.get().cloned();
                 open_settings_if_needed(
                     &app_clone2,
@@ -378,6 +386,7 @@ async fn main() {
                     client,
                     qm,
                     monitor,
+                    live_watch_paths,
                     sync_now_tx,
                 );
             }
@@ -503,6 +512,7 @@ async fn main() {
             let client = API_CLIENT_HANDLE.get().cloned();
             let qm = QM_HANDLE.get().cloned();
             let monitor = MONITOR_HANDLE.get().cloned();
+            let live_watch_paths = LIVE_WATCH_PATHS.get().cloned();
             let sync_now_tx = MANUAL_SYNC_TX.get().cloned();
             open_settings_if_needed(
                 app,
@@ -510,6 +520,7 @@ async fn main() {
                 client,
                 qm,
                 monitor,
+                live_watch_paths,
                 sync_now_tx,
             );
         }
@@ -543,6 +554,7 @@ fn open_settings_if_needed(
     api_client: Option<Arc<ImmichApiClient>>,
     queue_manager: Option<Arc<QueueManager>>,
     monitor_handle: Option<Arc<MonitorHandle>>,
+    live_watch_paths: Option<Arc<Mutex<Vec<config::WatchPathEntry>>>>,
     sync_now_tx: Option<tokio::sync::mpsc::UnboundedSender<()>>,
 ) {
     if let Some(win) = app.windows().first() {
@@ -555,6 +567,7 @@ fn open_settings_if_needed(
             api_client,
             queue_manager,
             monitor_handle,
+            live_watch_paths,
             sync_now_tx,
         );
     }
