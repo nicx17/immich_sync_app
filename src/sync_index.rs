@@ -38,6 +38,11 @@ struct SyncIndexData {
     files: HashMap<String, SyncedFileRecord>,
 }
 
+#[derive(Serialize)]
+struct SyncIndexDataRef<'a> {
+    files: &'a HashMap<String, SyncedFileRecord>,
+}
+
 pub struct SyncIndex {
     index_file: PathBuf,
     entries: HashMap<String, SyncedFileRecord>,
@@ -125,8 +130,8 @@ impl SyncIndex {
             fs::create_dir_all(parent)?;
         }
 
-        let content = serde_json::to_string_pretty(&SyncIndexData {
-            files: self.entries.clone(),
+        let content = serde_json::to_string_pretty(&SyncIndexDataRef {
+            files: &self.entries,
         })?;
 
         let tmp_file = self.index_file.with_extension(format!(

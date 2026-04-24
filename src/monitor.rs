@@ -114,8 +114,6 @@ impl Monitor {
                     Ok(event) => {
                         let is_relevant =
                             matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_));
-                        let is_move = matches!(event.kind, EventKind::Modify(_));
-                        let _ = is_move;
 
                         if is_relevant {
                             for path in event.paths {

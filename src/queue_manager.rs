@@ -5,6 +5,7 @@ use crate::notifications;
 use crate::runtime_env;
 use crate::state_manager::AppState;
 use crate::sync_index::{SyncIndex, SyncTarget};
+use chrono::Timelike;
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -659,18 +660,7 @@ fn is_quiet_hour(start: Option<u8>, end: Option<u8>) -> bool {
     let (Some(start), Some(end)) = (start, end) else {
         return false;
     };
-    // Derive the local hour from the current UNIX timestamp.
-    // We use the UTC offset from the TZ environment variable via a simple modulo:
-    // this is sufficient for an on/off gate — we don't need calendar accuracy.
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let utc_hour = ((secs / 3600) % 24) as u8;
-    // Prefer using the TZ-aware offset when available via the `time` crate, but since
-    // we have no chrono/time dep we fall back to UTC. Users can adjust the window to
-    // compensate. A future iteration can improve this with a proper tz library.
-    let h = utc_hour;
+    let h = chrono::Local::now().hour() as u8;
     if start <= end {
         h >= start && h < end
     } else {

@@ -11,17 +11,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-/// Represents a file discovered during the startup scan and staged for queue submission.
-#[derive(Clone)]
-struct ScanCandidate {
-    path: String,
-    watch_path: String,
-    album_id: Option<String>,
-    album_name: Option<String>,
-    reassociate_only: bool,
-    checksum: Option<String>,
-}
-
 /// Scans watch folders at startup and queues new, changed, or retargeted files for upload.
 pub async fn queue_unsynced_files(
     watch_paths: Vec<WatchPathEntry>,
@@ -36,7 +25,7 @@ pub async fn queue_unsynced_files(
     }
 
     let mut seen_paths = HashSet::new();
-    let mut candidates = Vec::new();
+    let mut queued = 0usize;
     let mut skipped_current = 0usize;
     let mut scan_errors = 0usize;
     let mut album_id_cache: HashMap<String, Option<String>> = HashMap::new();
@@ -119,11 +108,13 @@ pub async fn queue_unsynced_files(
 
                         seen_paths.insert(path_str.clone());
                         let album_name = effective_album_name(entry, &path);
-                        let album_id_result =
-                            resolve_target_album_id(&api_client, &album_name, &mut album_id_cache)
-                                .await;
-
-                        let album_id = match album_id_result {
+                        let existing_album_id = match lookup_target_album_id(
+                            &api_client,
+                            &album_name,
+                            &mut album_id_cache,
+                        )
+                        .await
+                        {
                             Ok(id) => id,
                             Err(err) => {
                                 scan_errors += 1;
@@ -138,7 +129,7 @@ pub async fn queue_unsynced_files(
 
                         let target = SyncTarget {
                             album_name: Some(album_name.clone()),
-                            album_id: album_id.clone(),
+                            album_id: existing_album_id.clone(),
                         };
 
                         let decision =
@@ -160,26 +151,76 @@ pub async fn queue_unsynced_files(
                                 skipped_current += 1;
                             }
                             SyncDecision::NeedsUpload => {
-                                candidates.push(ScanCandidate {
-                                    path: path_str,
-                                    watch_path: watch_path_str.clone(),
+                                let album_id = match resolve_target_album_id(
+                                    &api_client,
+                                    &album_name,
+                                    &mut album_id_cache,
+                                )
+                                .await
+                                {
+                                    Ok(id) => id,
+                                    Err(err) => {
+                                        scan_errors += 1;
+                                        log::warn!(
+                                            "Startup scan skipping '{}' because album resolution failed: {}",
+                                            path.display(),
+                                            err
+                                        );
+                                        continue;
+                                    }
+                                };
+                                match queue_scan_candidate(
+                                    &queue_manager,
+                                    path_str,
+                                    watch_path_str.clone(),
                                     album_id,
-                                    album_name: Some(album_name),
-                                    reassociate_only: false,
-                                    checksum: None,
-                                });
+                                    Some(album_name),
+                                    false,
+                                    None,
+                                )
+                                .await
+                                {
+                                    Ok(true) => queued += 1,
+                                    Ok(false) => {}
+                                    Err(()) => scan_errors += 1,
+                                }
                             }
                             SyncDecision::NeedsReassociate => {
+                                let album_id = match resolve_target_album_id(
+                                    &api_client,
+                                    &album_name,
+                                    &mut album_id_cache,
+                                )
+                                .await
+                                {
+                                    Ok(id) => id,
+                                    Err(err) => {
+                                        scan_errors += 1;
+                                        log::warn!(
+                                            "Startup scan skipping '{}' because album resolution failed: {}",
+                                            path.display(),
+                                            err
+                                        );
+                                        continue;
+                                    }
+                                };
                                 let checksum =
                                     sync_index.lock().unwrap().stored_checksum(&path_str);
-                                candidates.push(ScanCandidate {
-                                    path: path_str,
-                                    watch_path: watch_path_str.clone(),
+                                match queue_scan_candidate(
+                                    &queue_manager,
+                                    path_str,
+                                    watch_path_str.clone(),
                                     album_id,
-                                    album_name: Some(album_name),
-                                    reassociate_only: true,
+                                    Some(album_name),
+                                    true,
                                     checksum,
-                                });
+                                )
+                                .await
+                                {
+                                    Ok(true) => queued += 1,
+                                    Ok(false) => {}
+                                    Err(()) => scan_errors += 1,
+                                }
                             }
                         }
                     }
@@ -196,7 +237,7 @@ pub async fn queue_unsynced_files(
         log::warn!("Failed to prune sync index after startup scan: {}", err);
     }
 
-    if candidates.is_empty() {
+    if queued == 0 {
         log::info!(
             "Startup scan complete: no unsynced files found ({} already current, {} error(s)).",
             skipped_current,
@@ -206,55 +247,49 @@ pub async fn queue_unsynced_files(
     }
 
     log::info!(
-        "Startup scan found {} unsynced file(s) ({} already current, {} error(s)).",
-        candidates.len(),
+        "Startup scan queued {} unsynced file(s) ({} already current, {} error(s)).",
+        queued,
         skipped_current,
         scan_errors
     );
+}
 
-    let mut queued = 0usize;
-    for candidate in candidates {
-        let checksum = if let Some(checksum) = candidate.checksum.clone() {
-            checksum
-        } else {
-            let path_for_hash = candidate.path.clone();
-            match tokio::task::spawn_blocking(move || compute_sha1_chunked(&path_for_hash)).await {
-                Ok(Ok(checksum)) => checksum,
-                Ok(Err(err)) => {
-                    log::warn!(
-                        "Startup scan could not checksum '{}': {}",
-                        candidate.path,
-                        err
-                    );
-                    continue;
-                }
-                Err(err) => {
-                    log::warn!(
-                        "Startup scan checksum task failed for '{}': {}",
-                        candidate.path,
-                        err
-                    );
-                    continue;
-                }
+async fn queue_scan_candidate(
+    queue_manager: &QueueManager,
+    path: String,
+    watch_path: String,
+    album_id: Option<String>,
+    album_name: Option<String>,
+    reassociate_only: bool,
+    checksum: Option<String>,
+) -> Result<bool, ()> {
+    let checksum = if let Some(checksum) = checksum {
+        checksum
+    } else {
+        let path_for_hash = path.clone();
+        match tokio::task::spawn_blocking(move || compute_sha1_chunked(&path_for_hash)).await {
+            Ok(Ok(checksum)) => checksum,
+            Ok(Err(err)) => {
+                log::warn!("Startup scan could not checksum '{}': {}", path, err);
+                return Err(());
             }
-        };
-
-        if queue_manager
-            .add_to_queue(FileTask {
-                path: candidate.path,
-                watch_path: candidate.watch_path,
-                checksum,
-                album_id: candidate.album_id,
-                album_name: candidate.album_name,
-                reassociate_only: candidate.reassociate_only,
-            })
-            .await
-        {
-            queued += 1;
+            Err(err) => {
+                log::warn!("Startup scan checksum task failed for '{}': {}", path, err);
+                return Err(());
+            }
         }
-    }
+    };
 
-    log::info!("Startup scan queued {} unsynced file(s).", queued);
+    Ok(queue_manager
+        .add_to_queue(FileTask {
+            path,
+            watch_path,
+            checksum,
+            album_id,
+            album_name,
+            reassociate_only,
+        })
+        .await)
 }
 
 /// Resolve the effective album name for a file using per-folder configuration.
@@ -269,14 +304,29 @@ fn effective_album_name(entry: &WatchPathEntry, path: &Path) -> String {
     }
 }
 
-/// Resolve and memoize target album IDs so repeated files in the same folder reuse the lookup.
-async fn resolve_target_album_id(
+/// Resolve and memoize existing album IDs without creating albums during scan inspection.
+async fn lookup_target_album_id(
     api_client: &ImmichApiClient,
     album_name: &str,
     album_id_cache: &mut HashMap<String, Option<String>>,
 ) -> Result<Option<String>, String> {
     if let Some(cached) = album_id_cache.get(album_name) {
         return Ok(cached.clone());
+    }
+
+    let resolved = api_client.get_album_id_if_exists(album_name).await?;
+    album_id_cache.insert(album_name.to_string(), resolved.clone());
+    Ok(resolved)
+}
+
+/// Resolve and memoize target album IDs so repeated files in the same folder reuse the lookup.
+async fn resolve_target_album_id(
+    api_client: &ImmichApiClient,
+    album_name: &str,
+    album_id_cache: &mut HashMap<String, Option<String>>,
+) -> Result<Option<String>, String> {
+    if let Some(Some(cached)) = album_id_cache.get(album_name) {
+        return Ok(Some(cached.clone()));
     }
 
     let resolved = api_client.resolve_album_by_name(album_name, false).await?;

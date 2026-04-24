@@ -141,10 +141,6 @@ pub struct ConfigData {
     #[serde(default)]
     pub run_on_startup: bool,
     #[serde(default)]
-    pub album_sync: bool,
-    #[serde(default)]
-    pub delete_after_sync: bool,
-    #[serde(default)]
     pub pause_on_metered_network: bool,
     #[serde(default)]
     pub pause_on_battery_power: bool,
@@ -176,8 +172,6 @@ impl Default for ConfigData {
             external_url_enabled: true,
             watch_paths: Vec::new(),
             run_on_startup: false,
-            album_sync: false,
-            delete_after_sync: false,
             pause_on_metered_network: false,
             pause_on_battery_power: false,
             background_sync_enabled: true,
@@ -368,7 +362,6 @@ mod tests {
         assert!(data.internal_url_enabled);
         assert!(data.external_url_enabled);
         assert!(data.background_sync_enabled);
-        assert!(!data.album_sync); // default is false for bool
     }
 
     #[test]
