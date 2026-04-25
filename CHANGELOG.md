@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [9.4.1] - 2026-04-25
+
+### Added
+- Stream startup scan candidates directly into the upload queue to reduce startup memory churn.
+
+### Changed
+- Fetch Immich albums immediately after saving connection settings.
+- Parse album list responses into typed structs instead of generic JSON for safer handling.
+- Use local time for quiet-hours checks.
+- Reduce cloning of folder status state during settings UI refresh and avoid cloning the sync index during persistence to improve performance.
+- Increase settings window startup width while preserving the 360px minimum mobile layout target.
+
+### Fixed
+- Fix live watcher queue metadata after settings changes so queue state remains consistent.
+- Prevent the settings window from auto-saving partially populated UI state.
+- Avoid creating albums during startup scan inspection and ensure album creation only happens when appropriate.
+- Fix Application action buttons so About and Quit keep matching visual and touch target sizing.
+- Initialize the Pause button label from the real queue state on first render.
+- Fix install method card overflow so cards remain within the install block width.
+
+### Removed
+- Removed unused legacy config fields and dead monitor code.
+- Removed the grain/noise background effect from the site theme.
+
 ## [9.4.0] - 2026-04-23
 
 ### Added
