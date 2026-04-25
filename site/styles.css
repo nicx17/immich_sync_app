@@ -1,15 +1,47 @@
 :root {
-    --bg-primary: #f7f2ea;
-    --bg-secondary: rgba(255, 252, 248, 0.92);
-    --text-main: #241c18;
-    --text-muted: #67564d;
-    --accent: #e7a15e;
-    --accent-deep: #bd6a33;
-    --border-color: rgba(83, 57, 41, 0.12);
-    --border-hover: rgba(111, 69, 45, 0.24);
-    --shadow-soft: 0 24px 60px rgba(79, 46, 29, 0.08);
+    --bg-primary: #000000;
+    --surface: #080808;
+    --surface-raised: #101010;
+    --surface-hover: #171717;
+    --text-main: #f7f2ea;
+    --text-muted: #c2b8ad;
+    --text-soft: #8f857b;
+    --accent: #f0a35d;
+    --accent-deep: #ffbd7a;
+    --border-color: rgba(255, 255, 255, 0.12);
+    --border-hover: rgba(240, 163, 93, 0.46);
+    --shadow-soft: 0 24px 70px rgba(0, 0, 0, 0.62);
+    --pre-bg: #000000;
+    --pre-border: rgba(255, 255, 255, 0.08);
+    --pre-text: #f7f2ea;
+    --backdrop-gradient:
+        radial-gradient(1300px 540px at 50% -12%, rgba(240, 163, 93, 0.14), transparent 72%),
+        linear-gradient(180deg, rgba(240, 163, 93, 0.08), transparent 34rem);
+    --backdrop-opacity: 0.55;
     --font-serif: "Newsreader", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
     --font-sans: "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+:root[data-theme="light"] {
+    --bg-primary: #f8f5ef;
+    --surface: #fffdf9;
+    --surface-raised: #f2ede4;
+    --surface-hover: #ebe4d8;
+    --text-main: #1e1a16;
+    --text-muted: #5c5247;
+    --text-soft: #74685b;
+    --accent: #ad6222;
+    --accent-deep: #8d4c15;
+    --border-color: rgba(30, 26, 22, 0.14);
+    --border-hover: rgba(173, 98, 34, 0.5);
+    --shadow-soft: 0 24px 58px rgba(48, 34, 20, 0.14);
+    --pre-bg: #fffaf0;
+    --pre-border: rgba(30, 26, 22, 0.18);
+    --pre-text: #120d08;
+    --backdrop-gradient:
+        radial-gradient(1200px 500px at 50% -18%, rgba(240, 163, 93, 0.16), transparent 70%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 30rem);
+    --backdrop-opacity: 0.9;
 }
 
 * {
@@ -26,21 +58,21 @@ body {
     font-size: 115%;
     font-weight: 500;
     line-height: 1.6;
-    background:
-        radial-gradient(circle at top, rgba(237, 173, 111, 0.14), transparent 34%),
-        linear-gradient(180deg, #fbf7f1 0%, #f7f2ea 52%, #f2ece3 100%);
+    background: var(--bg-primary);
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.55s ease, color 0.55s ease;
 }
 
 body::before {
     content: "";
     position: fixed;
     inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-    opacity: 0.03;
+    opacity: var(--backdrop-opacity);
     pointer-events: none;
     z-index: -1;
+    background: var(--backdrop-gradient);
+    transition: opacity 0.55s ease, background 0.55s ease;
 }
 
 main {
@@ -57,6 +89,34 @@ main {
     max-width: 760px;
 }
 
+.top-controls {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.9rem;
+}
+
+.theme-toggle {
+    appearance: none;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 0.45rem 0.92rem;
+    background: var(--surface-raised);
+    color: var(--text-main);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 0.22s ease, background-color 0.22s ease, color 0.22s ease, transform 0.18s ease;
+}
+
+.theme-toggle:hover {
+    transform: translateY(-1px);
+    border-color: var(--border-hover);
+    background: var(--surface-hover);
+}
+
 header {
     text-align: center;
     margin-bottom: 2.8rem;
@@ -66,31 +126,24 @@ header {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 132px;
-    height: 132px;
-    margin-bottom: 1.25rem;
-    padding: 14px;
-    border: 1px solid rgba(189, 106, 51, 0.18);
-    border-radius: 34px;
-    background: linear-gradient(180deg, rgba(255, 248, 240, 0.98), rgba(248, 238, 228, 0.92));
-    box-shadow: var(--shadow-soft);
+    width: 112px;
+    height: 112px;
+    margin-bottom: 1.45rem;
 }
 
 .hero-icon {
     width: 100%;
     height: 100%;
-    border-radius: 24px;
     display: block;
-    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.14);
 }
 
 .eyebrow {
     margin: 0 0 0.45rem;
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 700;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: var(--accent-deep);
+    color: var(--accent);
 }
 
 h1 {
@@ -99,15 +152,31 @@ h1 {
     font-size: clamp(3rem, 8vw, 4.6rem);
     font-weight: 500;
     line-height: 0.92;
-    letter-spacing: -0.03em;
+    letter-spacing: 0;
 }
 
 .subtitle {
-    max-width: 34rem;
-    margin: 0.7rem auto 0;
+    max-width: 36rem;
+    margin: 0.85rem auto 0;
     color: var(--text-muted);
-    font-size: 1.08rem;
-    font-weight: 500;
+    font-size: 1.02rem;
+    font-weight: 560;
+    line-height: 1.55;
+}
+
+.feature-summary {
+    margin: -1.2rem 0 1.3rem;
+    padding: 1.1rem 1.25rem;
+    border: 1.2px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--surface);
+    color: var(--text-muted);
+    box-shadow: var(--shadow-soft);
+    transition: background-color 0.55s ease, border-color 0.55s ease, color 0.55s ease, box-shadow 0.55s ease;
+}
+
+.feature-summary p {
+    margin: 0;
 }
 
 .install-card {
@@ -115,16 +184,17 @@ h1 {
     padding: 1.45rem;
     border: 1.2px solid var(--border-color);
     border-radius: 18px;
-    background: var(--bg-secondary);
+    background: var(--surface);
     box-shadow: var(--shadow-soft);
+    transition: background-color 0.55s ease, border-color 0.55s ease, box-shadow 0.55s ease;
 }
 
 .install-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 1rem;
-    margin-bottom: 0.85rem;
+    margin-bottom: 0.65rem;
 }
 
 .install-label {
@@ -133,7 +203,46 @@ h1 {
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--accent-deep);
+    color: var(--accent);
+}
+
+.install-grid {
+    display: grid;
+    gap: 0.95rem;
+    min-width: 0;
+}
+
+.install-method {
+    width: 100%;
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: var(--surface-raised);
+    transition: background-color 0.55s ease, border-color 0.55s ease;
+}
+
+.method-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.9rem;
+    margin-bottom: 0.7rem;
+}
+
+.method-title {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.method-note {
+    margin: 0.75rem 0 0;
+    color: var(--text-soft);
+    font-size: 0.91rem;
 }
 
 .copy-button {
@@ -141,7 +250,7 @@ h1 {
     border: 1px solid var(--border-color);
     border-radius: 999px;
     padding: 0.45rem 0.9rem;
-    background: rgba(255, 255, 255, 0.78);
+    background: var(--surface-raised);
     color: var(--text-main);
     font: inherit;
     font-size: 0.9rem;
@@ -153,17 +262,24 @@ h1 {
 .copy-button:hover {
     transform: translateY(-1px);
     border-color: var(--border-hover);
-    background: rgba(255, 255, 255, 0.95);
+    background: var(--surface-hover);
 }
 
 pre {
+    max-width: 100%;
     margin: 0;
     padding: 1rem 1.1rem;
     border-radius: 14px;
-    background: #1d1714;
-    color: #f6ede5;
+    border: 1px solid var(--pre-border);
+    background: var(--pre-bg);
+    color: var(--pre-text);
     overflow-x: auto;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: background-color 0.55s ease, border-color 0.55s ease, color 0.55s ease;
+}
+
+:root[data-theme="light"] pre {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 code {
@@ -200,17 +316,17 @@ code {
     padding: 1.1rem 1.2rem;
     border: 1.2px solid var(--border-color);
     border-radius: 16px;
-    background: rgba(255, 255, 255, 0.72);
+    background: var(--surface);
     color: var(--text-main);
     text-decoration: none;
-    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease, color 0.55s ease;
 }
 
 .link-block:hover {
     transform: translateY(-3px);
     border-color: var(--border-hover);
-    background: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 14px 32px rgba(58, 38, 27, 0.08);
+    background: var(--surface-hover);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
 }
 
 .link-icon {
@@ -220,12 +336,13 @@ code {
     width: 2.2rem;
     height: 2.2rem;
     border-radius: 999px;
-    background: rgba(231, 161, 94, 0.18);
+    background: rgba(240, 163, 93, 0.16);
     color: var(--accent-deep);
     font-size: 0.9rem;
     font-weight: 700;
     letter-spacing: 0.04em;
     flex-shrink: 0;
+    transition: background-color 0.55s ease, color 0.55s ease;
 }
 
 .link-copy {
@@ -261,6 +378,7 @@ footer {
     border-top: 1px solid var(--border-color);
     color: var(--text-muted);
     font-size: 0.94rem;
+    transition: border-color 0.55s ease, color 0.55s ease;
 }
 
 .footer-label {
@@ -274,7 +392,7 @@ footer {
 }
 
 .footer-link:hover {
-    color: var(--text-main);
+    color: var(--accent-deep);
 }
 
 @media (max-width: 820px) {
@@ -293,9 +411,8 @@ footer {
     }
 
     .icon-frame {
-        width: 114px;
-        height: 114px;
-        border-radius: 28px;
+        width: 92px;
+        height: 92px;
     }
 
     h1 {
@@ -307,6 +424,10 @@ footer {
     }
 
     .install-header {
+        margin-bottom: 0.5rem;
+    }
+
+    .method-header {
         align-items: flex-start;
         flex-direction: column;
     }

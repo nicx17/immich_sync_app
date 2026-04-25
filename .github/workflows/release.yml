@@ -83,7 +83,21 @@ jobs:
             printf 'GPGKey=%s\n' "$REPO_GPG_KEY"
           } > dist/mimick.flatpakrepo
 
-          sha256sum dist/mimick.flatpakrepo > dist/SHA256SUMS.txt
+          {
+            printf '[Flatpak Ref]\n'
+            printf 'Title=Mimick\n'
+            printf 'Name=io.github.nicx17.mimick\n'
+            printf 'Branch=stable\n'
+            printf 'Url=https://nicx17.github.io/mimick/\n'
+            printf 'SuggestRemoteName=mimick\n'
+            printf 'Homepage=https://github.com/nicx17/mimick\n'
+            printf 'Icon=https://nicx17.github.io/mimick/icon.png\n'
+            printf 'RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo\n'
+            printf 'IsRuntime=false\n'
+            printf 'GPGKey=%s\n' "$REPO_GPG_KEY"
+          } > dist/mimick.flatpakref
+
+          sha256sum dist/mimick.flatpakrepo dist/mimick.flatpakref > dist/SHA256SUMS.txt
 
       - name: Find matching draft release
         id: draft_release
@@ -166,6 +180,7 @@ jobs:
 
           gh release upload "${GITHUB_REF_NAME}" \
             dist/mimick.flatpakrepo \
+            dist/mimick.flatpakref \
             dist/SHA256SUMS.txt \
             --clobber
 
@@ -178,6 +193,7 @@ jobs:
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           gh release create "${GITHUB_REF_NAME}" \
             dist/mimick.flatpakrepo \
+            dist/mimick.flatpakref \
             dist/SHA256SUMS.txt \
             --title "${TAG_VERSION}" \
             --notes-file dist/release-notes.md

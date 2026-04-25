@@ -146,6 +146,8 @@ jobs:
           cp site/index.html repo/index.html
           cp site/styles.css repo/styles.css
           cp site/icon.png repo/icon.png
+          cp site/robots.txt repo/robots.txt
+          cp site/sitemap.xml repo/sitemap.xml
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
