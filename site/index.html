@@ -3,50 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mimick Flatpak Repository</title>
+    <title>Mimick - Immich Desktop Client for Linux</title>
     <meta
         name="description"
-        content="Install Mimick, a sleek Linux-to-Immich sync daemon, from the official Flatpak repository."
+        content="Mimick is an Immich desktop client for Linux with a GTK4 GUI, background folder watching, photo and video sync, tray controls, retries, and Flatpak support."
     >
+    <meta name="keywords" content="Immich desktop client, Immich GUI Linux, Immich sync app, Linux photo sync, self-hosted photo backup, GTK4 Immich client">
+    <link rel="canonical" href="https://nicx17.github.io/mimick/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Mimick">
+    <meta property="og:title" content="Mimick - Immich Desktop Client for Linux">
+    <meta property="og:description" content="A native Linux desktop GUI for syncing local photo and video folders to your self-hosted Immich server.">
+    <meta property="og:url" content="https://nicx17.github.io/mimick/">
+    <meta property="og:image" content="https://nicx17.github.io/mimick/icon.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Mimick - Immich Desktop Client for Linux">
+    <meta name="twitter:description" content="A GTK4/libadwaita desktop client for syncing Linux folders to Immich.">
+    <meta name="twitter:image" content="https://nicx17.github.io/mimick/icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap"
     >
-    <meta name="theme-color" content="#f7f2ea">
+    <meta name="theme-color" content="#000000">
     <link rel="icon" href="icon.png" sizes="192x192" type="image/png">
     <link rel="shortcut icon" href="icon.png" type="image/png">
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="stylesheet" href="styles.css">
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Mimick",
+        "description": "An Immich desktop client for Linux that syncs local photo and video folders to a self-hosted Immich server.",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "Linux",
+        "softwareRequirements": "GTK4, libadwaita, Flatpak",
+        "isAccessibleForFree": true,
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "codeRepository": "https://github.com/nicx17/mimick",
+        "downloadUrl": "https://nicx17.github.io/mimick/mimick.flatpakref",
+        "url": "https://nicx17.github.io/mimick/"
+    }
+    </script>
 </head>
 <body>
     <main>
         <div class="container">
+            <div class="top-controls">
+                <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
+                    Light Mode
+                </button>
+            </div>
             <header>
                 <div class="icon-frame">
                     <img class="hero-icon" src="icon.png" alt="Mimick app icon">
                 </div>
-                <p class="eyebrow">Official Flatpak Repository</p>
+                <p class="eyebrow">Immich Desktop Client for Linux</p>
                 <h1>Mimick</h1>
                 <p class="subtitle">
-                    Sync photos and videos from Linux to Immich automatically.
+                    Keep your photo and video folders continuously synced to Immich with a clean GTK4 desktop app, tray controls, and resilient background uploads.
                 </p>
             </header>
+
+            <section class="feature-summary" aria-label="Mimick features">
+                <p>
+                    Mimick watches Linux folders in the background, uploads media to Immich, supports per-folder album rules, retries failed uploads, and gives you tray controls for pause, resume, sync now, and diagnostics.
+                </p>
+            </section>
 
             <section class="install-card">
                 <div class="install-header">
                     <p class="install-label">Install</p>
-                    <button class="copy-button" type="button" data-copy-target="install-command">
-                        Copy
-                    </button>
                 </div>
-                <pre><code id="install-command"># Install directly via flatpakref
-flatpak install --user https://nicx17.github.io/mimick/mimick.flatpakref
+                <div class="install-grid">
+                    <article class="install-method">
+                        <div class="method-header">
+                            <p class="method-title">Method 1: Direct flatpakref</p>
+                            <button class="copy-button" type="button" data-copy-target="install-flatpakref">
+                                Copy
+                            </button>
+                        </div>
+                        <pre><code id="install-flatpakref">flatpak install --user https://nicx17.github.io/mimick/mimick.flatpakref</code></pre>
+                    </article>
 
-# Or add the repo manually
-flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
+                    <article class="install-method">
+                        <div class="method-header">
+                            <p class="method-title">Method 2: Add repo + install</p>
+                            <button class="copy-button" type="button" data-copy-target="install-repo-manual">
+                                Copy
+                            </button>
+                        </div>
+                        <pre><code id="install-repo-manual">flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
 flatpak install --user mimick-repo io.github.nicx17.mimick</code></pre>
+                        <p class="method-note">Use this option if you want the repository configured explicitly.</p>
+                    </article>
+                </div>
                 <p class="install-note">
                     <strong>Note:</strong> If you receive a "Required runtime not found" error, ensure you have the <a href="https://flathub.org/setup" target="_blank" rel="noopener">Flathub</a> remote configured.
                 </p>
@@ -93,6 +150,39 @@ flatpak install --user mimick-repo io.github.nicx17.mimick</code></pre>
     </footer>
 
     <script>
+        const root = document.documentElement;
+        const themeToggle = document.getElementById("theme-toggle");
+        const themeMeta = document.querySelector('meta[name="theme-color"]');
+        const themeKey = "mimick-theme";
+
+        const setTheme = (theme) => {
+            const isLight = theme === "light";
+            root.dataset.theme = isLight ? "light" : "dark";
+            if (themeMeta) {
+                themeMeta.setAttribute("content", isLight ? "#f8f5ef" : "#000000");
+            }
+            if (themeToggle) {
+                themeToggle.textContent = isLight ? "Dark Mode" : "Light Mode";
+                themeToggle.setAttribute("aria-pressed", isLight ? "true" : "false");
+            }
+        };
+
+        const savedTheme = localStorage.getItem(themeKey);
+        const prefersLight = globalThis.matchMedia("(prefers-color-scheme: light)").matches;
+        let initialTheme = prefersLight ? "light" : "dark";
+        if (savedTheme === "light" || savedTheme === "dark") {
+            initialTheme = savedTheme;
+        }
+        setTheme(initialTheme);
+
+        if (themeToggle) {
+            themeToggle.addEventListener("click", () => {
+                const nextTheme = root.dataset.theme === "light" ? "dark" : "light";
+                setTheme(nextTheme);
+                localStorage.setItem(themeKey, nextTheme);
+            });
+        }
+
         document.querySelectorAll(".copy-button").forEach((btn) => {
             btn.addEventListener("click", async () => {
                 const targetId = btn.dataset.copyTarget;
