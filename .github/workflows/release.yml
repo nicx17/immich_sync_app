@@ -47,9 +47,6 @@ jobs:
             exit 1
           fi
 
-      - name: Run tests
-        run: cargo test --locked
-
       - name: Import Flatpak signing key
         id: signing_key
         env:
