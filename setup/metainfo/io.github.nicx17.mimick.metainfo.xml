@@ -74,6 +74,14 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="9.4.2" date="2026-04-28">
+      <description>
+        <ul>
+          <li>Revised background sync logic: the application now correctly exits when closed if background sync is disabled, and prompts for configuration on startup.</li>
+          <li>Moved the About section to the title bar for better accessibility and UI consistency.</li>
+        </ul>
+      </description>
+    </release>
     <release version="9.4.1" date="2026-04-25">
       <description>
         <ul>

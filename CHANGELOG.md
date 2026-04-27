@@ -5,11 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [9.4.2] - 2026-04-28
 
 ### Changed
 
-- Revised app logic to backgroung sync. Now if backgroung sync is disabled app won't persist in background when closed using window close button. App startup will open the settings window for the same. Quit action will work the same (Close the app).
+- Revised app logic to background sync. Now if background sync is disabled app won't persist in background when closed using window close button. App startup will open the settings window for the same. Quit action will work the same (Close the app).
 
 - UI: about section is now moved to title bar
 

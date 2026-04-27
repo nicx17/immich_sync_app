@@ -1,6 +1,6 @@
 [package]
 name = "mimick"
-version = "9.4.1"
+version = "9.4.2"
 edition = "2024"
 
 [dependencies]
