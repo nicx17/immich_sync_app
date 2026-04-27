@@ -2,16 +2,7 @@ name: "CodeQL Analysis"
 
 on:
   push:
-    branches: [ "main" ]
-    paths-ignore:
-      - "docs/**"
-      - "wiki/**"
-      - "README.md"
-      - "CONTRIBUTING.md"
-      - "SECURITY.md"
-      - "roadmap.md"
-  pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
     paths-ignore:
       - "docs/**"
       - "wiki/**"
@@ -23,7 +14,7 @@ on:
     - cron: '30 2 * * 1'
 
 concurrency:
-  group: codeql-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  group: codeql-${{ github.workflow }}-${{ github.ref || github.run_id }}
   cancel-in-progress: true
 
 env:
@@ -41,16 +32,16 @@ jobs:
       contents: read
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
-      with:
-        languages: rust
-        build-mode: none
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
+        with:
+          languages: rust
+          build-mode: none
 
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
-      with:
-        category: "/language:rust"
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
+        with:
+          category: "/language:rust"
