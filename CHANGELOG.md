@@ -5,13 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- Revised app logic to backgroung sync. Now if backgroung sync is disabled app won't persist in background when closed using window close button. App startup will open the settings window for the same. Quit action will work the same (Close the app).
+
+- UI: about section is now moved to title bar
 
 ## [9.4.1] - 2026-04-25
 
 ### Added
+
 - Stream startup scan candidates directly into the upload queue to reduce startup memory churn.
 
 ### Changed
+
 - Fetch Immich albums immediately after saving connection settings.
 - Parse album list responses into typed structs instead of generic JSON for safer handling.
 - Use local time for quiet-hours checks.
@@ -19,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Increase settings window startup width while preserving the 360px minimum mobile layout target.
 
 ### Fixed
+
 - Fix live watcher queue metadata after settings changes so queue state remains consistent.
 - Prevent the settings window from auto-saving partially populated UI state.
 - Avoid creating albums during startup scan inspection and ensure album creation only happens when appropriate.
@@ -27,26 +37,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix install method card overflow so cards remain within the install block width.
 
 ### Removed
+
 - Removed unused legacy config fields and dead monitor code.
 - Removed the grain/noise background effect from the site theme.
 
 ## [9.4.0] - 2026-04-23
 
 ### Added
+
 - Settings: Live auto-apply for most preferences (workers, quiet hours, folder rules, per-folder album selection, watch-folders). Connectivity fields (API key and server URLs) are now applied only when explicitly saved from the Connectivity section.
 - Single-batch sync summary notification: multiple concurrent upload workers now aggregate results and emit a single "processed" summary notification when a sync batch completes.
 - Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.
 - GitHub Pages repository pipeline now dynamically generates a `mimick.flatpakref` file for one-click graphical installations.
 
 ### Changed
+
 - Logging: Console output is colorized by level and file logs use a plain, machine-friendly formatter with automatic rotation (approx. 2 MB per file, keep 5). See README and wiki for configuration details.
 
 ## [9.3.0] - 2026-04-14
 
 ### Added
+
 - New notification toggle. Allow user to enable or disable the notifications sent through the app
 
 ### Changed
+
 - Replaced `secret-tool` (libsecret CLI) with the `oo7` Rust crate for credential storage. Inside Flatpak, credentials are now stored in a portal-encrypted file within the sandbox. On native installs, the desktop's D-Bus Secret Service (GNOME Keyring, KWallet) is used directly. This eliminates the `user interaction failed` error that occurred when `secret-tool` tried to render a prompter dialog across the Flatpak sandbox boundary.
 - The `.flatpakrepo` file now includes a `RuntimeRepo` directive pointing to Flathub. This allows Flatpak to automatically resolve and download the required GNOME Platform runtime on systems where Flathub is not pre-configured (notably Ubuntu 25+ and certain Fedora spins).
 - Removed `libsecret` / `libsecret-1-dev` from build prerequisites. The `oo7` crate is pure Rust and requires no system-level keyring library at build time.
@@ -56,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidated all documentation from `docs/` into the project wiki. The `docs/` markdown files have been removed to prevent drift.
 
 ### Fixed
+
 - Fixed duplicate URL toggle validation handlers that caused two error dialogs to appear when disabling the last enabled URL switch.
 - Added missing config fields (`startup_catchup_mode`, `upload_concurrency`, `quiet_hours_start`, `quiet_hours_end`) to the diagnostics redacted export and plain-text summary.
 - Fixed Flatpak installation failing with `org.gnome.Platform was not found` on fresh Ubuntu and Fedora installations that do not ship Flathub enabled by default.
@@ -63,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [9.2.0] - 2026-04-14
 
 ### Changed
+
 - Added support for`SingleMainWindow=true` to the `.desktop` launcher to better integrate with GNOME 50+ dock contexts preventing redundant "New Window" options.
 - Migrated desktop notifications from the `notify-send` system command to native `gio::Notification`, fixing the issue where notifications would silently fail inside the Flatpak sandbox.
 - Notifications now correctly display the app's SVG icon natively via the XDG Notification Portal constraint.
@@ -73,39 +90,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [9.1.1] - 2026-04-10
 
 ### Changed
+
 - Switched Flatpak repository to correctly advertise as `stable` instead of defaulting to a `beta` channel badge.
 - Reconfigured the Flatpak repository builder workflow (`flatpak-repo.yml`) to exclusively deploy on new tag releases rather than on every push to the `main` branch.
 
 ### Fixed
+
 - Fixed an internal GTK critical focus assertion error (`box != NULL`) that occurred when opening the folder rules configuration dialog.
 - Fixed a bug where a discarded failed-upload task could leave a persistent "Pending: 1" ghost label on the folder configuration UI across application restarts.
 
 ## [9.1.0] - 2026-04-08
 
 ### Added
+
 - Expanded supported media formats to match latest Immich server: AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, Matroska (MKV), MP2T, MXF, and more. The app now recognizes and uploads all Immich-compatible image and video extensions.
 
 ### Changed
+
 - The settings window now explicitly follows the desktop light/dark appearance preference at startup, allowing light mode when the system theme is light.
 - The `Status` page now uses a standard symbolic page icon for more consistent rendering across icon themes.
 - Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.
 
-
 ## [9.0.0] - 2026-03-29
 
 ### Fixed
+
 - Fixed an Immich asset timestamp regression where newly uploaded files could land at the wrong timeline time or lose their intended timezone after server-side metadata processing.
 
 ### Changed
+
 - Upload metadata handling now preserves filesystem-based creation times more reliably and reapplies the local timezone after upload so Immich keeps the correct asset date placement.
 - The settings window now uses `Status` and `Settings` pages, shows the first-run API-key guidance at the top of the configuration flow, and no longer forces dark mode.
 - `Save & Restart` has been replaced with live `Save Changes` behavior that updates the running API client, queue policy, upload worker count, and watched folders without relaunching Mimick.
 - Watch-folder changes now reconfigure the live filesystem monitor in place, so adding or removing folders takes effect immediately after saving.
 
-
 ## [8.0.0] - 2026-03-25
 
 ### Added
+
 - **Health Dashboard**: A visual status area on the Controls page showing active server route, watched folder count, pending items, recent retries, and latest errors.
 - **Per-Folder Status**: The settings UI now displays the pending queue count and last sync time specific to each configured watch folder.
 - **Permission Health Checks**: On startup, Mimick now verifies that it still has read access to all configured directories. If a Flatpak permission is lost, a warning is prominently displayed.
@@ -120,6 +142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Adaptive Folder Rows**: Watch folder entries now use `adw::ExpanderRow` to hide additional settings (Album, Rules, Remove) until clicked, maximizing screen space on mobile.
 
 ### Fixed
+
 - Fixed an "endless loop" bug where offline network conditions caused already-synced files to be incorrectly re-queued for reassociation.
 - Fixed an issue where the processed file count in the UI would increment infinitely during network failures.
 - Fixed a bug where a previously selected album target reverted visually to a "Custom Album" field after an application restart.
@@ -127,6 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [7.0.0] - 2026-03-22
 
 ### Added
+
 - A queue inspector in the settings window with recent queue activity, failed-item visibility, per-item retry actions, `Retry All Failed`, and `Clear Failed Queue`.
 - Manual sync controls in both the settings window and tray menu with `Pause / Resume` and `Sync Now` actions.
 - Per-folder sync rules for ignoring hidden files, limiting maximum file size, and restricting allowed file extensions.
@@ -134,6 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Best-effort environment-aware pausing for metered-network and battery-power operation.
 
 ### Changed
+
 - Startup scans and live monitoring now apply the same per-folder rule checks and temporary-file filtering before queueing uploads.
 - Shared runtime state now records recent queue events, pause reasons, the last completed file, and diagnostics export counts for better visibility and supportability.
 - The settings window now separates `Setup` and `Controls`, uses a slimmer layout, and keeps `Close`, `Quit`, and `Save & Restart` pinned in a footer.
@@ -143,10 +168,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [6.0.0] - 2026-03-15
 
 ### Added
+
 - A startup catch-up scan that walks watched folders on launch and queues media that was missed while Mimick was not running.
 - A local sync index that records previously synced files so unchanged media can be skipped quickly on later startups.
 
 ### Changed
+
 - Changing the target Immich album for a watched folder now causes unchanged files to be reassociated to the new album on a later startup instead of being ignored.
 - If a previously targeted album no longer exists, Mimick now refreshes album resolution and retries with the current configured album target.
 - Terminal and file logs now include timestamped detailed formatting for easier troubleshooting.
@@ -155,15 +182,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [5.0.1] - 2026-03-14
 
 ### Added
+
 - GitHub releases now attach a signed `mimick.flatpakrepo` file and a `SHA256SUMS.txt` checksum file for easier end-user installs.
 
 ### Changed
+
 - The GitHub Pages Flatpak repository workflow now signs published repo metadata with a dedicated GPG key and embeds the public key in the generated `.flatpakrepo` file.
 - The release workflow now uses the same Flatpak signing key material from GitHub Actions secrets so release assets match the published repository trust chain.
 
 ## [5.0.0] - 2026-03-14
 
 ### Added
+
 - A built-in **Run on Startup** setting that requests desktop-portal background permission in Flatpak builds and writes a native autostart desktop entry outside Flatpak.
 - Friendly folder labels for portal-backed watch directories, so selected Flatpak folders show names like `Screenshots` instead of raw `/run/user/.../doc/...` paths.
 - Real **Save & Restart** behavior that relaunches Mimick after settings are saved.
@@ -171,6 +201,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A published GitHub Pages landing page for the Flatpak repository with direct install instructions and repository links.
 
 ### Changed
+
 - Flatpak builds now use selected-folder access through the file chooser portal instead of `--filesystem=home`.
 - Folder monitoring inside Flatpak now uses a polling watcher so portal-backed directories continue to sync reliably.
 - Local Flatpak development builds now use the same selected-folder permission model as the deployed app.
@@ -180,6 +211,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [4.0.0] - 2026-03-14
 
 ### Changed
+
 - Added Flatpak packaging support
 - Removed default photo watch path configuration on startup
 - Polished AppStream metadata for Flathub compliance
@@ -187,6 +219,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.0.0] - 2026-03-09
 
 ### Added
+
 - **Complete Rust Port**: Entire application rewritten from Python/PySide6 to Rust + GTK4 + Libadwaita. Binary drops from ~80MB (PyInstaller bundle) to ~2MB.
 - **Tokio async runtime**: Concurrent upload workers (configurable, default 3) with streaming `reqwest` multipart — constant RAM regardless of file size.
 - **In-memory shared state**: `Arc<Mutex<AppState>>` replaces disk-based IPC polling. No disk I/O during normal operation.
@@ -197,6 +230,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **AppImage packaging**: `build_test_appimage.sh` compiles a release binary and assembles a standard AppDir in 5 steps.
 
 ### Changed
+
 - Settings window uses hide-on-close (built once per process) — eliminates repeated GTK widget tree allocations.
 - `ImmichApiClient` is a singleton (`OnceLock`) — single `reqwest` connection pool for the lifetime of the process.
 - Autostart now uses `io.github.nicx17.mimick.desktop` symlink.
@@ -205,28 +239,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CodeQL analysis updated to use `languages: rust` with `build-mode: none`.
 
 ### Removed
+
 - All Python source files (`main.py`, `settings_window.py`, `tray_icon.py`, etc.)
 - `requirements.txt`, `pyproject.toml`, `setup.py`, `MANIFEST.in`
 
 ## [2.0.1] - 2026-03-08
 
 ### Changed
+
 - Renamed repository and backend strings from `immich_sync_app` to `mimick`
 
 ## [2.0.0] - 2026-03-08
 
 ### Added
+
 - **Complete Rebranding to Mimick**: Officially renamed the project from "Immich Sync" to "Mimick" to establish a unique identity and drop the generic moniker. All internal app IDs, metadata, documentations, and daemon variables have been fully synchronized.
 - **GTK4 / libadwaita Migration**: Totally replaced the heavy PySide6 UI framework with a native, responsive GTK4 + libadwaita interface. The application now perfectly mimics the native look and feel of modern GNOME and KDE desktop environments.
 - **Scalable Vector Icons**: Modernized app icon integration by deploying the high-resolution `mimick.svg` into system `hicolor/scalable/apps/` directories.
 
 ### Changed
+
 - AppImage build scripts and installation loops have been completely restructured to support the new `mimick` nomenclature and GTK requirements.
 - Standardized the GNOME window `StartupWMClass` bindings effectively preventing stray or duplicate launcher icons on Wayland/X11 desktops.
 
 ## [1.0.2] - 2026-03-07
 
 ### Fixed
+
 - **AppImage Python 3.12 Bundle**: Overhauled AppImage scripts to download and bundle a standalone `python-build-standalone` payload, resolving missing C-Extension (`Pillow`) bugs on modern OS hosts (like Ubuntu 24).
 - **GTK AppIndicator Native Support**: Added `PyGObject` to the packaged environment and successfully bridged host GUI drivers via `GI_TYPELIB_PATH` to ensure system tray icon features don't crash under isolated packaging.
 - **Duplicate Album Creation Race Condition**: Implemented `threading.Lock()` on the `get_or_create_album` REST endpoint to ensure multiple simultaneous workers handling bulk image drops to new directories don't spawn multiple identical albums on the server if they bypass the cache at the same time.
@@ -235,20 +274,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.1] - 2026-03-07
 
 ### Added
+
 - **File Move/Rename Support**: `ImmichEventHandler` now captures `on_moved` watchdog events. Temporary file downloads (e.g. `video.mp4.tmp` from web browsers, rsync, Syncthing) that later rename internally to a valid media extension are now successfully captured and pushed to the upload queue.
 
 ### Fixed
-- **Incomplete Video File Upload Bug (`wait_for_file_completion`)**: Prevented massive media files (like 30-minute GUI screencasts) from triggering early timeouts before they were fully written. Replaced absolute 10s wait logic with an adaptive 300-second *idle* timeout loop; continuously growing items dynamically rest the counter keeping uploads safe regardless of copy duration.
 
+- **Incomplete Video File Upload Bug (`wait_for_file_completion`)**: Prevented massive media files (like 30-minute GUI screencasts) from triggering early timeouts before they were fully written. Replaced absolute 10s wait logic with an adaptive 300-second _idle_ timeout loop; continuously growing items dynamically rest the counter keeping uploads safe regardless of copy duration.
 
 ## [1.0.0] - 2026-03-06
 
 ### Added
+
 - **Animated UI Toggles**: Added custom beautiful `SlideSwitch` CSS animations to the Settings Window allowing users to visually toggle Internal (LAN) vs External (WAN) URL behaviors on and off.
 - Config now persists `internal_url_enabled` and `external_url_enabled` booleans.
 - Expanded testing coverage for `api_client` and `config` including advanced error-state simulation and file-system failure catching.
 
 ### Fixed
+
 - **Captive Portal Bug Fix**: The API Ping routing logic now strictly requires a `{"res": "pong"}` JSON payload resolution to avoid falsely pinging local cafe Wi-Fi captive portals and breaking sync loops.
 - **Failover Cache Reset Bug Fix**: Fixed an issue where a timeout connection to the Internal URL loop would not flush the active API endpoint causing the logic to effectively loop blindly instead of bouncing sequentially to the External URL.
 - Fixed critical App UI freezing (App Not Responding) during testing connection pings syncing via a synchronous socket process - now visually wraps tests via Qt override wait cursors.
@@ -258,12 +300,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-
 - AppImage distribution! A new fully packaged AppImage version of `mimick` is now available, bundling `PySide6` and all Python dependencies into a single, highly portable executable.
 - Introduced `AI_CONTEXT.md` to help agentic tools understand the application's unique multi-threaded API architecture, system constraints, and X11/Wayland workarounds.
 
 ### Fixed
-
 
 - Fixed critical Qt 6 Wayland connection error where the DBus portal rejected window launching (`Could not register app ID`). Application metadata is now strictly set before Qt engine initialization.
 - Fixed a metadata warning regarding the `.desktop` suffix in Qt's `setDesktopFileName` handler.

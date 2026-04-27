@@ -38,6 +38,15 @@ struct FolderRowData {
 
 const DEFAULT_ALBUM_LABEL: &str = "Default (Folder Name)";
 
+fn show_alert(parent: &impl gtk::prelude::IsA<gtk::Widget>, heading: &str, body: &str) {
+    let dialog = adw::AlertDialog::builder()
+        .heading(heading)
+        .body(body)
+        .build();
+    dialog.add_response("ok", "OK");
+    dialog.present(Some(parent));
+}
+
 fn format_sync_age(timestamp: Option<f64>) -> String {
     let Some(timestamp) = timestamp else {
         return "No successful sync yet".to_string();
@@ -70,14 +79,61 @@ pub fn build_settings_window(
     live_watch_paths: Option<Arc<Mutex<Vec<WatchPathEntry>>>>,
     sync_now_tx: Option<UnboundedSender<()>>,
 ) {
-    // Use a PreferencesWindow for native Libadwaita mobile responsiveness and adaptive layouts
-    let window = adw::PreferencesWindow::builder()
+    // Use an application window with a Libadwaita header switcher and two pages.
+    let window = adw::ApplicationWindow::builder()
         .application(app)
-        .search_enabled(false)
+        .title("Mimick")
         .default_width(520)
         .default_height(780)
         .build();
     window.set_size_request(360, 640);
+
+    let view_stack = adw::ViewStack::builder()
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+    let page_switcher = adw::ViewSwitcher::builder().stack(&view_stack).build();
+    let header_bar = adw::HeaderBar::builder()
+        .title_widget(&page_switcher)
+        .build();
+    let about_header_btn = Button::builder()
+        .icon_name("help-about-symbolic")
+        .tooltip_text("About Mimick")
+        .build();
+    let window_clone_about = window.clone();
+    about_header_btn.connect_clicked(move |_| {
+        show_about_dialog(&window_clone_about);
+    });
+    header_bar.pack_start(&about_header_btn);
+
+    let toolbar_view = adw::ToolbarView::builder().build();
+    toolbar_view.add_top_bar(&header_bar);
+    toolbar_view.set_content(Some(&view_stack));
+    window.set_content(Some(&toolbar_view));
+
+    let status_scroll = ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+    let settings_scroll = ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+    view_stack.add_titled_with_icon(
+        &status_scroll,
+        Some("status"),
+        "Status",
+        "dialog-information-symbolic",
+    );
+    view_stack.add_titled_with_icon(
+        &settings_scroll,
+        Some("settings"),
+        "Settings",
+        "emblem-system-symbolic",
+    );
+
     let app_clone = app.clone();
     let config = Config::new();
 
@@ -85,13 +141,13 @@ pub fn build_settings_window(
         .title("Status")
         .icon_name("dialog-information-symbolic")
         .build();
-    window.add(&status_page);
+    status_scroll.set_child(Some(&status_page));
 
     let settings_page = adw::PreferencesPage::builder()
         .title("Settings")
         .icon_name("emblem-system-symbolic")
         .build();
-    window.add(&settings_page);
+    settings_scroll.set_child(Some(&settings_page));
 
     let is_unconfigured = config.get_api_key().unwrap_or_default().is_empty();
     if is_unconfigured {
@@ -325,13 +381,7 @@ pub fn build_settings_window(
                                     "Connection Failed"
                                 };
 
-                                let dialog = adw::MessageDialog::builder()
-                                    .transient_for(&window)
-                                    .heading(heading)
-                                    .body(&report)
-                                    .build();
-                                dialog.add_response("ok", "OK");
-                                dialog.present();
+                                show_alert(&window, heading, &report);
 
                                 glib::ControlFlow::Break
                             }
@@ -604,26 +654,18 @@ pub fn build_settings_window(
                                 startup_row.set_active(previous_startup);
                                 apply_in_flight.set(false);
 
-                                let dialog = adw::MessageDialog::builder()
-                                    .transient_for(&window)
-                                    .heading("Startup Permission Needed")
-                                    .body("Mimick was not allowed to start automatically at login.")
-                                    .build();
-                                dialog.add_response("ok", "OK");
-                                dialog.present();
+                                show_alert(
+                                    &window,
+                                    "Startup Permission Needed",
+                                    "Mimick was not allowed to start automatically at login.",
+                                );
                                 return;
                             }
                             Err(err) => {
                                 startup_row.set_active(previous_startup);
                                 apply_in_flight.set(false);
 
-                                let dialog = adw::MessageDialog::builder()
-                                    .transient_for(&window)
-                                    .heading("Could Not Update Startup Setting")
-                                    .body(&err)
-                                    .build();
-                                dialog.add_response("ok", "OK");
-                                dialog.present();
+                                show_alert(&window, "Could Not Update Startup Setting", &err);
                                 return;
                             }
                         }
@@ -651,26 +693,22 @@ pub fn build_settings_window(
                     {
                         apply_in_flight.set(false);
 
-                        let dialog = adw::MessageDialog::builder()
-                            .transient_for(&window)
-                            .heading("Could Not Save API Key")
-                            .body("Mimick could not store the API key in your desktop keyring.")
-                            .build();
-                        dialog.add_response("ok", "OK");
-                        dialog.present();
+                        show_alert(
+                            &window,
+                            "Could Not Save API Key",
+                            "Mimick could not store the API key in your desktop keyring.",
+                        );
                         return;
                     }
 
                     if !new_config.save() {
                         apply_in_flight.set(false);
 
-                        let dialog = adw::MessageDialog::builder()
-                            .transient_for(&window)
-                            .heading("Could Not Save Settings")
-                            .body("Mimick could not write the updated configuration to disk.")
-                            .build();
-                        dialog.add_response("ok", "OK");
-                        dialog.present();
+                        show_alert(
+                            &window,
+                            "Could Not Save Settings",
+                            "Mimick could not write the updated configuration to disk.",
+                        );
                         return;
                     }
 
@@ -811,7 +849,6 @@ pub fn build_settings_window(
 
     // Add existing paths to listbox with album dropdown
     for entry in &config.data.watch_paths {
-        #[allow(deprecated)]
         add_folder_row(
             &folders_list,
             entry,
@@ -845,7 +882,6 @@ pub fn build_settings_window(
                     if tracked_clone.borrow().iter().any(|r| r.path == path_str) {
                         return;
                     }
-                    #[allow(deprecated)]
                     add_folder_row(
                         &list_clone,
                         &WatchPathEntry::Simple(path_str),
@@ -903,7 +939,7 @@ pub fn build_settings_window(
     settings_page.add(&app_group);
 
     let app_flow = gtk::FlowBox::builder()
-        .homogeneous(true)
+        .homogeneous(false)
         .min_children_per_line(1)
         .max_children_per_line(2)
         .selection_mode(gtk::SelectionMode::None)
@@ -914,23 +950,14 @@ pub fn build_settings_window(
         .build();
     app_group.add(&app_flow);
 
-    let about_btn = Button::builder()
-        .label("About Mimick")
-        .hexpand(true)
-        .build();
-    app_flow.insert(&about_btn, -1);
-
     let quit_btn = Button::builder()
         .label("Quit")
         .css_classes(vec!["destructive-action".to_string()])
-        .hexpand(true)
+        .halign(gtk::Align::Start)
+        .hexpand(false)
+        .width_request(120)
         .build();
     app_flow.insert(&quit_btn, -1);
-
-    let window_clone_about = window.clone();
-    about_btn.connect_clicked(move |_| {
-        show_about_dialog(&window_clone_about);
-    });
 
     if let Some(qm) = queue_manager.clone() {
         pause_btn.set_label(if qm.is_paused() { "Resume" } else { "Pause" });
@@ -1015,13 +1042,7 @@ pub fn build_settings_window(
                                         ),
                                     };
 
-                                    let dialog = adw::MessageDialog::builder()
-                                        .transient_for(&window)
-                                        .heading(heading)
-                                        .body(&body)
-                                        .build();
-                                    dialog.add_response("ok", "OK");
-                                    dialog.present();
+                                    show_alert(&window, heading, &body);
                                 }
                             ));
                         }
@@ -1087,13 +1108,11 @@ pub fn build_settings_window(
         move |switch| {
             if !switch.is_active() && !external_switch.is_active() {
                 switch.set_active(true);
-                let dialog = adw::MessageDialog::builder()
-                    .transient_for(&window)
-                    .heading("Invalid Selection")
-                    .body("At least one URL (Internal or External) must be enabled.")
-                    .build();
-                dialog.add_response("ok", "OK");
-                dialog.present();
+                show_alert(
+                    &window,
+                    "Invalid Selection",
+                    "At least one URL (Internal or External) must be enabled.",
+                );
             }
             internal_entry.set_sensitive(switch.is_active());
         }
@@ -1109,13 +1128,11 @@ pub fn build_settings_window(
         move |switch| {
             if !switch.is_active() && !internal_switch.is_active() {
                 switch.set_active(true);
-                let dialog = adw::MessageDialog::builder()
-                    .transient_for(&window)
-                    .heading("Invalid Selection")
-                    .body("At least one URL (Internal or External) must be enabled.")
-                    .build();
-                dialog.add_response("ok", "OK");
-                dialog.present();
+                show_alert(
+                    &window,
+                    "Invalid Selection",
+                    "At least one URL (Internal or External) must be enabled.",
+                );
             }
             external_entry.set_sensitive(switch.is_active());
         }
@@ -1198,6 +1215,21 @@ pub fn build_settings_window(
         auto_apply_settings,
         move |_| {
             (auto_apply_settings)();
+        }
+    ));
+
+    // If background sync is disabled, closing the settings window should exit the app.
+    window.connect_close_request(clone!(
+        #[strong]
+        app_clone,
+        #[strong]
+        background_sync_state,
+        move |_| {
+            if !*background_sync_state.borrow() {
+                app_clone.quit();
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
         }
     ));
 
@@ -1407,7 +1439,7 @@ fn add_folder_row(
         move |_| {
             if let Some(window) = expander_row
                 .root()
-                .and_then(|root| root.downcast::<adw::PreferencesWindow>().ok())
+                .and_then(|root| root.downcast::<gtk::Window>().ok())
             {
                 let window_clone = window.clone();
                 let albums_ref_clone = albums_ref_clone.clone();
@@ -1456,7 +1488,7 @@ fn add_folder_row(
         move |_| {
             if let Some(window) = expander_row
                 .root()
-                .and_then(|root| root.downcast::<adw::PreferencesWindow>().ok())
+                .and_then(|root| root.downcast::<gtk::Window>().ok())
             {
                 let window = window.clone();
                 let path_for_rules = path_for_rules.clone();
@@ -1769,7 +1801,7 @@ fn show_queue_inspector(
     dialog.present();
 }
 
-fn show_about_dialog(parent: &impl gtk::prelude::IsA<gtk::Window>) {
+fn show_about_dialog(parent: &impl gtk::prelude::IsA<gtk::Widget>) {
     // Register asset search path so the "icon" name resolves
     let display = gtk::gdk::Display::default();
     if let Some(display) = display {
@@ -1778,7 +1810,7 @@ fn show_about_dialog(parent: &impl gtk::prelude::IsA<gtk::Window>) {
         theme.add_search_path(&assets_dir);
     }
 
-    let about = adw::AboutWindow::builder()
+    let about = adw::AboutDialog::builder()
         .application_name("Mimick")
         .application_icon("io.github.nicx17.mimick")
         .version(env!("CARGO_PKG_VERSION"))
@@ -1786,7 +1818,6 @@ fn show_about_dialog(parent: &impl gtk::prelude::IsA<gtk::Window>) {
         .website("https://github.com/nicx17/mimick")
         .issue_url("https://github.com/nicx17/mimick/issues")
         .license_type(gtk::License::Gpl30)
-        .transient_for(parent)
         .build();
 
     about.add_credit_section(
@@ -1794,7 +1825,7 @@ fn show_about_dialog(parent: &impl gtk::prelude::IsA<gtk::Window>) {
         &["Round Icons https://unsplash.com/illustrations/a-white-and-orange-flower-on-a-white-background-IkQ_WrJzZOM"],
     );
 
-    about.present();
+    about.present(Some(parent));
 }
 
 fn show_album_picker_dialog(

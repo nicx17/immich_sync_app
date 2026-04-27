@@ -502,11 +502,13 @@ async fn main() {
             return 0.into();
         }
 
+        let runtime_config = Config::new();
         let open_settings = argv.contains(&"--settings".to_string())
             // Also open settings when activated by a secondary instance (e.g. clicking
             // the app icon in the launcher while the daemon is already running).
             || cmdline.is_remote()
-            || Config::new().get_api_key().unwrap_or_default().is_empty();
+            || runtime_config.get_api_key().unwrap_or_default().is_empty()
+            || !runtime_config.data.background_sync_enabled;
 
         if open_settings {
             let client = API_CLIENT_HANDLE.get().cloned();
