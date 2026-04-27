@@ -27,9 +27,14 @@ env:
 jobs:
   checks:
     name: Format, Lint, and Test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
 
     steps:
+      - name: Install system dependencies
+        run: pacman -Syu --noconfirm --needed gtk4 libadwaita glib2 pkgconf base-devel libsecret git
+
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -40,15 +45,10 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Check formatting
         run: cargo fmt --all -- --check
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libglib2.0-dev pkg-config build-essential libsecret-1-dev
 
       - name: Run clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
@@ -63,8 +63,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      # REMOVED: system dependency installation (cargo audit only needs Cargo.lock, no GTK headers required)
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
