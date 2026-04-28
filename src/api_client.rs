@@ -4,9 +4,9 @@ use chrono::{SecondsFormat, TimeZone, Utc};
 use reqwest::Client;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiIssue {
@@ -28,6 +28,78 @@ struct AlbumSummary {
     album_name: String,
 }
 
+#[derive(Debug, Clone, serde::Deserialize, PartialEq)]
+pub struct LibraryAlbum {
+    pub id: String,
+    #[serde(rename = "albumName")]
+    pub album_name: String,
+    #[serde(rename = "assetCount")]
+    pub asset_count: u32,
+    #[serde(rename = "albumThumbnailAssetId")]
+    pub thumbnail_asset_id: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, PartialEq)]
+pub struct LibraryAsset {
+    pub id: String,
+    #[serde(rename = "originalFileName")]
+    pub filename: String,
+    #[serde(rename = "originalMimeType")]
+    pub mime_type: String,
+    #[serde(rename = "fileCreatedAt")]
+    pub created_at: String,
+    #[serde(rename = "type")]
+    pub asset_type: String,
+    pub thumbhash: Option<String>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    #[serde(default)]
+    pub checksum: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, PartialEq)]
+pub struct ServerStats {
+    pub images: u64,
+    pub videos: u64,
+    pub total: u64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, PartialEq)]
+pub struct ServerAbout {
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThumbnailSize {
+    Thumbnail,
+    Preview,
+}
+
+impl ThumbnailSize {
+    fn as_str(self) -> &'static str {
+        match self {
+            ThumbnailSize::Thumbnail => "thumbnail",
+            ThumbnailSize::Preview => "preview",
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SearchResponse {
+    assets: SearchAssetSection,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SearchAssetSection {
+    items: Vec<LibraryAsset>,
+}
+
 pub struct ImmichApiClient {
     pub client: Client,
     settings: RwLock<ApiClientSettings>,
@@ -38,6 +110,7 @@ pub struct ImmichApiClient {
     /// Caches album names to album IDs to avoid repeated list/create API calls.
     album_cache: Mutex<HashMap<String, String>>,
     albums_fetched: Mutex<bool>,
+    thumbnail_semaphore: Arc<Semaphore>,
 }
 
 impl ImmichApiClient {
@@ -69,6 +142,7 @@ impl ImmichApiClient {
             last_issue: Mutex::new(None),
             album_cache: Mutex::new(HashMap::new()),
             albums_fetched: Mutex::new(false),
+            thumbnail_semaphore: Arc::new(Semaphore::new(8)),
         }
     }
 
@@ -105,6 +179,10 @@ impl ImmichApiClient {
 
     async fn clear_issue(&self) {
         *self.last_issue.lock().await = None;
+    }
+
+    fn settings_snapshot(&self) -> ApiClientSettings {
+        self.settings.read().unwrap().clone()
     }
 
     fn route_label_for_url(&self, url: &str) -> String {
@@ -736,6 +814,379 @@ impl ImmichApiClient {
             }
         }
     }
+
+    pub async fn fetch_library_albums(&self) -> Result<Vec<LibraryAlbum>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/albums", base_url);
+
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let albums = resp
+                    .json::<Vec<LibraryAlbum>>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(albums)
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::Albums,
+                    resp.status().as_u16(),
+                    None,
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::Albums, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    pub async fn fetch_album_assets(
+        &self,
+        album_id: &str,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let body = serde_json::json!({
+            "albumIds": [album_id],
+            "page": page,
+            "size": size.max(1),
+        });
+        self.fetch_search_assets(
+            "/api/search/metadata",
+            body,
+            RequestContext::AssetList,
+            Some(album_id),
+        )
+        .await
+    }
+
+    pub async fn fetch_thumbnail(
+        &self,
+        asset_id: &str,
+        size: ThumbnailSize,
+    ) -> Result<Vec<u8>, String> {
+        let _permit = self
+            .thumbnail_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|err| err.to_string())?;
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!(
+            "{}/api/assets/{}/thumbnail?size={}",
+            base_url,
+            asset_id,
+            size.as_str()
+        );
+
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/octet-stream")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let bytes = resp.bytes().await.map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(bytes.to_vec())
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::ThumbnailFetch,
+                    resp.status().as_u16(),
+                    Some(asset_id),
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::ThumbnailFetch, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    pub async fn download_original(&self, asset_id: &str) -> Result<Vec<u8>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/assets/{}/original", base_url, asset_id);
+
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/octet-stream")
+            .timeout(Duration::from_secs(300))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let bytes = resp.bytes().await.map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(bytes.to_vec())
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::AssetDownload,
+                    resp.status().as_u16(),
+                    Some(asset_id),
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::AssetDownload, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    pub async fn delete_album(&self, album_id: &str) -> Result<(), String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/albums/{}", base_url, album_id);
+
+        match self
+            .client
+            .delete(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                self.clear_issue().await;
+                Ok(())
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::AlbumDelete,
+                    resp.status().as_u16(),
+                    Some(album_id),
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::AlbumDelete, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    pub async fn search_smart(
+        &self,
+        query: &str,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let body = serde_json::json!({
+            "query": query,
+            "page": page,
+            "size": size.max(1),
+        });
+        self.fetch_search_assets(
+            "/api/search/smart",
+            body,
+            RequestContext::SmartSearch,
+            Some(query),
+        )
+        .await
+    }
+
+    pub async fn search_metadata(
+        &self,
+        query: &str,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let body = serde_json::json!({
+            "originalFileName": query,
+            "page": page,
+            "size": size.max(1),
+        });
+        self.fetch_search_assets(
+            "/api/search/metadata",
+            body,
+            RequestContext::MetadataSearch,
+            Some(query),
+        )
+        .await
+    }
+
+    pub async fn fetch_server_stats(&self) -> Result<ServerStats, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/assets/statistics", base_url);
+
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let stats = resp
+                    .json::<ServerStats>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(stats)
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::ServerStats,
+                    resp.status().as_u16(),
+                    None,
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::ServerStats, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    pub async fn fetch_server_about(&self) -> Result<ServerAbout, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/server/about", base_url);
+
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let about = resp
+                    .json::<ServerAbout>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(about)
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::ServerAbout,
+                    resp.status().as_u16(),
+                    None,
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::ServerAbout, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    async fn fetch_search_assets(
+        &self,
+        endpoint: &str,
+        body: serde_json::Value,
+        context: RequestContext,
+        subject: Option<&str>,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}{}", base_url, endpoint);
+
+        match self
+            .client
+            .post(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .json(&body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let response = resp
+                    .json::<SearchResponse>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(response.assets.items)
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    context,
+                    resp.status().as_u16(),
+                    subject,
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(context, &err)).await;
+                Err(err.to_string())
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -744,12 +1195,14 @@ enum RequestContext {
     Albums,
     AlbumCreate,
     AlbumAssign,
-    // ThumbnailFetch,
-    // AssetList,
-    // SmartSearch,
-    // MetadataSearch,
-    // AssetDownload,
-    // AlbumDelete,
+    ThumbnailFetch,
+    AssetList,
+    SmartSearch,
+    MetadataSearch,
+    AssetDownload,
+    AlbumDelete,
+    ServerStats,
+    ServerAbout,
 }
 
 fn classify_http_issue(context: RequestContext, status: u16, subject: Option<&str>) -> ApiIssue {
@@ -794,6 +1247,30 @@ fn classify_http_issue(context: RequestContext, status: u16, subject: Option<&st
                 RequestContext::AlbumAssign => {
                     "Immich could not add the asset to the selected album".to_string()
                 }
+                RequestContext::ThumbnailFetch => {
+                    "Immich could not load a library thumbnail".to_string()
+                }
+                RequestContext::AssetList => {
+                    "Immich could not load library assets".to_string()
+                }
+                RequestContext::SmartSearch => {
+                    "Immich could not run the smart library search".to_string()
+                }
+                RequestContext::MetadataSearch => {
+                    "Immich could not run the metadata library search".to_string()
+                }
+                RequestContext::AssetDownload => {
+                    "Immich could not download the selected asset".to_string()
+                }
+                RequestContext::AlbumDelete => {
+                    "Immich could not delete the selected album".to_string()
+                }
+                RequestContext::ServerStats => {
+                    "Immich could not load library statistics".to_string()
+                }
+                RequestContext::ServerAbout => {
+                    "Immich could not load server version information".to_string()
+                }
             },
             guidance: format!(
                 "The server responded with HTTP {}. Check the server logs and retry after confirming the current configuration.",
@@ -825,6 +1302,30 @@ fn classify_network_issue(context: RequestContext, error: &reqwest::Error) -> Ap
                 }
                 RequestContext::AlbumAssign => {
                     "The album assignment request failed before completion".to_string()
+                }
+                RequestContext::ThumbnailFetch => {
+                    "The thumbnail request failed before completion".to_string()
+                }
+                RequestContext::AssetList => {
+                    "The library asset request failed before completion".to_string()
+                }
+                RequestContext::SmartSearch => {
+                    "The smart search request failed before completion".to_string()
+                }
+                RequestContext::MetadataSearch => {
+                    "The metadata search request failed before completion".to_string()
+                }
+                RequestContext::AssetDownload => {
+                    "The asset download request failed before completion".to_string()
+                }
+                RequestContext::AlbumDelete => {
+                    "The album deletion request failed before completion".to_string()
+                }
+                RequestContext::ServerStats => {
+                    "The library statistics request failed before completion".to_string()
+                }
+                RequestContext::ServerAbout => {
+                    "The server version request failed before completion".to_string()
                 }
             },
             guidance: "Retry the request after checking network connectivity and server health."
@@ -1026,6 +1527,97 @@ mod tests {
     fn test_classify_http_issue_for_album_assign_404() {
         let issue = classify_http_issue(RequestContext::AlbumAssign, 404, Some("album-1"));
         assert_eq!(issue.summary, "An album reference is no longer valid");
+    }
+
+    #[test]
+    fn test_library_album_deserializes_from_immich_shape() {
+        let album: LibraryAlbum = serde_json::from_value(serde_json::json!({
+            "id": "album-1",
+            "albumName": "Trips",
+            "assetCount": 42,
+            "albumThumbnailAssetId": "asset-9",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-02T00:00:00.000Z",
+            "description": "Vacation"
+        }))
+        .unwrap();
+
+        assert_eq!(album.id, "album-1");
+        assert_eq!(album.album_name, "Trips");
+        assert_eq!(album.asset_count, 42);
+        assert_eq!(album.thumbnail_asset_id.as_deref(), Some("asset-9"));
+        assert_eq!(album.description, "Vacation");
+    }
+
+    #[test]
+    fn test_library_asset_deserializes_from_search_result_shape() {
+        let asset: LibraryAsset = serde_json::from_value(serde_json::json!({
+            "id": "asset-1",
+            "originalFileName": "IMG_0001.JPG",
+            "originalMimeType": "image/jpeg",
+            "fileCreatedAt": "2024-01-01T12:00:00.000Z",
+            "type": "IMAGE",
+            "thumbhash": "abcd",
+            "width": 4032.0,
+            "height": 3024.0
+        }))
+        .unwrap();
+
+        assert_eq!(asset.id, "asset-1");
+        assert_eq!(asset.filename, "IMG_0001.JPG");
+        assert_eq!(asset.mime_type, "image/jpeg");
+        assert_eq!(asset.asset_type, "IMAGE");
+        assert_eq!(asset.thumbhash.as_deref(), Some("abcd"));
+        assert_eq!(asset.width, Some(4032.0));
+        assert_eq!(asset.height, Some(3024.0));
+        assert!(asset.checksum.is_none());
+    }
+
+    #[test]
+    fn test_search_response_deserializes_items() {
+        let response: SearchResponse = serde_json::from_value(serde_json::json!({
+            "assets": {
+                "items": [
+                    {
+                        "id": "asset-1",
+                        "originalFileName": "IMG_0001.JPG",
+                        "originalMimeType": "image/jpeg",
+                        "fileCreatedAt": "2024-01-01T12:00:00.000Z",
+                        "type": "IMAGE",
+                        "thumbhash": null,
+                        "width": 12.0,
+                        "height": 10.0
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(response.assets.items.len(), 1);
+        assert_eq!(response.assets.items[0].filename, "IMG_0001.JPG");
+    }
+
+    #[test]
+    fn test_server_structs_deserialize() {
+        let stats: ServerStats = serde_json::from_value(serde_json::json!({
+            "images": 100,
+            "videos": 25,
+            "total": 125
+        }))
+        .unwrap();
+        let about: ServerAbout = serde_json::from_value(serde_json::json!({
+            "version": "1.132.0"
+        }))
+        .unwrap();
+
+        assert_eq!(stats.total, 125);
+        assert_eq!(about.version, "1.132.0");
+    }
+
+    #[test]
+    fn test_thumbnail_size_serialization_values() {
+        assert_eq!(ThumbnailSize::Thumbnail.as_str(), "thumbnail");
+        assert_eq!(ThumbnailSize::Preview.as_str(), "preview");
     }
 
     #[test]

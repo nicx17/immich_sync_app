@@ -125,6 +125,13 @@ impl SyncIndex {
         self.entries.get(path).map(|record| record.checksum.clone())
     }
 
+    /// Reverse-lookup a local path by checksum for library sync-state indicators.
+    pub fn local_path_for_checksum(&self, checksum: &str) -> Option<String> {
+        self.entries
+            .iter()
+            .find_map(|(path, record)| (record.checksum == checksum).then(|| path.clone()))
+    }
+
     fn save(&self) -> io::Result<()> {
         if let Some(parent) = self.index_file.parent() {
             fs::create_dir_all(parent)?;
@@ -296,5 +303,29 @@ mod tests {
             index.sync_decision(&file_path, &updated).unwrap(),
             SyncDecision::NeedsReassociate
         ));
+    }
+
+    #[test]
+    fn test_local_path_for_checksum_returns_matching_entry() {
+        let dir = tempdir().unwrap();
+        let mut index = SyncIndex {
+            index_file: dir.path().join("synced_index.json"),
+            entries: Default::default(),
+        };
+        let file_path = dir.path().join("photo.jpg");
+        fs::write(&file_path, b"hello").unwrap();
+        let target = SyncTarget {
+            album_name: None,
+            album_id: None,
+        };
+        index
+            .record_synced(file_path.to_str().unwrap(), "hash1", &target)
+            .unwrap();
+
+        assert_eq!(
+            index.local_path_for_checksum("hash1"),
+            Some(file_path.to_string_lossy().to_string())
+        );
+        assert!(index.local_path_for_checksum("missing").is_none());
     }
 }
