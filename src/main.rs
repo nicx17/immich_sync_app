@@ -8,9 +8,11 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 mod api_client;
+mod app_context;
 mod autostart;
 mod config;
 mod diagnostics;
+mod library;
 mod monitor;
 mod notifications;
 mod queue_manager;
@@ -23,6 +25,7 @@ mod tray_icon;
 mod watch_path_display;
 
 use api_client::ImmichApiClient;
+use app_context::AppContext;
 use config::{Config, best_matching_watch_entry};
 use monitor::{Monitor, MonitorHandle};
 use queue_manager::{EnvironmentPolicy, FileTask, QueueManager};
@@ -375,20 +378,15 @@ async fn main() {
                 }
             };
             if settings_triggered {
-                let client = API_CLIENT_HANDLE.get().cloned();
-                let qm = QM_HANDLE.get().cloned();
-                let monitor = MONITOR_HANDLE.get().cloned();
-                let live_watch_paths = LIVE_WATCH_PATHS.get().cloned();
-                let sync_now_tx = MANUAL_SYNC_TX.get().cloned();
-                open_settings_if_needed(
-                    &app_clone2,
-                    shared_state2.clone(),
-                    client,
-                    qm,
-                    monitor,
-                    live_watch_paths,
-                    sync_now_tx,
-                );
+                let ctx = Arc::new(AppContext {
+                    shared_state: shared_state2.clone(),
+                    api_client: API_CLIENT_HANDLE.get().cloned(),
+                    queue_manager: QM_HANDLE.get().cloned(),
+                    monitor_handle: MONITOR_HANDLE.get().cloned(),
+                    live_watch_paths: LIVE_WATCH_PATHS.get().cloned(),
+                    sync_now_tx: MANUAL_SYNC_TX.get().cloned(),
+                });
+                open_settings_if_needed(&app_clone2, ctx);
             }
 
             let quit_triggered = {
@@ -511,20 +509,15 @@ async fn main() {
             || !runtime_config.data.background_sync_enabled;
 
         if open_settings {
-            let client = API_CLIENT_HANDLE.get().cloned();
-            let qm = QM_HANDLE.get().cloned();
-            let monitor = MONITOR_HANDLE.get().cloned();
-            let live_watch_paths = LIVE_WATCH_PATHS.get().cloned();
-            let sync_now_tx = MANUAL_SYNC_TX.get().cloned();
-            open_settings_if_needed(
-                app,
-                shared_state_cmdline.clone(),
-                client,
-                qm,
-                monitor,
-                live_watch_paths,
-                sync_now_tx,
-            );
+            let ctx = Arc::new(AppContext {
+                shared_state: shared_state_cmdline.clone(),
+                api_client: API_CLIENT_HANDLE.get().cloned(),
+                queue_manager: QM_HANDLE.get().cloned(),
+                monitor_handle: MONITOR_HANDLE.get().cloned(),
+                live_watch_paths: LIVE_WATCH_PATHS.get().cloned(),
+                sync_now_tx: MANUAL_SYNC_TX.get().cloned(),
+            });
+            open_settings_if_needed(app, ctx);
         }
 
         app.activate();
@@ -550,28 +543,12 @@ async fn main() {
 }
 
 /// Open the settings window only if one is not already visible.
-fn open_settings_if_needed(
-    app: &adw::Application,
-    shared_state: Arc<Mutex<AppState>>,
-    api_client: Option<Arc<ImmichApiClient>>,
-    queue_manager: Option<Arc<QueueManager>>,
-    monitor_handle: Option<Arc<MonitorHandle>>,
-    live_watch_paths: Option<Arc<Mutex<Vec<config::WatchPathEntry>>>>,
-    sync_now_tx: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-) {
+fn open_settings_if_needed(app: &adw::Application, ctx: Arc<AppContext>) {
     if let Some(win) = app.windows().first() {
         win.present();
     } else {
         log::debug!("Opening settings window");
-        build_settings_window(
-            app,
-            shared_state,
-            api_client,
-            queue_manager,
-            monitor_handle,
-            live_watch_paths,
-            sync_now_tx,
-        );
+        build_settings_window(app, ctx);
     }
 }
 

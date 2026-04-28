@@ -20,11 +20,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::api_client::ImmichApiClient;
+use crate::app_context::AppContext;
 use crate::config::Config;
-use crate::monitor::MonitorHandle;
-use crate::queue_manager::QueueManager;
-use crate::state_manager::AppState;
 use crate::watch_path_display::{display_watch_path, watch_path_subtitle};
 
 /// Holds GTK widgets for a single watch-folder row in the settings list.
@@ -70,15 +67,13 @@ fn format_sync_age(timestamp: Option<f64>) -> String {
 }
 
 /// Build the main settings window and wire it to the shared app state.
-pub fn build_settings_window(
-    app: &adw::Application,
-    shared_state: Arc<Mutex<AppState>>,
-    api_client: Option<Arc<ImmichApiClient>>,
-    queue_manager: Option<Arc<QueueManager>>,
-    monitor_handle: Option<Arc<MonitorHandle>>,
-    live_watch_paths: Option<Arc<Mutex<Vec<WatchPathEntry>>>>,
-    sync_now_tx: Option<UnboundedSender<()>>,
-) {
+pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
+    let shared_state = ctx.shared_state.clone();
+    let api_client = ctx.api_client.clone();
+    let queue_manager = ctx.queue_manager.clone();
+    let monitor_handle = ctx.monitor_handle.clone();
+    let live_watch_paths = ctx.live_watch_paths.clone();
+    let sync_now_tx = ctx.sync_now_tx.clone();
     // Use an application window with a Libadwaita header switcher and two pages.
     let window = adw::ApplicationWindow::builder()
         .application(app)

@@ -744,6 +744,12 @@ enum RequestContext {
     Albums,
     AlbumCreate,
     AlbumAssign,
+    // ThumbnailFetch,
+    // AssetList,
+    // SmartSearch,
+    // MetadataSearch,
+    // AssetDownload,
+    // AlbumDelete,
 }
 
 fn classify_http_issue(context: RequestContext, status: u16, subject: Option<&str>) -> ApiIssue {
