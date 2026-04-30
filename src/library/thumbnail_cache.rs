@@ -1,5 +1,3 @@
-//! Thumbnail cache with in-memory LRU (byte-budget) and on-disk persistence.
-
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -11,14 +9,8 @@ use lru::LruCache;
 
 use crate::api_client::{ImmichApiClient, ThumbnailSize};
 
-#[derive(Clone)]
-struct CachedBytes {
-    bytes: Vec<u8>,
-    estimated_bytes: usize,
-}
-
 struct SizedLruCache {
-    inner: LruCache<String, CachedBytes>,
+    inner: LruCache<String, Texture>,
     current_bytes: usize,
     max_bytes: usize,
 }
@@ -32,18 +24,23 @@ impl SizedLruCache {
         }
     }
 
-    fn get(&mut self, key: &str) -> Option<Vec<u8>> {
-        self.inner.get(key).map(|entry| entry.bytes.clone())
+    fn get(&mut self, key: &str) -> Option<Texture> {
+        self.inner.get(key).cloned()
     }
 
-    fn insert(&mut self, key: String, entry: CachedBytes) {
-        if let Some(previous) = self.inner.put(key, entry.clone()) {
-            self.current_bytes = self.current_bytes.saturating_sub(previous.estimated_bytes);
+    fn insert(&mut self, key: String, texture: Texture) {
+        let added = estimate_texture_bytes(&texture);
+        if let Some(previous) = self.inner.put(key, texture) {
+            self.current_bytes = self
+                .current_bytes
+                .saturating_sub(estimate_texture_bytes(&previous));
         }
-        self.current_bytes = self.current_bytes.saturating_add(entry.estimated_bytes);
+        self.current_bytes = self.current_bytes.saturating_add(added);
         while self.current_bytes > self.max_bytes {
             if let Some((_key, removed)) = self.inner.pop_lru() {
-                self.current_bytes = self.current_bytes.saturating_sub(removed.estimated_bytes);
+                self.current_bytes = self
+                    .current_bytes
+                    .saturating_sub(estimate_texture_bytes(&removed));
             } else {
                 break;
             }
@@ -104,22 +101,7 @@ impl ThumbnailCache {
 
     pub fn get_cached(&self, asset_id: &str, size: ThumbnailSize) -> Option<Texture> {
         let key = cache_key(asset_id, size);
-        if let Some(bytes) = self.memory.lock().unwrap().get(&key) {
-            return decode_texture(&bytes).ok();
-        }
-
-        let path = self.cache_file(asset_id, size);
-        let bytes = std::fs::read(path).ok()?;
-        let texture = decode_texture(&bytes).ok()?;
-        let estimated_bytes = estimate_texture_bytes(&texture);
-        self.memory.lock().unwrap().insert(
-            key,
-            CachedBytes {
-                bytes,
-                estimated_bytes,
-            },
-        );
-        Some(texture)
+        self.memory.lock().unwrap().get(&key)
     }
 
     pub async fn load_thumbnail(
@@ -131,23 +113,35 @@ impl ThumbnailCache {
             return Ok(texture);
         }
 
-        let bytes = self.api_client.fetch_thumbnail(asset_id, size).await?;
-        let texture = decode_texture(&bytes)?;
-        let estimated_bytes = estimate_texture_bytes(&texture);
+        // ---- Disk-cache fallback ----
+        let key = cache_key(asset_id, size);
+        let cache_file = self.cache_file(asset_id, size);
+        let cache_file_for_read = cache_file.clone();
+        let from_disk = tokio::task::spawn_blocking(move || -> Option<Texture> {
+            let bytes = std::fs::read(&cache_file_for_read).ok()?;
+            Texture::from_bytes(&Bytes::from(&bytes[..])).ok()
+        })
+        .await
+        .map_err(|err| err.to_string())?;
 
-        if let Some(parent) = self.cache_dir.parent() {
-            std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+        if let Some(texture) = from_disk {
+            self.memory.lock().unwrap().insert(key, texture.clone());
+            return Ok(texture);
         }
-        std::fs::create_dir_all(&self.cache_dir).map_err(|err| err.to_string())?;
-        std::fs::write(self.cache_file(asset_id, size), &bytes).map_err(|err| err.to_string())?;
-        self.memory.lock().unwrap().insert(
-            cache_key(asset_id, size),
-            CachedBytes {
-                bytes,
-                estimated_bytes,
-            },
-        );
 
+        // ---- Network fetch ----
+        let bytes = self.api_client.fetch_thumbnail(asset_id, size).await?;
+
+        let cache_dir = self.cache_dir.clone();
+        let texture = tokio::task::spawn_blocking(move || -> Result<Texture, String> {
+            let _ = std::fs::create_dir_all(&cache_dir);
+            let _ = std::fs::write(&cache_file, &bytes);
+            Texture::from_bytes(&Bytes::from(&bytes[..])).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|err| err.to_string())??;
+
+        self.memory.lock().unwrap().insert(key, texture.clone());
         Ok(texture)
     }
 
@@ -211,10 +205,6 @@ fn cache_key(asset_id: &str, size: ThumbnailSize) -> String {
     }
 }
 
-fn decode_texture(bytes: &[u8]) -> Result<Texture, String> {
-    Texture::from_bytes(&Bytes::from(bytes)).map_err(|err| err.to_string())
-}
-
 fn estimate_texture_bytes(texture: &Texture) -> usize {
     texture.width().max(1) as usize * texture.height().max(1) as usize * 4
 }
@@ -246,49 +236,44 @@ mod tests {
         )
     }
 
+    fn texture_from_png() -> Texture {
+        Texture::from_bytes(&Bytes::from(PNG_BYTES)).unwrap()
+    }
+
     #[test]
     fn test_memory_hit_after_insert() {
         let cache = cache(1024);
-        let texture = decode_texture(PNG_BYTES).unwrap();
-        cache.memory.lock().unwrap().insert(
-            "thumbnail:1".into(),
-            CachedBytes {
-                bytes: PNG_BYTES.to_vec(),
-                estimated_bytes: estimate_texture_bytes(&texture),
-            },
-        );
+        cache
+            .memory
+            .lock()
+            .unwrap()
+            .insert("thumbnail:1".into(), texture_from_png());
 
         assert!(cache.get_cached("1", ThumbnailSize::Thumbnail).is_some());
     }
 
     #[test]
-    fn test_disk_hit_reads_and_populates_memory() {
+    fn test_get_cached_does_not_touch_disk() {
         let cache = cache(1024);
         std::fs::create_dir_all(&cache.cache_dir).unwrap();
         std::fs::write(cache.cache_file("2", ThumbnailSize::Thumbnail), PNG_BYTES).unwrap();
 
-        assert!(cache.get_cached("2", ThumbnailSize::Thumbnail).is_some());
-        assert!(cache.memory.lock().unwrap().get("thumbnail:2").is_some());
+        assert!(cache.get_cached("2", ThumbnailSize::Thumbnail).is_none());
     }
 
     #[test]
     fn test_eviction_after_byte_budget_overflow() {
-        let cache = cache(4);
-        let texture = decode_texture(PNG_BYTES).unwrap();
-        let entry = CachedBytes {
-            bytes: PNG_BYTES.to_vec(),
-            estimated_bytes: estimate_texture_bytes(&texture),
-        };
+        let cache = cache(3);
         cache
             .memory
             .lock()
             .unwrap()
-            .insert("thumbnail:1".into(), entry.clone());
+            .insert("thumbnail:1".into(), texture_from_png());
         cache
             .memory
             .lock()
             .unwrap()
-            .insert("thumbnail:2".into(), entry);
+            .insert("thumbnail:2".into(), texture_from_png());
 
         assert!(cache.memory.lock().unwrap().inner.len() <= 1);
     }
@@ -298,13 +283,11 @@ mod tests {
         let cache = cache(1024);
         std::fs::create_dir_all(&cache.cache_dir).unwrap();
         std::fs::write(cache.cache_file("3", ThumbnailSize::Thumbnail), PNG_BYTES).unwrap();
-        cache.memory.lock().unwrap().insert(
-            "thumbnail:3".into(),
-            CachedBytes {
-                bytes: PNG_BYTES.to_vec(),
-                estimated_bytes: 4,
-            },
-        );
+        cache
+            .memory
+            .lock()
+            .unwrap()
+            .insert("thumbnail:3".into(), texture_from_png());
 
         cache.clear().unwrap();
 

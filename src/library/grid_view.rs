@@ -46,9 +46,14 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
             .max_width_chars(22)
             .css_classes(vec!["mimick-cell-name".to_string()])
             .build();
+        // `pixel_size` is set explicitly so the icon renders at the badge
+        // size we expect (icons inside small Boxes can render at 0px when
+        // both width-request and pixel-size are unset).
         let status = gtk::Image::builder()
-            .icon_name("cloud-symbolic")
+            .icon_name("network-server-symbolic")
             .halign(gtk::Align::Start)
+            .pixel_size(14)
+            .css_classes(vec!["mimick-status-badge".to_string()])
             .build();
 
         container.append(&picture);
@@ -86,6 +91,7 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         picture.set_paintable(Option::<&Texture>::None);
         set_thumb_state(&picture, ThumbState::Loading);
         status.set_icon_name(Some(sync_icon_name(sync_state)));
+        status.set_tooltip_text(Some(sync_state_label(sync_state)));
 
         let cache = ctx.thumbnail_cache.clone();
         let picture_clone = picture.clone();
@@ -165,11 +171,24 @@ pub fn replace_model(model: &gtk::gio::ListStore, objects: &[AssetObject]) {
     }
 }
 
+/// Map the `sync_state` enum (0 = remote-only, 1 = local-only, 2 = both) to
+/// an icon name that is reliably present in `adwaita-icon-theme`. The names
+/// previously used here (`cloud-symbolic`, `folder-cloud-symbolic`) ship in
+/// some distro icon themes but not in the upstream Adwaita set, which is
+/// why the badge rendered blank on most systems.
+fn sync_state_label(sync_state: u32) -> &'static str {
+    match sync_state {
+        2 => "On Immich and locally",
+        1 => "Local only",
+        _ => "On Immich only",
+    }
+}
+
 fn sync_icon_name(sync_state: u32) -> &'static str {
     match sync_state {
-        2 => "folder-cloud-symbolic",
-        1 => "folder-symbolic",
-        _ => "cloud-symbolic",
+        2 => "emblem-default-symbolic",  // Both: solid check ✓
+        1 => "folder-pictures-symbolic", // Local only
+        _ => "network-server-symbolic",  // Remote only
     }
 }
 

@@ -66,8 +66,15 @@ fn format_sync_age(timestamp: Option<f64>) -> String {
     }
 }
 
-/// Build the main settings window and wire it to the shared app state.
 pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
+    build_settings_window_with_parent(app, ctx, None);
+}
+
+pub fn build_settings_window_with_parent(
+    app: &adw::Application,
+    ctx: Arc<AppContext>,
+    parent: Option<&adw::ApplicationWindow>,
+) {
     let shared_state = ctx.state.clone();
     let api_client = ctx.api_client.clone();
     let queue_manager = ctx.queue_manager.clone();
@@ -76,12 +83,18 @@ pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
     let sync_now_tx = ctx.sync_now_tx.clone();
     let thumbnail_cache = ctx.thumbnail_cache.clone();
     // Use an application window with a Libadwaita header switcher and two pages.
-    let window = adw::ApplicationWindow::builder()
+    let mut window_builder = adw::ApplicationWindow::builder()
         .application(app)
         .title("Mimick")
         .default_width(520)
-        .default_height(780)
-        .build();
+        .default_height(780);
+    if let Some(parent) = parent {
+        window_builder = window_builder
+            .transient_for(parent)
+            .modal(true)
+            .destroy_with_parent(true);
+    }
+    let window = window_builder.build();
     window.set_size_request(360, 640);
 
     let view_stack = adw::ViewStack::builder()

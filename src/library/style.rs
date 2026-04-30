@@ -64,6 +64,18 @@ label.mimick-empty-title {
 label.mimick-empty-subtitle {
     opacity: 0.65;
 }
+
+label.mimick-timeline-banner {
+    font-size: 1.05em;
+    font-weight: 600;
+    padding: 4px 8px;
+    background-color: alpha(@accent_bg_color, 0.10);
+    border-bottom: 1px solid alpha(@view_fg_color, 0.10);
+}
+
+image.mimick-status-badge {
+    opacity: 0.85;
+}
 "#;
 
 static REGISTERED: OnceLock<()> = OnceLock::new();

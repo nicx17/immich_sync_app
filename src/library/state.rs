@@ -1,12 +1,15 @@
 //! Library runtime state used by the built-in asset browser.
 
-use crate::api_client::{LibraryAlbum, LibraryAsset, ServerAbout, ServerStats};
+use crate::api_client::{
+    LibraryAlbum, LibraryAsset, MetadataSearchFilters, ServerAbout, ServerStats,
+};
 
 const PAGE_SIZE: usize = 50;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LibrarySource {
     AllAssets,
+    Timeline,
     Album {
         id: String,
         name: String,
@@ -16,6 +19,10 @@ pub enum LibrarySource {
     },
     MetadataSearch {
         query: String,
+    },
+
+    AdvancedSearch {
+        filters: Box<MetadataSearchFilters>,
     },
     /// Local watched-folder enumeration only (no remote calls).
     LocalAll,
@@ -40,6 +47,7 @@ impl LibrarySource {
             self,
             LibrarySource::SmartSearch { .. }
                 | LibrarySource::MetadataSearch { .. }
+                | LibrarySource::AdvancedSearch { .. }
                 | LibrarySource::LocalSearch { .. }
                 | LibrarySource::UnifiedSearch { .. }
         )

@@ -8,7 +8,7 @@ use glib::clone;
 use gtk::prelude::*;
 use libadwaita::prelude::*;
 
-use crate::api_client::{LibraryAsset, ThumbnailSize};
+use crate::api_client::{LibraryAsset, MetadataSearchFilters, ThumbnailSize};
 use crate::app_context::AppContext;
 use crate::config::Config;
 use crate::library::asset_object::AssetObject;
@@ -18,12 +18,8 @@ use crate::library::local_source::{
 };
 use crate::library::sidebar::{SidebarParts, build_sidebar};
 use crate::library::state::{LibraryLoadState, LibrarySortMode, LibrarySource};
-use crate::settings_window::build_settings_window;
+use crate::settings_window::build_settings_window_with_parent;
 
-/// Synthetic id prefix used for purely-local rows. Allows the same
-/// `LibraryState.assets: Vec<LibraryAsset>` model to carry both remote and
-/// local entries; downstream `AssetObject` construction branches on the
-/// prefix to pick the right widget builder.
 const LOCAL_ID_PREFIX: &str = "local::";
 
 pub mod asset_object;
@@ -51,6 +47,10 @@ struct LibraryWindowUi {
     search_mode: gtk::DropDown,
     sort_mode: gtk::DropDown,
     source_mode: gtk::DropDown,
+    /// Sticky month/year heading shown above the grid in Timeline mode.
+    /// Updated on scroll using the `created_at` of the topmost visible
+    /// asset; hidden in non-timeline sources.
+    timeline_banner: gtk::Label,
 }
 
 pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>) {
@@ -84,21 +84,35 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     let sidebar = build_sidebar();
     let grid = build_grid_view(ctx.clone());
 
-    let source_mode_model = gtk::StringList::new(&["Remote", "Local", "Unified"]);
+    let source_mode_model = gtk::StringList::new(&["Remote", "Local", "Unified", "Timeline"]);
     let source_mode = gtk::DropDown::builder()
         .model(&source_mode_model)
         .selected(0)
         .tooltip_text("Asset source")
         .build();
 
-    let search_mode_model = gtk::StringList::new(&["Metadata", "Smart"]);
+    // Label the modes by what the user actually sees: Smart hits CLIP+OCR
+    // on Immich >= 1.95 (so it covers natural-language and text-in-image
+    // queries), while Filename is filename + EXIF only. Without these
+    // labels users had no way to discover where OCR search lives.
+    let search_mode_model = gtk::StringList::new(&["Filename", "Smart (context & OCR)"]);
     let search_mode = gtk::DropDown::builder()
         .model(&search_mode_model)
         .selected(0)
+        .tooltip_text(
+            "Filename: matches the file name and EXIF metadata.\n\
+             Smart: CLIP-based search over visual content, scenes, and OCR text \
+             extracted from images. Use natural language (\"invoices\", \"sunset beach\", \
+             \"handwritten notes\").",
+        )
         .build();
     let search_entry = gtk::SearchEntry::builder()
-        .placeholder_text("Search the library")
+        .placeholder_text("Search filenames")
         .hexpand(true)
+        .build();
+    let filters_button = gtk::Button::builder()
+        .icon_name("view-more-symbolic")
+        .tooltip_text("Advanced filters (date, location, camera, EXIF)")
         .build();
     let sort_model = gtk::StringList::new(&["Newest", "Filename", "File Type", "Sync State"]);
     let sort_mode = gtk::DropDown::builder()
@@ -117,7 +131,21 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     controls.append(&source_mode);
     controls.append(&search_mode);
     controls.append(&search_entry);
+    controls.append(&filters_button);
     controls.append(&sort_mode);
+
+    // Timeline banner — shown only when the Timeline source is active. The
+    // text updates on scroll to the month/year of the asset at the top of
+    // the visible grid. Hidden by default to avoid eating vertical space
+    // in other sources.
+    let timeline_banner = gtk::Label::builder()
+        .xalign(0.0)
+        .css_classes(vec!["mimick-timeline-banner".to_string()])
+        .visible(false)
+        .margin_top(4)
+        .margin_bottom(4)
+        .margin_start(12)
+        .build();
 
     let content_stack = gtk::Stack::builder().vexpand(true).hexpand(true).build();
     let loading_view = build_status_view(
@@ -173,6 +201,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .orientation(gtk::Orientation::Vertical)
         .build();
     content.append(&controls);
+    content.append(&timeline_banner);
     content.append(&content_stack);
     content.append(&footer);
 
@@ -200,11 +229,13 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         search_mode,
         sort_mode,
         source_mode,
+        timeline_banner,
     });
 
     connect_sidebar_handlers(ui.clone());
     connect_controls(ui.clone(), prefs_button, refresh_button);
     connect_grid_handlers(ui.clone());
+    connect_filters_button(ui.clone(), filters_button);
 
     bootstrap_window(ui);
     window.present();
@@ -230,7 +261,10 @@ fn connect_controls(
         #[strong]
         ui,
         move |_| {
-            build_settings_window(&ui.app, ui.ctx.clone());
+            // Pass the library window as parent so the settings open as a
+            // transient/modal child, keeping the unified single-window feel
+            // the spec calls for.
+            build_settings_window_with_parent(&ui.app, ui.ctx.clone(), Some(&ui.window));
         }
     ));
 
@@ -255,11 +289,20 @@ fn connect_controls(
             let source = match dropdown.selected() {
                 1 => LibrarySource::LocalAll,
                 2 => LibrarySource::Unified,
+                3 => LibrarySource::Timeline,
                 _ => LibrarySource::AllAssets,
             };
             // Searching while switching sources would require thread-safe
             // re-routing of the search field; clear it on source change.
             ui.search_entry.set_text("");
+            // Timeline is meaningless without date-desc; force the sort
+            // and reflect it in the dropdown so the user can see the
+            // implicit override.
+            if matches!(source, LibrarySource::Timeline) {
+                ui.sort_mode.set_selected(0);
+            }
+            ui.timeline_banner
+                .set_visible(matches!(source, LibrarySource::Timeline));
             let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
             load_source_page(ui.clone(), request, false);
         }
@@ -284,6 +327,21 @@ fn connect_controls(
             };
             let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
             load_source_page(ui.clone(), request, false);
+        }
+    ));
+
+    // Placeholder mirrors the selected search mode so the user sees the
+    // semantic shift the moment they change the dropdown — avoids the
+    // "why is my filename query returning weird CLIP matches" surprise.
+    ui.search_mode.connect_selected_notify(clone!(
+        #[strong]
+        ui,
+        move |dropdown| {
+            let placeholder = match dropdown.selected() {
+                1 => "Describe what you're looking for…",
+                _ => "Search filenames",
+            };
+            ui.search_entry.set_placeholder_text(Some(placeholder));
         }
     ));
 
@@ -468,6 +526,12 @@ fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
         #[strong]
         ui,
         move |adj| {
+            // Timeline banner — update on every scroll tick when the
+            // Timeline source is active. We approximate the topmost
+            // visible row by mapping scroll fraction → asset index, then
+            // reading `created_at` off that row's `LibraryAsset`.
+            update_timeline_banner_if_active(&ui, adj);
+
             let threshold = (adj.upper() - adj.page_size()) * 0.75;
             if adj.value() < threshold {
                 return;
@@ -484,6 +548,54 @@ fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
             }
         }
     ));
+}
+
+fn update_timeline_banner_if_active(ui: &Rc<LibraryWindowUi>, adj: &gtk::Adjustment) {
+    let state = ui.ctx.library_state.lock().unwrap();
+    if !matches!(state.source, LibrarySource::Timeline) {
+        return;
+    }
+    if state.assets.is_empty() {
+        ui.timeline_banner.set_label("");
+        return;
+    }
+    // Approximate "row at top of viewport" by mapping the scroll fraction
+    // onto the asset index. Exact row geometry would require querying the
+    // GridView, which doesn't expose its layout directly.
+    let max = (adj.upper() - adj.page_size()).max(1.0);
+    let frac = (adj.value() / max).clamp(0.0, 1.0);
+    let idx = ((state.assets.len() as f64) * frac) as usize;
+    let idx = idx.min(state.assets.len() - 1);
+    let label = month_year_label(&state.assets[idx].created_at);
+    ui.timeline_banner.set_label(&label);
+}
+
+/// Extract a "Month YYYY" heading from an ISO-8601 timestamp. Falls back to
+/// the raw prefix if parsing fails so the banner is never blank for a
+/// well-formed but unexpected format.
+fn month_year_label(iso: &str) -> String {
+    use chrono::{DateTime, Datelike};
+    if let Ok(dt) = DateTime::parse_from_rfc3339(iso) {
+        const MONTHS: [&str; 12] = [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ];
+        let m = dt.month0() as usize;
+        if let Some(name) = MONTHS.get(m) {
+            return format!("{} {}", name, dt.year());
+        }
+    }
+    iso.chars().take(7).collect()
 }
 
 fn load_albums(ui: Rc<LibraryWindowUi>) {
@@ -532,7 +644,7 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
         async move {
             let (generation, source, page) = request;
             let result: Result<Vec<LibraryAsset>, String> = match source.clone() {
-                LibrarySource::AllAssets => {
+                LibrarySource::AllAssets | LibrarySource::Timeline => {
                     ui.ctx.api_client.search_metadata("", page, PAGE_SIZE).await
                 }
                 LibrarySource::Album { id, .. } => {
@@ -551,6 +663,12 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
                     ui.ctx
                         .api_client
                         .search_metadata(&query, page, PAGE_SIZE)
+                        .await
+                }
+                LibrarySource::AdvancedSearch { filters } => {
+                    ui.ctx
+                        .api_client
+                        .search_metadata_with_filters(&filters, page, PAGE_SIZE)
                         .await
                 }
                 LibrarySource::LocalAll => {
@@ -602,6 +720,7 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
                     replace_model(&ui.grid.model, &objects);
                     sync_content_state(&ui);
                     reload_sidebar(&ui);
+                    update_timeline_banner_if_active(&ui, &ui.grid.scrolled.vadjustment());
                 }
                 Err(err) => {
                     let mut state = ui.ctx.library_state.lock().unwrap();
@@ -797,13 +916,18 @@ fn asset_objects_from_state(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<As
 }
 
 fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String, local_path: String) {
-    let dialog = libadwaita::Window::builder()
-        .transient_for(&ui.window)
-        .modal(true)
+    // `adw::Dialog` floats over the library window instead of opening a new
+    // top-level. Adwaita handles Escape-to-close and focus restoration; we
+    // only have to wire the actual content. The header bar is empty
+    // because the dialog provides its own close affordance.
+    let dialog = libadwaita::Dialog::builder()
         .title(&filename)
-        .default_width(980)
-        .default_height(760)
+        .content_width(980)
+        .content_height(760)
         .build();
+    let toolbar = libadwaita::ToolbarView::builder().build();
+    let header = libadwaita::HeaderBar::builder().build();
+    toolbar.add_top_bar(&header);
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(12)
@@ -833,7 +957,7 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String, lo
         .build();
 
     let download = gtk::Button::builder().label("Download").build();
-    let close = gtk::Button::builder().label("Close").build();
+    let close_btn = gtk::Button::builder().label("Close").build();
 
     // For purely local rows, the network-side toggle is meaningless (the
     // file IS the original on disk), so hide both.
@@ -844,15 +968,18 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String, lo
     }
     actions.append(&resolution_toggle);
     actions.append(&download);
-    actions.append(&close);
+    actions.append(&close_btn);
     content.append(&picture);
     content.append(&actions);
-    dialog.set_content(Some(&content));
+    toolbar.set_content(Some(&content));
+    dialog.set_child(Some(&toolbar));
 
-    close.connect_clicked(clone!(
+    close_btn.connect_clicked(clone!(
         #[weak]
         dialog,
-        move |_| dialog.close()
+        move |_| {
+            dialog.close();
+        }
     ));
 
     if !is_local {
@@ -933,7 +1060,10 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String, lo
 
     (*load_into_picture)(initial_full);
 
-    dialog.present();
+    // adw::Dialog::present takes the parent widget so the dialog floats over
+    // the library window — that's the whole point of the migration away from
+    // a top-level Window.
+    dialog.present(Some(&ui.window));
 }
 
 /// Hand a local file off to the user's default app via `xdg-open`/equivalent.
@@ -1142,4 +1272,260 @@ async fn merge_unified_page(
     // anyway when the user selects something other than "Newest first".
     local_rows.append(&mut remote);
     Ok(local_rows)
+}
+
+fn connect_filters_button(ui: Rc<LibraryWindowUi>, filters_button: gtk::Button) {
+    filters_button.connect_clicked(clone!(
+        #[strong]
+        ui,
+        move |_| {
+            present_advanced_filters_dialog(ui.clone());
+        }
+    ));
+}
+
+/// Build and present the advanced-filters dialog. The dialog wraps an
+/// `adw::PreferencesPage` so each filter dimension renders as an
+/// `AdwActionRow` / `AdwSwitchRow` / `AdwEntryRow` — the same design
+/// language as the main settings window — and submits a populated
+/// `MetadataSearchFilters` via the `LibrarySource::AdvancedSearch` path.
+fn present_advanced_filters_dialog(ui: Rc<LibraryWindowUi>) {
+    let dialog = libadwaita::Dialog::builder()
+        .title("Advanced Filters")
+        .content_width(520)
+        .content_height(720)
+        .build();
+    let toolbar = libadwaita::ToolbarView::builder().build();
+    let header = libadwaita::HeaderBar::builder().build();
+    toolbar.add_top_bar(&header);
+
+    let page = libadwaita::PreferencesPage::new();
+
+    // --- Text dimensions ---
+    // The description filter hits Immich's `description` field only;
+    // text recognised inside images (OCR) lives in the smart-search
+    // index, so the description is the right surface to point users at
+    // Smart mode if they're hunting for words shown in a photo.
+    let text_group = libadwaita::PreferencesGroup::builder()
+        .title("Text")
+        .description("For OCR text inside images, use Smart search instead.")
+        .build();
+    let filename_row = libadwaita::EntryRow::builder()
+        .title("Filename contains")
+        .build();
+    let description_row = libadwaita::EntryRow::builder()
+        .title("Description contains")
+        .build();
+    text_group.add(&filename_row);
+    text_group.add(&description_row);
+    page.add(&text_group);
+
+    // --- Type & flags ---
+    let flags_group = libadwaita::PreferencesGroup::builder()
+        .title("Type and flags")
+        .build();
+    let type_model = gtk::StringList::new(&["Any", "Image only", "Video only"]);
+    let type_row = libadwaita::ComboRow::builder()
+        .title("Asset type")
+        .model(&type_model)
+        .build();
+    let favorite_row = libadwaita::SwitchRow::builder()
+        .title("Favourites only")
+        .build();
+    let archived_row = libadwaita::SwitchRow::builder()
+        .title("Archived only")
+        .build();
+    let motion_row = libadwaita::SwitchRow::builder()
+        .title("Motion photos only")
+        .build();
+    let not_in_album_row = libadwaita::SwitchRow::builder()
+        .title("Not in any album")
+        .build();
+    flags_group.add(&type_row);
+    flags_group.add(&favorite_row);
+    flags_group.add(&archived_row);
+    flags_group.add(&motion_row);
+    flags_group.add(&not_in_album_row);
+    page.add(&flags_group);
+
+    // --- Date range ---
+    let date_group = libadwaita::PreferencesGroup::builder()
+        .title("Date range")
+        .description("ISO 8601 timestamps, e.g. 2024-01-15 or 2024-01-15T00:00:00Z")
+        .build();
+    let after_row = libadwaita::EntryRow::builder().title("Taken after").build();
+    let before_row = libadwaita::EntryRow::builder()
+        .title("Taken before")
+        .build();
+    date_group.add(&after_row);
+    date_group.add(&before_row);
+    page.add(&date_group);
+
+    // --- Camera ---
+    let camera_group = libadwaita::PreferencesGroup::builder()
+        .title("Camera")
+        .build();
+    let make_row = libadwaita::EntryRow::builder().title("Make").build();
+    let model_row = libadwaita::EntryRow::builder().title("Model").build();
+    let lens_row = libadwaita::EntryRow::builder().title("Lens model").build();
+    camera_group.add(&make_row);
+    camera_group.add(&model_row);
+    camera_group.add(&lens_row);
+    page.add(&camera_group);
+
+    // --- Location ---
+    let loc_group = libadwaita::PreferencesGroup::builder()
+        .title("Location")
+        .build();
+    let country_row = libadwaita::EntryRow::builder().title("Country").build();
+    let state_row = libadwaita::EntryRow::builder()
+        .title("State / region")
+        .build();
+    let city_row = libadwaita::EntryRow::builder().title("City").build();
+    loc_group.add(&country_row);
+    loc_group.add(&state_row);
+    loc_group.add(&city_row);
+    page.add(&loc_group);
+
+    // --- Action buttons ---
+    let actions = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk::Align::End)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_end(12)
+        .build();
+    let cancel_btn = gtk::Button::builder().label("Cancel").build();
+    let apply_btn = gtk::Button::builder()
+        .label("Apply")
+        .css_classes(vec!["suggested-action".to_string()])
+        .build();
+    actions.append(&cancel_btn);
+    actions.append(&apply_btn);
+
+    let outer = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .build();
+    outer.append(&page);
+    outer.append(&actions);
+    toolbar.set_content(Some(&outer));
+    dialog.set_child(Some(&toolbar));
+
+    cancel_btn.connect_clicked(clone!(
+        #[weak]
+        dialog,
+        move |_| {
+            dialog.close();
+        }
+    ));
+
+    apply_btn.connect_clicked(clone!(
+        #[strong]
+        ui,
+        #[weak]
+        dialog,
+        #[weak]
+        filename_row,
+        #[weak]
+        description_row,
+        #[weak]
+        type_row,
+        #[weak]
+        favorite_row,
+        #[weak]
+        archived_row,
+        #[weak]
+        motion_row,
+        #[weak]
+        not_in_album_row,
+        #[weak]
+        after_row,
+        #[weak]
+        before_row,
+        #[weak]
+        make_row,
+        #[weak]
+        model_row,
+        #[weak]
+        lens_row,
+        #[weak]
+        country_row,
+        #[weak]
+        state_row,
+        #[weak]
+        city_row,
+        move |_| {
+            let filters = MetadataSearchFilters {
+                original_file_name: opt_string(&filename_row.text()),
+                description: opt_string(&description_row.text()),
+                asset_type: match type_row.selected() {
+                    1 => Some("IMAGE".into()),
+                    2 => Some("VIDEO".into()),
+                    _ => None,
+                },
+                taken_after: normalise_iso_date(&after_row.text()),
+                taken_before: normalise_iso_date(&before_row.text()),
+                make: opt_string(&make_row.text()),
+                model: opt_string(&model_row.text()),
+                lens_model: opt_string(&lens_row.text()),
+                country: opt_string(&country_row.text()),
+                state: opt_string(&state_row.text()),
+                city: opt_string(&city_row.text()),
+                is_favorite: opt_true(favorite_row.is_active()),
+                is_archived: opt_true(archived_row.is_active()),
+                is_motion: opt_true(motion_row.is_active()),
+                is_not_in_album: opt_true(not_in_album_row.is_active()),
+                with_exif: None,
+                with_deleted: None,
+                person_ids: None,
+                tag_ids: None,
+            };
+            let request =
+                ui.ctx
+                    .library_state
+                    .lock()
+                    .unwrap()
+                    .switch_source(LibrarySource::AdvancedSearch {
+                        filters: Box::new(filters),
+                    });
+            dialog.close();
+            load_source_page(ui.clone(), request, false);
+        }
+    ));
+
+    dialog.present(Some(&ui.window));
+}
+
+fn opt_string(text: &gtk::glib::GString) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn opt_true(active: bool) -> Option<bool> {
+    if active { Some(true) } else { None }
+}
+
+/// Accept either a bare date (`YYYY-MM-DD`) or an RFC3339 timestamp; in
+/// the bare-date case we expand to start-of-day UTC so Immich interprets
+/// the user's intent uniformly. Empty / unparseable input → None so the
+/// filter is omitted from the request.
+fn normalise_iso_date(text: &gtk::glib::GString) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Already RFC3339? Pass through.
+    if chrono::DateTime::parse_from_rfc3339(trimmed).is_ok() {
+        return Some(trimmed.to_string());
+    }
+    // Bare YYYY-MM-DD? Expand to midnight UTC.
+    if chrono::NaiveDate::parse_from_str(trimmed, "%Y-%m-%d").is_ok() {
+        return Some(format!("{}T00:00:00.000Z", trimmed));
+    }
+    None
 }

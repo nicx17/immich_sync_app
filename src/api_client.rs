@@ -63,6 +63,52 @@ pub struct LibraryAsset {
     pub checksum: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataSearchFilters {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_file_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// `"IMAGE"` or `"VIDEO"`; `None` returns both.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub asset_type: Option<String>,
+    /// ISO 8601 inclusive lower bound on `fileCreatedAt`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub taken_after: Option<String>,
+    /// ISO 8601 inclusive upper bound on `fileCreatedAt`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub taken_before: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub make: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lens_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub city: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_favorite: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_archived: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_motion: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_not_in_album: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub with_exif: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub with_deleted: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub person_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_ids: Option<Vec<String>>,
+}
+
 #[derive(Debug, Clone, serde::Deserialize, PartialEq)]
 pub struct ServerStats {
     pub images: u64,
@@ -1045,16 +1091,35 @@ impl ImmichApiClient {
         page: u32,
         size: u32,
     ) -> Result<Vec<LibraryAsset>, String> {
-        let body = serde_json::json!({
-            "originalFileName": query,
-            "page": page,
-            "size": size.max(1),
-        });
+        let filters = MetadataSearchFilters {
+            original_file_name: Some(query.to_string()),
+            ..Default::default()
+        };
+        self.search_metadata_with_filters(&filters, page, size)
+            .await
+    }
+
+    /// Full-fat metadata search supporting every filter dimension Immich's
+    /// `POST /api/search/metadata` accepts. Fields are skipped when `None`,
+    /// so the request body matches the filters the user actually picked
+    /// (Immich treats absence as "don't filter on this dimension").
+    pub async fn search_metadata_with_filters(
+        &self,
+        filters: &MetadataSearchFilters,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let mut body = serde_json::to_value(filters).map_err(|err| err.to_string())?;
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("page".into(), serde_json::json!(page));
+            obj.insert("size".into(), serde_json::json!(size.max(1)));
+        }
+        let label = filters.original_file_name.as_deref().unwrap_or("");
         self.fetch_search_assets(
             "/api/search/metadata",
             body,
             RequestContext::MetadataSearch,
-            Some(query),
+            Some(label),
         )
         .await
     }
