@@ -895,16 +895,15 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String, lo
                     {
                         let _ = std::fs::create_dir_all(&cache_dir);
                         let temp = cache_dir.join(format!("{}.bin", asset_id));
-                        if !temp.exists() {
-                            if let Err(err) = ui
+                        if !temp.exists()
+                            && let Err(err) = ui
                                 .ctx
                                 .api_client
                                 .download_original_to_file(&asset_id, &temp)
                                 .await
-                            {
-                                log::warn!("Lightbox original fetch failed: {}", err);
-                                return;
-                            }
+                        {
+                            log::warn!("Lightbox original fetch failed: {}", err);
+                            return;
                         }
                         if let Ok(texture) = gdk4::Texture::from_filename(&temp) {
                             picture.set_paintable(Some(&texture));
@@ -958,16 +957,15 @@ fn spawn_video_handoff(ui: Rc<LibraryWindowUi>, asset_id: String, filename: Stri
         };
         let _ = std::fs::create_dir_all(&cache_dir);
         let path = cache_dir.join(&filename);
-        if !path.exists() {
-            if let Err(err) = ui
+        if !path.exists()
+            && let Err(err) = ui
                 .ctx
                 .api_client
                 .download_original_to_file(&asset_id, &path)
                 .await
-            {
-                log::warn!("Video handoff failed for {}: {}", asset_id, err);
-                return;
-            }
+        {
+            log::warn!("Video handoff failed for {}: {}", asset_id, err);
+            return;
         }
         open_local_with_default_app(&path.display().to_string());
     });

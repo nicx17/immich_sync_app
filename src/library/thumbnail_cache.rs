@@ -65,12 +65,9 @@ pub struct ThumbnailCache {
 impl ThumbnailCache {
     const DEFAULT_MAX_BYTES: usize = 80 * 1024 * 1024;
 
-    pub fn new(api_client: std::sync::Arc<ImmichApiClient>) -> Self {
-        Self::with_capacity_mb(api_client, 0)
-    }
-
     /// Build a cache with a configured byte budget. `mb == 0` falls back to
-    /// `DEFAULT_MAX_BYTES` so the existing `new()` callers keep working.
+    /// `DEFAULT_MAX_BYTES`, which keeps tests and any future zero-config
+    /// callsite simple without making them aware of the Config field.
     pub fn with_capacity_mb(api_client: std::sync::Arc<ImmichApiClient>, mb: u32) -> Self {
         let cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))

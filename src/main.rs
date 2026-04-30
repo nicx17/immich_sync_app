@@ -282,7 +282,10 @@ async fn main() {
         let startup_paths = config.data.watch_paths.clone();
         let startup_sync_index = sync_index.clone();
         let (manual_sync_tx, mut manual_sync_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
-        let thumbnail_cache = Arc::new(ThumbnailCache::new(api_client.clone()));
+        let thumbnail_cache = Arc::new(ThumbnailCache::with_capacity_mb(
+            api_client.clone(),
+            config.data.library_thumbnail_cache_mb,
+        ));
         let library_state = Arc::new(Mutex::new(LibraryState::new()));
         let ctx = Arc::new(AppContext {
             state: shared_state_startup.clone(),
