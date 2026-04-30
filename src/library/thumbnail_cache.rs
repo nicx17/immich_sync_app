@@ -66,14 +66,26 @@ impl ThumbnailCache {
     const DEFAULT_MAX_BYTES: usize = 80 * 1024 * 1024;
 
     pub fn new(api_client: std::sync::Arc<ImmichApiClient>) -> Self {
+        Self::with_capacity_mb(api_client, 0)
+    }
+
+    /// Build a cache with a configured byte budget. `mb == 0` falls back to
+    /// `DEFAULT_MAX_BYTES` so the existing `new()` callers keep working.
+    pub fn with_capacity_mb(api_client: std::sync::Arc<ImmichApiClient>, mb: u32) -> Self {
         let cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
             .join("mimick")
             .join("thumbnails");
 
+        let max_bytes = if mb == 0 {
+            Self::DEFAULT_MAX_BYTES
+        } else {
+            (mb as usize).saturating_mul(1024 * 1024)
+        };
+
         let cache = Self {
             api_client,
-            memory: Mutex::new(SizedLruCache::new(Self::DEFAULT_MAX_BYTES)),
+            memory: Mutex::new(SizedLruCache::new(max_bytes)),
             cache_dir,
         };
         let _ = cache.prune_disk_cache(500 * 1024 * 1024);

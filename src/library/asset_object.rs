@@ -42,6 +42,16 @@ mod imp {
         /// Optional thumbhash for placeholder rendering (base64-encoded).
         #[property(get, set)]
         thumbhash: RefCell<Option<String>>,
+
+        /// Absolute path to the local copy on disk (LocalAsset, or matched
+        /// remote with a local sibling); empty string when none.
+        #[property(get, set)]
+        local_path: RefCell<String>,
+
+        /// Immich asset id when this row corresponds to a remote asset (or
+        /// has been matched to one via checksum); empty string otherwise.
+        #[property(get, set)]
+        remote_id: RefCell<String>,
     }
 
     #[glib::object_subclass]
@@ -78,6 +88,32 @@ impl AssetObject {
             .property("asset-type", asset_type)
             .property("sync-state", sync_state)
             .property("thumbhash", thumbhash)
+            .property("local-path", "")
+            .property("remote-id", id)
+            .build()
+    }
+
+    /// Build an AssetObject for a purely local asset (LocalOnly state).
+    /// `id` is a synthetic row identity (use the absolute path) so the
+    /// existing `id` plumbing in the grid factory keeps working.
+    pub fn new_local(
+        id: &str,
+        filename: &str,
+        mime_type: &str,
+        created_at: &str,
+        asset_type: &str,
+        local_path: &str,
+    ) -> Self {
+        glib::Object::builder()
+            .property("id", id)
+            .property("filename", filename)
+            .property("mime-type", mime_type)
+            .property("created-at", created_at)
+            .property("asset-type", asset_type)
+            .property("sync-state", 1u32)
+            .property("thumbhash", None::<String>)
+            .property("local-path", local_path)
+            .property("remote-id", "")
             .build()
     }
 }

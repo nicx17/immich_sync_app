@@ -424,10 +424,23 @@ pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
     let library_view_row = adw::SwitchRow::builder()
         .title("Enable Library View")
         .subtitle(
-            "Turn on the in-progress library browser foundation without changing sync behavior.",
+            "Turn on the in-app library browser. Restart Mimick to switch which window opens.",
         )
         .build();
     behavior_group.add(&library_view_row);
+
+    // Surface a clear "restart required" hint the moment the user flips the
+    // toggle, since the running window is still the old one until next launch.
+    let initial_library_view = config.data.library_view_enabled;
+    library_view_row.connect_active_notify(move |row| {
+        let needs_restart = row.is_active() != initial_library_view;
+        let subtitle = if needs_restart {
+            "Restart Mimick to apply the new window layout."
+        } else {
+            "Turn on the in-app library browser. Restart Mimick to switch which window opens."
+        };
+        row.set_subtitle(subtitle);
+    });
 
     let catchup_model = gtk::StringList::new(&["Full Scan", "Recent Only (7d)", "New Files Only"]);
     let catchup_row = adw::ComboRow::builder()
@@ -479,6 +492,29 @@ pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
         }
     ));
 
+    // --- LIBRARY GROUP ---
+    let library_group = adw::PreferencesGroup::builder()
+        .title("Library")
+        .description("Settings that affect the in-app library browser.")
+        .build();
+    settings_page.add(&library_group);
+
+    let preview_full_row = adw::SwitchRow::builder()
+        .title("Open Originals in Lightbox")
+        .subtitle(
+            "When on, the library lightbox loads full-resolution originals instead of the ~1440px preview.",
+        )
+        .build();
+    library_group.add(&preview_full_row);
+
+    let cache_adj = gtk::Adjustment::new(80.0, 16.0, 1024.0, 16.0, 64.0, 0.0);
+    let cache_size_row = adw::SpinRow::builder()
+        .title("Thumbnail Memory Cache (MB)")
+        .subtitle("Approximate cap on decoded thumbnails kept in RAM.")
+        .adjustment(&cache_adj)
+        .build();
+    library_group.add(&cache_size_row);
+
     // --- WATCH FOLDERS GROUP ---
     let folders_group = adw::PreferencesGroup::builder()
         .title("Watch Folders")
@@ -515,6 +551,10 @@ pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
         notifications_row,
         #[weak]
         library_view_row,
+        #[weak]
+        preview_full_row,
+        #[weak]
+        cache_size_row,
         #[weak]
         concurrency_row,
         #[weak]
@@ -573,6 +613,8 @@ pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
             let pause_on_battery_power = battery_row.is_active();
             let notifications_enabled = notifications_row.is_active();
             let library_view_enabled = library_view_row.is_active();
+            let library_preview_full_resolution = preview_full_row.is_active();
+            let library_thumbnail_cache_mb = cache_size_row.value() as u32;
             let upload_concurrency = concurrency_row.value() as u8;
             let quiet_hours_enabled = quiet_hours_row.is_active();
             let quiet_hours_start = quiet_hours_enabled.then(|| quiet_start_row.value() as u8);
@@ -685,6 +727,8 @@ pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
                     new_config.data.pause_on_battery_power = pause_on_battery_power;
                     new_config.data.notifications_enabled = notifications_enabled;
                     new_config.data.library_view_enabled = library_view_enabled;
+                    new_config.data.library_preview_full_resolution = library_preview_full_resolution;
+                    new_config.data.library_thumbnail_cache_mb = library_thumbnail_cache_mb;
                     new_config.data.startup_catchup_mode = catchup_mode;
                     new_config.data.upload_concurrency = upload_concurrency;
                     new_config.data.quiet_hours_start = quiet_hours_start;
@@ -1089,6 +1133,10 @@ pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
     background_sync_row.set_active(config.data.background_sync_enabled);
     notifications_row.set_active(config.data.notifications_enabled);
     library_view_row.set_active(config.data.library_view_enabled);
+    preview_full_row.set_active(config.data.library_preview_full_resolution);
+    if config.data.library_thumbnail_cache_mb > 0 {
+        cache_size_row.set_value(config.data.library_thumbnail_cache_mb as f64);
+    }
     concurrency_row.set_value(config.data.upload_concurrency as f64);
     let qh_enabled = config.data.quiet_hours_start.is_some();
     quiet_hours_row.set_active(qh_enabled);

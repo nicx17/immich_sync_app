@@ -13,12 +13,22 @@ use crate::app_context::AppContext;
 use crate::config::Config;
 use crate::library::asset_object::AssetObject;
 use crate::library::grid_view::{GridViewParts, build_grid_view, replace_model};
+use crate::library::local_source::{
+    LocalAsset, enumerate_local, filter_by_filename, local_sync_state,
+};
 use crate::library::sidebar::{SidebarParts, build_sidebar};
 use crate::library::state::{LibraryLoadState, LibrarySortMode, LibrarySource};
 use crate::settings_window::build_settings_window;
 
+/// Synthetic id prefix used for purely-local rows. Allows the same
+/// `LibraryState.assets: Vec<LibraryAsset>` model to carry both remote and
+/// local entries; downstream `AssetObject` construction branches on the
+/// prefix to pick the right widget builder.
+const LOCAL_ID_PREFIX: &str = "local::";
+
 pub mod asset_object;
 pub mod grid_view;
+pub mod local_source;
 pub mod sidebar;
 pub mod state;
 pub mod style;
@@ -40,6 +50,7 @@ struct LibraryWindowUi {
     search_entry: gtk::SearchEntry,
     search_mode: gtk::DropDown,
     sort_mode: gtk::DropDown,
+    source_mode: gtk::DropDown,
 }
 
 pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>) {
@@ -73,6 +84,13 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     let sidebar = build_sidebar();
     let grid = build_grid_view(ctx.clone());
 
+    let source_mode_model = gtk::StringList::new(&["Remote", "Local", "Unified"]);
+    let source_mode = gtk::DropDown::builder()
+        .model(&source_mode_model)
+        .selected(0)
+        .tooltip_text("Asset source")
+        .build();
+
     let search_mode_model = gtk::StringList::new(&["Metadata", "Smart"]);
     let search_mode = gtk::DropDown::builder()
         .model(&search_mode_model)
@@ -96,6 +114,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .margin_start(12)
         .margin_end(12)
         .build();
+    controls.append(&source_mode);
     controls.append(&search_mode);
     controls.append(&search_entry);
     controls.append(&sort_mode);
@@ -138,7 +157,14 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .css_classes(vec!["mimick-status-dot".to_string(), "offline".to_string()])
         .build();
     let route_label = gtk::Label::builder().xalign(0.0).build();
-    let footer_label = gtk::Label::builder().xalign(0.0).wrap(true).build();
+    // `footer_label` carries the server stats + version. Pushing it to the
+    // far right with hexpand keeps the spec's "status badge bottom-left"
+    // layout while still surfacing the same data.
+    let footer_label = gtk::Label::builder()
+        .xalign(1.0)
+        .hexpand(true)
+        .wrap(true)
+        .build();
     footer.append(&status_dot);
     footer.append(&route_label);
     footer.append(&footer_label);
@@ -173,6 +199,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         search_entry,
         search_mode,
         sort_mode,
+        source_mode,
     });
 
     connect_sidebar_handlers(ui.clone());
@@ -221,6 +248,23 @@ fn connect_controls(
         }
     ));
 
+    ui.source_mode.connect_selected_notify(clone!(
+        #[strong]
+        ui,
+        move |dropdown| {
+            let source = match dropdown.selected() {
+                1 => LibrarySource::LocalAll,
+                2 => LibrarySource::Unified,
+                _ => LibrarySource::AllAssets,
+            };
+            // Searching while switching sources would require thread-safe
+            // re-routing of the search field; clear it on source change.
+            ui.search_entry.set_text("");
+            let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
+            load_source_page(ui.clone(), request, false);
+        }
+    ));
+
     ui.search_entry.connect_activate(clone!(
         #[strong]
         ui,
@@ -230,10 +274,13 @@ fn connect_controls(
                 return;
             }
 
-            let source = if ui.search_mode.selected() == 1 {
-                LibrarySource::SmartSearch { query }
-            } else {
-                LibrarySource::MetadataSearch { query }
+            // Source dropdown picks the search dimension: Local/Unified use
+            // filename filtering; Remote uses Smart or Metadata as selected.
+            let source = match ui.source_mode.selected() {
+                1 => LibrarySource::LocalSearch { query },
+                2 => LibrarySource::UnifiedSearch { query },
+                _ if ui.search_mode.selected() == 1 => LibrarySource::SmartSearch { query },
+                _ => LibrarySource::MetadataSearch { query },
             };
             let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
             load_source_page(ui.clone(), request, false);
@@ -399,8 +446,21 @@ fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
             };
             let asset_id = item.property::<String>("id");
             let filename = item.property::<String>("filename");
+            let local_path = item.property::<String>("local-path");
+            let asset_type = item.property::<String>("asset-type");
 
-            open_lightbox(ui.clone(), asset_id, filename);
+            // Videos open in the system default player per spec — no in-app
+            // playback for v1.
+            if asset_type.eq_ignore_ascii_case("VIDEO") {
+                if !local_path.is_empty() {
+                    open_local_with_default_app(&local_path);
+                } else {
+                    spawn_video_handoff(ui.clone(), asset_id, filename);
+                }
+                return;
+            }
+
+            open_lightbox(ui.clone(), asset_id, filename, local_path);
         }
     ));
 
@@ -471,7 +531,7 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
         ui,
         async move {
             let (generation, source, page) = request;
-            let result = match source.clone() {
+            let result: Result<Vec<LibraryAsset>, String> = match source.clone() {
                 LibrarySource::AllAssets => {
                     ui.ctx.api_client.search_metadata("", page, PAGE_SIZE).await
                 }
@@ -492,6 +552,40 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
                         .api_client
                         .search_metadata(&query, page, PAGE_SIZE)
                         .await
+                }
+                LibrarySource::LocalAll => {
+                    // Local enumeration is bounded — single synthetic page.
+                    if page > 1 {
+                        Ok(Vec::new())
+                    } else {
+                        let locals = enumerate_local(ui.ctx.clone()).await;
+                        Ok(locals.into_iter().map(local_to_library_asset).collect())
+                    }
+                }
+                LibrarySource::LocalSearch { query } => {
+                    if page > 1 {
+                        Ok(Vec::new())
+                    } else {
+                        let locals = enumerate_local(ui.ctx.clone()).await;
+                        let filtered = filter_by_filename(locals, &query);
+                        Ok(filtered.into_iter().map(local_to_library_asset).collect())
+                    }
+                }
+                LibrarySource::Unified => {
+                    let remote = ui
+                        .ctx
+                        .api_client
+                        .search_metadata("", page, PAGE_SIZE)
+                        .await;
+                    merge_unified_page(remote, page, &ui, None).await
+                }
+                LibrarySource::UnifiedSearch { query } => {
+                    let remote = ui
+                        .ctx
+                        .api_client
+                        .search_metadata(&query, page, PAGE_SIZE)
+                        .await;
+                    merge_unified_page(remote, page, &ui, Some(&query)).await
                 }
             };
 
@@ -665,13 +759,31 @@ fn asset_objects_from_state(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<As
     assets
         .iter()
         .map(|asset| {
-            let sync_state = asset
+            if let Some(local_path) = asset.id.strip_prefix(LOCAL_ID_PREFIX) {
+                // Locally-enumerated row: badge defaults to LocalOnly. If
+                // the SyncIndex shows this exact path was already uploaded,
+                // upgrade the badge to Both via the sync-state property.
+                let sync_state = local_sync_state(ctx, std::path::Path::new(local_path));
+                let object = AssetObject::new_local(
+                    &asset.id,
+                    &asset.filename,
+                    &asset.mime_type,
+                    &asset.created_at,
+                    &asset.asset_type,
+                    local_path,
+                );
+                if sync_state != 1 {
+                    object.set_property("sync-state", sync_state);
+                }
+                return object;
+            }
+            // Remote rows: 2 = "both" when a sibling local copy exists, else 0 (remote-only).
+            let local_match = asset
                 .checksum
                 .as_deref()
-                .and_then(|checksum| sync_index.local_path_for_checksum(checksum))
-                .map(|_| 2)
-                .unwrap_or(0);
-            AssetObject::new(
+                .and_then(|checksum| sync_index.local_path_for_checksum(checksum));
+            let sync_state = if local_match.is_some() { 2 } else { 0 };
+            let object = AssetObject::new(
                 &asset.id,
                 &asset.filename,
                 &asset.mime_type,
@@ -679,12 +791,21 @@ fn asset_objects_from_state(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<As
                 &asset.asset_type,
                 sync_state,
                 asset.thumbhash.as_deref(),
-            )
+            );
+            if let Some(path) = local_match {
+                object.set_property("local-path", path);
+            }
+            object
         })
         .collect()
 }
 
-fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
+fn open_lightbox(
+    ui: Rc<LibraryWindowUi>,
+    asset_id: String,
+    filename: String,
+    local_path: String,
+) {
     let dialog = libadwaita::Window::builder()
         .transient_for(&ui.window)
         .modal(true)
@@ -710,8 +831,27 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
         .spacing(8)
         .halign(gtk::Align::End)
         .build();
+
+    // Per-image preview/original toggle. Default mirrors the Config setting,
+    // and flipping it triggers a re-fetch via the same loader path.
+    let initial_full = Config::new().data.library_preview_full_resolution;
+    let resolution_toggle = gtk::ToggleButton::builder()
+        .label(if initial_full { "Original" } else { "Preview" })
+        .tooltip_text("Toggle preview vs original full-resolution image")
+        .active(initial_full)
+        .build();
+
     let download = gtk::Button::builder().label("Download").build();
     let close = gtk::Button::builder().label("Close").build();
+
+    // For purely local rows, the network-side toggle is meaningless (the
+    // file IS the original on disk), so hide both.
+    let is_local = !local_path.is_empty() && asset_id.starts_with(LOCAL_ID_PREFIX);
+    if is_local {
+        resolution_toggle.set_visible(false);
+        download.set_visible(false);
+    }
+    actions.append(&resolution_toggle);
     actions.append(&download);
     actions.append(&close);
     content.append(&picture);
@@ -724,35 +864,121 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
         move |_| dialog.close()
     ));
 
-    download.connect_clicked(clone!(
+    if !is_local {
+        download.connect_clicked(clone!(
+            #[strong]
+            ui,
+            #[strong]
+            asset_id,
+            #[strong]
+            filename,
+            move |_| {
+                start_download(ui.clone(), asset_id.clone(), filename.clone());
+            }
+        ));
+    }
+
+    let load_into_picture = {
+        let ui = ui.clone();
+        let asset_id = asset_id.clone();
+        let local_path = local_path.clone();
+        let picture = picture.clone();
+        std::rc::Rc::new(move |full_res: bool| {
+            let ui = ui.clone();
+            let asset_id = asset_id.clone();
+            let local_path = local_path.clone();
+            let picture = picture.clone();
+            glib::MainContext::default().spawn_local(async move {
+                if !local_path.is_empty() {
+                    if let Ok(texture) = gdk4::Texture::from_filename(&local_path) {
+                        picture.set_paintable(Some(&texture));
+                    }
+                    return;
+                }
+                if full_res {
+                    // Fetch the original to a temp path under the cache dir
+                    // and display from disk; reusing the file means a later
+                    // Download click won't have to re-fetch.
+                    if let Some(cache_dir) = dirs::cache_dir().map(|p| p.join("mimick").join("preview")) {
+                        let _ = std::fs::create_dir_all(&cache_dir);
+                        let temp = cache_dir.join(format!("{}.bin", asset_id));
+                        if !temp.exists() {
+                            if let Err(err) = ui
+                                .ctx
+                                .api_client
+                                .download_original_to_file(&asset_id, &temp)
+                                .await
+                            {
+                                log::warn!("Lightbox original fetch failed: {}", err);
+                                return;
+                            }
+                        }
+                        if let Ok(texture) = gdk4::Texture::from_filename(&temp) {
+                            picture.set_paintable(Some(&texture));
+                        }
+                    }
+                } else if let Ok(texture) = ui
+                    .ctx
+                    .thumbnail_cache
+                    .load_thumbnail(&asset_id, ThumbnailSize::Preview)
+                    .await
+                {
+                    picture.set_paintable(Some(&texture));
+                }
+            });
+        })
+    };
+
+    resolution_toggle.connect_toggled(clone!(
         #[strong]
-        ui,
-        #[strong]
-        asset_id,
-        #[strong]
-        filename,
-        move |_| {
-            start_download(ui.clone(), asset_id.clone(), filename.clone());
+        load_into_picture,
+        move |btn| {
+            let full = btn.is_active();
+            btn.set_label(if full { "Original" } else { "Preview" });
+            (*load_into_picture)(full);
         }
     ));
 
-    glib::MainContext::default().spawn_local(clone!(
-        #[weak]
-        dialog,
-        async move {
-            if let Ok(texture) = ui
-                .ctx
-                .thumbnail_cache
-                .load_thumbnail(&asset_id, ThumbnailSize::Preview)
-                .await
-                && dialog.is_visible()
-            {
-                picture.set_paintable(Some(&texture));
-            }
-        }
-    ));
+    (*load_into_picture)(initial_full);
 
     dialog.present();
+}
+
+/// Hand a local file off to the user's default app via `xdg-open`/equivalent.
+/// Used for local videos per the spec — no in-app playback in v1.
+fn open_local_with_default_app(path: &str) {
+    let uri = format!("file://{}", path);
+    if let Err(err) = gtk::gio::AppInfo::launch_default_for_uri(
+        &uri,
+        None::<&gtk::gio::AppLaunchContext>,
+    ) {
+        log::warn!("Failed to open {}: {}", uri, err);
+    }
+}
+
+/// Download a remote video to the cache dir and open it with the system's
+/// default player. Provides a minimal viewing experience without bundling
+/// a media player.
+fn spawn_video_handoff(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
+    glib::MainContext::default().spawn_local(async move {
+        let Some(cache_dir) = dirs::cache_dir().map(|p| p.join("mimick").join("video")) else {
+            return;
+        };
+        let _ = std::fs::create_dir_all(&cache_dir);
+        let path = cache_dir.join(&filename);
+        if !path.exists() {
+            if let Err(err) = ui
+                .ctx
+                .api_client
+                .download_original_to_file(&asset_id, &path)
+                .await
+            {
+                log::warn!("Video handoff failed for {}: {}", asset_id, err);
+                return;
+            }
+        }
+        open_local_with_default_app(&path.display().to_string());
+    });
 }
 
 fn start_download(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
@@ -861,4 +1087,69 @@ async fn ensure_download_target(ui: &LibraryWindowUi) -> Option<PathBuf> {
     config.data.download_target_path = Some(path.to_string_lossy().to_string());
     let _ = config.save();
     Some(path)
+}
+
+/// Convert a locally-enumerated file into a `LibraryAsset`-shaped row so the
+/// existing state/grid plumbing carries it without a parallel data path.
+/// The id is prefixed with `LOCAL_ID_PREFIX` so downstream code can branch
+/// on local vs remote without consulting another lookup.
+fn local_to_library_asset(local: LocalAsset) -> LibraryAsset {
+    LibraryAsset {
+        id: format!("{}{}", LOCAL_ID_PREFIX, local.path.display()),
+        filename: local.filename,
+        mime_type: local.mime,
+        created_at: local.created_at,
+        asset_type: local.asset_type.to_string(),
+        thumbhash: None,
+        width: None,
+        height: None,
+        checksum: None,
+    }
+}
+
+/// Merge a remote page result with the locally-enumerated files for the
+/// Unified source. Locals are added once on page 1; subsequent pages only
+/// append remote rows. When `query` is `Some`, locals are filtered by
+/// case-insensitive filename match.
+async fn merge_unified_page(
+    remote: Result<Vec<LibraryAsset>, String>,
+    page: u32,
+    ui: &Rc<LibraryWindowUi>,
+    query: Option<&str>,
+) -> Result<Vec<LibraryAsset>, String> {
+    let mut remote = remote?;
+    if page > 1 {
+        return Ok(remote);
+    }
+
+    let mut locals = enumerate_local(ui.ctx.clone()).await;
+    if let Some(q) = query {
+        locals = filter_by_filename(locals, q);
+    }
+
+    // Drop locals already represented by a remote checksum match — those will
+    // render in the remote list with the "Both" badge via the existing
+    // `local_path_for_checksum` lookup in `asset_objects_from_state`.
+    // We don't have direct access to the SyncIndex path table; use checksums
+    // on remote assets to find sibling local paths instead.
+    let synced_paths: std::collections::HashSet<String> = match ui.ctx.sync_index.lock() {
+        Ok(idx) => remote
+            .iter()
+            .filter_map(|a| a.checksum.as_deref())
+            .filter_map(|cs| idx.local_path_for_checksum(cs))
+            .collect(),
+        Err(_) => std::collections::HashSet::new(),
+    };
+
+    let mut local_rows: Vec<LibraryAsset> = locals
+        .into_iter()
+        .filter(|l| !synced_paths.contains(&l.path.display().to_string()))
+        .map(local_to_library_asset)
+        .collect();
+
+    // Locals first so they aren't pushed off-screen by a paginated remote
+    // batch; sort orders applied by `LibraryState::apply_sort` will reshuffle
+    // anyway when the user selects something other than "Newest first".
+    local_rows.append(&mut remote);
+    Ok(local_rows)
 }

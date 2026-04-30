@@ -10,6 +10,29 @@ pub enum LibrarySource {
     Album { id: String, name: String },
     SmartSearch { query: String },
     MetadataSearch { query: String },
+    /// Local watched-folder enumeration only (no remote calls).
+    LocalAll,
+    /// Filename substring filter applied over the local enumeration.
+    LocalSearch { query: String },
+    /// Remote assets overlayed with sync state from local SyncIndex.
+    Unified,
+    /// Local filename filter applied over a unified view.
+    UnifiedSearch { query: String },
+}
+
+impl LibrarySource {
+    /// True if this source is one of the search variants. Used to gate
+    /// `clear_search_restore_previous_source` and to skip persisting search
+    /// queries as the "fallback" source.
+    pub fn is_search(&self) -> bool {
+        matches!(
+            self,
+            LibrarySource::SmartSearch { .. }
+                | LibrarySource::MetadataSearch { .. }
+                | LibrarySource::LocalSearch { .. }
+                | LibrarySource::UnifiedSearch { .. }
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -84,10 +107,7 @@ impl LibraryState {
     }
 
     pub fn switch_source(&mut self, source: LibrarySource) -> (u64, LibrarySource, u32) {
-        if !matches!(
-            source,
-            LibrarySource::SmartSearch { .. } | LibrarySource::MetadataSearch { .. }
-        ) {
+        if !source.is_search() {
             self.previous_non_search_source = source.clone();
         }
 
@@ -177,11 +197,10 @@ impl LibraryState {
     }
 
     pub fn clear_search_restore_previous_source(&mut self) -> Option<(u64, LibrarySource, u32)> {
-        match self.source {
-            LibrarySource::SmartSearch { .. } | LibrarySource::MetadataSearch { .. } => {
-                Some(self.switch_source(self.previous_non_search_source.clone()))
-            }
-            _ => None,
+        if self.source.is_search() {
+            Some(self.switch_source(self.previous_non_search_source.clone()))
+        } else {
+            None
         }
     }
 

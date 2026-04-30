@@ -1406,6 +1406,7 @@ fn mime_for_path(path: &Path) -> &'static str {
         Some("vob") => "video/dvd",
         Some("webm") => "video/webm",
         Some("wmv") => "video/x-ms-wmv",
+        Some("xmp") => "application/xml",
         _ => "application/octet-stream",
     }
 }
@@ -1553,10 +1554,41 @@ mod tests {
         assert_eq!(mime_for_path(Path::new("test.insv")), "video/mp4");
         assert_eq!(mime_for_path(Path::new("test.mkv")), "video/x-matroska");
         assert_eq!(mime_for_path(Path::new("test.mxf")), "application/mxf");
+        assert_eq!(mime_for_path(Path::new("test.xmp")), "application/xml");
         assert_eq!(
             mime_for_path(Path::new("test.unknown")),
             "application/octet-stream"
         );
+    }
+
+    #[test]
+    fn test_mime_for_path_covers_immich_spec() {
+        // Every extension from pv_docs/Library_view_feature.md must map to a
+        // non-fallback MIME so uploads/downloads pick the right pipeline.
+        const SPEC_EXTENSIONS: &[&str] = &[
+            // RAW
+            "3fr", "ari", "arw", "cap", "cin", "cr2", "cr3", "crw", "dcr", "dng", "erf", "fff",
+            "iiq", "k25", "kdc", "mrw", "nef", "nrw", "orf", "ori", "pef", "psd", "raf", "raw",
+            "rw2", "rwl", "sr2", "srf", "srw", "x3f",
+            // Web image
+            "avif", "bmp", "gif", "jpeg", "jpg", "png", "webp",
+            // Other image
+            "heic", "heif", "hif", "insp", "jp2", "jpe", "jxl", "mpo", "svg", "tif", "tiff",
+            // Video
+            "3gp", "3gpp", "avi", "flv", "insv", "m2t", "m2ts", "m4v", "mkv", "mov", "mp4", "mpe",
+            "mpeg", "mpg", "mts", "mxf", "ts", "vob", "webm", "wmv",
+            // Sidecar
+            "xmp",
+        ];
+        for ext in SPEC_EXTENSIONS {
+            let p = std::path::PathBuf::from(format!("a.{}", ext));
+            let mime = mime_for_path(&p);
+            assert_ne!(
+                mime, "application/octet-stream",
+                "extension `.{}` falls through to octet-stream",
+                ext
+            );
+        }
     }
 
     #[test]
