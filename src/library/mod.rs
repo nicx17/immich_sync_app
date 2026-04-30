@@ -21,6 +21,7 @@ pub mod asset_object;
 pub mod grid_view;
 pub mod sidebar;
 pub mod state;
+pub mod style;
 pub mod thumbnail_cache;
 
 const PAGE_SIZE: u32 = 50;
@@ -35,12 +36,15 @@ struct LibraryWindowUi {
     error_label: gtk::Label,
     footer_label: gtk::Label,
     route_label: gtk::Label,
+    status_dot: gtk::Label,
     search_entry: gtk::SearchEntry,
     search_mode: gtk::DropDown,
     sort_mode: gtk::DropDown,
 }
 
 pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>) {
+    style::ensure_registered();
+
     let window = libadwaita::ApplicationWindow::builder()
         .application(app)
         .title("Mimick Library")
@@ -48,7 +52,10 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .default_height(780)
         .build();
 
-    let header = libadwaita::HeaderBar::builder().build();
+    let header = libadwaita::HeaderBar::builder()
+        .show_start_title_buttons(true)
+        .show_end_title_buttons(true)
+        .build();
     let prefs_button = gtk::Button::builder()
         .icon_name("emblem-system-symbolic")
         .tooltip_text("Open Settings")
@@ -94,25 +101,28 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     controls.append(&sort_mode);
 
     let content_stack = gtk::Stack::builder().vexpand(true).hexpand(true).build();
-    let loading_label = gtk::Label::builder()
-        .label("Loading library assets...")
-        .vexpand(true)
-        .valign(gtk::Align::Center)
-        .build();
-    let empty_label = gtk::Label::builder()
-        .label("This view is empty")
-        .vexpand(true)
-        .valign(gtk::Align::Center)
-        .build();
-    let error_label = gtk::Label::builder()
-        .label("Library data could not be loaded")
-        .wrap(true)
-        .vexpand(true)
-        .valign(gtk::Align::Center)
-        .build();
-    content_stack.add_named(&loading_label, Some("loading"));
-    content_stack.add_named(&empty_label, Some("empty"));
-    content_stack.add_named(&error_label, Some("error"));
+    let loading_view = build_status_view(
+        "view-refresh-symbolic",
+        "Loading…",
+        "Fetching library data from the Immich server",
+    );
+    let empty_view = build_status_view(
+        "image-x-generic-symbolic",
+        "Nothing to show",
+        "No assets match the current view",
+    );
+    let error_view = build_status_view(
+        "dialog-warning-symbolic",
+        "Library data unavailable",
+        "Could not load library assets",
+    );
+    let error_label = error_view
+        .last_child()
+        .and_downcast::<gtk::Label>()
+        .expect("status-view subtitle label");
+    content_stack.add_named(&loading_view, Some("loading"));
+    content_stack.add_named(&empty_view, Some("empty"));
+    content_stack.add_named(&error_view, Some("error"));
     content_stack.add_named(&grid.scrolled, Some("grid"));
 
     let footer = gtk::Box::builder()
@@ -123,8 +133,13 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .margin_start(12)
         .margin_end(12)
         .build();
+    let status_dot = gtk::Label::builder()
+        .label("\u{25CF}")
+        .css_classes(vec!["mimick-status-dot".to_string(), "offline".to_string()])
+        .build();
     let route_label = gtk::Label::builder().xalign(0.0).build();
     let footer_label = gtk::Label::builder().xalign(0.0).wrap(true).build();
+    footer.append(&status_dot);
     footer.append(&route_label);
     footer.append(&footer_label);
 
@@ -154,6 +169,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         error_label,
         footer_label,
         route_label,
+        status_dot,
         search_entry,
         search_mode,
         sort_mode,
@@ -360,6 +376,13 @@ fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
                 })
                 .unwrap_or(LibrarySource::AllAssets);
 
+            // `reload_sidebar` clears and re-selects rows programmatically, which makes GTK
+            // re-emit `row-selected` for the same source. Skip when nothing actually changed
+            // so we don't kick off a redundant fetch that loops via reload_sidebar forever.
+            if ui.ctx.library_state.lock().unwrap().source == source {
+                return;
+            }
+
             let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
             load_source_page(ui.clone(), request, false);
         }
@@ -540,14 +563,15 @@ fn reload_sidebar(ui: &LibraryWindowUi) {
             ui.sidebar.delete_button.set_sensitive(false);
         }
         LibrarySource::Album { id, .. } => {
+            // Match on the album-id prefix delimited by ':' so that one album id being a
+            // textual prefix of another never causes a false selection.
             let mut child = ui.sidebar.list.first_child();
             while let Some(widget) = child {
                 let next = widget.next_sibling();
                 if let Ok(row) = widget.downcast::<gtk::ListBoxRow>()
-                    && row
-                        .tooltip_text()
-                        .as_deref()
-                        .is_some_and(|tooltip| tooltip.starts_with(&id))
+                    && row.tooltip_text().as_deref().is_some_and(|tooltip| {
+                        tooltip.split_once(':').map(|(prefix, _)| prefix) == Some(id.as_str())
+                    })
                 {
                     ui.sidebar.list.select_row(Some(&row));
                     ui.sidebar.delete_button.set_sensitive(true);
@@ -582,8 +606,12 @@ fn update_footer(ui: &LibraryWindowUi, route: Option<String>) {
     let state = ui.ctx.library_state.lock().unwrap();
     if let Some(route) = route {
         ui.route_label.set_label(&format!("Connected ({})", route));
+        ui.status_dot.remove_css_class("offline");
+        ui.status_dot.add_css_class("connected");
     } else {
         ui.route_label.set_label("Offline");
+        ui.status_dot.remove_css_class("connected");
+        ui.status_dot.add_css_class("offline");
     }
 
     let stats = state
@@ -599,6 +627,37 @@ fn update_footer(ui: &LibraryWindowUi, route: Option<String>) {
         .map(|about| format!("Immich {}", about.version))
         .unwrap_or_else(|| "Version unavailable".to_string());
     ui.footer_label.set_label(&format!("{} | {}", stats, about));
+}
+
+fn build_status_view(icon_name: &str, title: &str, subtitle: &str) -> gtk::Box {
+    let container = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(12)
+        .vexpand(true)
+        .hexpand(true)
+        .valign(gtk::Align::Center)
+        .halign(gtk::Align::Center)
+        .css_classes(vec!["mimick-empty".to_string()])
+        .build();
+    let icon = gtk::Image::builder()
+        .icon_name(icon_name)
+        .pixel_size(64)
+        .build();
+    icon.add_css_class("dim-label");
+    let title_label = gtk::Label::builder()
+        .label(title)
+        .css_classes(vec!["mimick-empty-title".to_string()])
+        .build();
+    let subtitle_label = gtk::Label::builder()
+        .label(subtitle)
+        .wrap(true)
+        .justify(gtk::Justification::Center)
+        .css_classes(vec!["mimick-empty-subtitle".to_string()])
+        .build();
+    container.append(&icon);
+    container.append(&title_label);
+    container.append(&subtitle_label);
+    container
 }
 
 fn asset_objects_from_state(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<AssetObject> {
