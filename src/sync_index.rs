@@ -46,6 +46,9 @@ struct SyncIndexDataRef<'a> {
 pub struct SyncIndex {
     index_file: PathBuf,
     entries: HashMap<String, SyncedFileRecord>,
+    checksum_to_path: HashMap<String, String>,
+    needs_save: bool,
+    dirty_count: usize,
 }
 
 impl SyncIndex {
@@ -58,9 +61,17 @@ impl SyncIndex {
 
         let entries = load_entries(&index_file);
 
+        let mut checksum_to_path = HashMap::new();
+        for (path, record) in &entries {
+            checksum_to_path.insert(record.checksum.clone(), path.clone());
+        }
+
         Self {
             index_file,
             entries,
+            checksum_to_path,
+            needs_save: false,
+            dirty_count: 0,
         }
     }
 
@@ -105,16 +116,28 @@ impl SyncIndex {
                 album_id: target.album_id.clone(),
             },
         );
-        self.save()
+        self.checksum_to_path
+            .insert(checksum.to_string(), path.to_string());
+        self.needs_save = true;
+        self.dirty_count += 1;
+
+        if self.dirty_count >= 50 {
+            self.flush()
+        } else {
+            Ok(())
+        }
     }
 
     /// Drop records for files that no longer exist under any configured watch path.
     pub fn prune_missing(&mut self, seen_paths: &HashSet<String>) -> io::Result<()> {
         let before = self.entries.len();
         self.entries.retain(|path, _| seen_paths.contains(path));
+        self.checksum_to_path
+            .retain(|_, path| seen_paths.contains(path));
 
         if self.entries.len() != before {
-            self.save()?;
+            self.needs_save = true;
+            self.flush()?;
         }
 
         Ok(())
@@ -127,9 +150,17 @@ impl SyncIndex {
 
     /// Reverse-lookup a local path by checksum for library sync-state indicators.
     pub fn local_path_for_checksum(&self, checksum: &str) -> Option<String> {
-        self.entries
-            .iter()
-            .find_map(|(path, record)| (record.checksum == checksum).then(|| path.clone()))
+        self.checksum_to_path.get(checksum).cloned()
+    }
+
+    /// Force a flush to disk if there are unwritten changes.
+    pub fn flush(&mut self) -> io::Result<()> {
+        if self.needs_save {
+            self.save()?;
+            self.needs_save = false;
+            self.dirty_count = 0;
+        }
+        Ok(())
     }
 
     fn save(&self) -> io::Result<()> {
@@ -202,6 +233,9 @@ mod tests {
         let mut index = SyncIndex {
             index_file: dir.path().join("synced_index.json"),
             entries: Default::default(),
+            checksum_to_path: Default::default(),
+            needs_save: false,
+            dirty_count: 0,
         };
         let target = SyncTarget {
             album_name: Some("Album".into()),
@@ -230,6 +264,9 @@ mod tests {
         let mut index = SyncIndex {
             index_file: dir.path().join("synced_index.json"),
             entries: Default::default(),
+            checksum_to_path: Default::default(),
+            needs_save: false,
+            dirty_count: 0,
         };
         let target = SyncTarget {
             album_name: Some("Album".into()),
@@ -257,6 +294,9 @@ mod tests {
         let mut index = SyncIndex {
             index_file: dir.path().join("synced_index.json"),
             entries: Default::default(),
+            checksum_to_path: Default::default(),
+            needs_save: false,
+            dirty_count: 0,
         };
 
         let file_path = dir.path().join("photo.jpg");
@@ -285,6 +325,9 @@ mod tests {
         let mut index = SyncIndex {
             index_file: dir.path().join("synced_index.json"),
             entries: Default::default(),
+            checksum_to_path: Default::default(),
+            needs_save: false,
+            dirty_count: 0,
         };
         let original = SyncTarget {
             album_name: Some("Album A".into()),
@@ -311,6 +354,9 @@ mod tests {
         let mut index = SyncIndex {
             index_file: dir.path().join("synced_index.json"),
             entries: Default::default(),
+            checksum_to_path: Default::default(),
+            needs_save: false,
+            dirty_count: 0,
         };
         let file_path = dir.path().join("photo.jpg");
         fs::write(&file_path, b"hello").unwrap();

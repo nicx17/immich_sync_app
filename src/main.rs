@@ -153,8 +153,12 @@ async fn main() {
         // Always follow the desktop's light/dark preference.
         adw::StyleManager::default().set_color_scheme(adw::ColorScheme::Default);
 
-        // Keep the process alive when the settings window is hidden.
-        Box::leak(Box::new(app.hold()));
+        thread_local! {
+            static APP_HOLD: std::cell::RefCell<Option<gtk::gio::ApplicationHoldGuard>> = const { std::cell::RefCell::new(None) };
+        }
+        APP_HOLD.with(|hold| {
+            *hold.borrow_mut() = Some(app.hold());
+        });
 
         // Load config
         let config = Config::new();
@@ -192,6 +196,16 @@ async fn main() {
             api_key,
         ));
         let sync_index = Arc::new(Mutex::new(SyncIndex::new()));
+
+        let sync_index_flusher = sync_index.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                if let Ok(mut index) = sync_index_flusher.lock() {
+                    let _ = index.flush();
+                }
+            }
+        });
 
         let qm = Arc::new(QueueManager::new(
             api_client.clone(),

@@ -809,25 +809,15 @@ fn spawn_download(ui: Rc<LibraryWindowUi>, asset_id: String, output_path: PathBu
         #[strong]
         ui,
         async move {
-            match ui.ctx.api_client.download_original(&asset_id).await {
-                Ok(bytes) => {
-                    let path_for_write = output_path.clone();
-                    let write_result =
-                        tokio::task::spawn_blocking(move || std::fs::write(&path_for_write, bytes))
-                            .await;
-                    let (heading, body) = match write_result {
-                        Ok(Ok(())) => (
-                            "Download Complete",
-                            format!("Saved {}", output_path.display()),
-                        ),
-                        Ok(Err(err)) => {
-                            ("Download Failed", format!("Could not write file: {}", err))
-                        }
-                        Err(err) => (
-                            "Download Failed",
-                            format!("The download task could not complete: {}", err),
-                        ),
-                    };
+            match ui
+                .ctx
+                .api_client
+                .download_original_to_file(&asset_id, &output_path)
+                .await
+            {
+                Ok(()) => {
+                    let heading = "Download Complete";
+                    let body = format!("Saved {}", output_path.display());
                     let alert = libadwaita::AlertDialog::builder()
                         .heading(heading)
                         .body(&body)

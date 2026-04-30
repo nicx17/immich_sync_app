@@ -431,9 +431,6 @@ impl ImmichApiClient {
                     }
                     413 => {
                         log::error!("Upload failed (file too large): {}", filename);
-                        // Reset active_url to force re-check
-                        let mut active = self.active_url.lock().await;
-                        *active = None;
                         self.set_issue(ApiIssue {
                             summary: "Immich rejected a file as too large".to_string(),
                             guidance: "Reduce the file size, raise the server's upload limits, or use a folder rule to skip oversized files."
@@ -933,7 +930,11 @@ impl ImmichApiClient {
         }
     }
 
-    pub async fn download_original(&self, asset_id: &str) -> Result<Vec<u8>, String> {
+    pub async fn download_original_to_file(
+        &self,
+        asset_id: &str,
+        output_path: &std::path::Path,
+    ) -> Result<(), String> {
         let base_url = self
             .get_active_url()
             .await
@@ -950,10 +951,16 @@ impl ImmichApiClient {
             .send()
             .await
         {
-            Ok(resp) if resp.status().is_success() => {
-                let bytes = resp.bytes().await.map_err(|err| err.to_string())?;
+            Ok(mut resp) if resp.status().is_success() => {
+                use tokio::io::AsyncWriteExt;
+                let mut file = tokio::fs::File::create(output_path)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+                    file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+                }
                 self.clear_issue().await;
-                Ok(bytes.to_vec())
+                Ok(())
             }
             Ok(resp) => {
                 self.set_issue(classify_http_issue(
@@ -1345,15 +1352,15 @@ fn mime_for_path(path: &Path) -> &'static str {
         Some("bmp") => "image/bmp",
         Some("gif") => "image/gif",
         Some("heic") => "image/heic",
-        Some("heif") | Some("hif") => "image/heif",
-        Some("insp") | Some("jpe") | Some("jpeg") | Some("jpg") => "image/jpeg",
+        Some("heif" | "hif") => "image/heif",
+        Some("insp" | "jpe" | "jpeg" | "jpg") => "image/jpeg",
         Some("jp2") => "image/jp2",
         Some("jxl") => "image/jxl",
         Some("png") => "image/png",
         Some("mpo") => "image/jpeg",
         Some("psd") => "image/vnd.adobe.photoshop",
         Some("svg") => "image/svg+xml",
-        Some("tif") | Some("tiff") => "image/tiff",
+        Some("tif" | "tiff") => "image/tiff",
         Some("webp") => "image/webp",
         // RAW camera formats — Immich treats most as image/x-<vendor>; fall through to
         // application/octet-stream is safe but vendor-specific MIME helps the server pick
@@ -1376,24 +1383,24 @@ fn mime_for_path(path: &Path) -> &'static str {
         Some("mrw") => "image/x-minolta-mrw",
         Some("nef") => "image/x-nikon-nef",
         Some("nrw") => "image/x-nikon-nrw",
-        Some("orf") | Some("ori") => "image/x-olympus-orf",
+        Some("orf" | "ori") => "image/x-olympus-orf",
         Some("pef") => "image/x-pentax-pef",
         Some("raf") => "image/x-fuji-raf",
         Some("raw") => "image/x-panasonic-raw",
         Some("rw2") => "image/x-panasonic-rw2",
         Some("rwl") => "image/x-leica-rwl",
-        Some("sr2") | Some("srf") => "image/x-sony-sr2",
+        Some("sr2" | "srf") => "image/x-sony-sr2",
         Some("srw") => "image/x-samsung-srw",
         Some("x3f") => "image/x-sigma-x3f",
         // Video formats
-        Some("3gp") | Some("3gpp") => "video/3gpp",
+        Some("3gp" | "3gpp") => "video/3gpp",
         Some("avi") => "video/x-msvideo",
         Some("flv") => "video/x-flv",
-        Some("insv") | Some("mp4") => "video/mp4",
-        Some("m2t") | Some("m2ts") | Some("mts") | Some("ts") => "video/mp2t",
+        Some("insv" | "mp4") => "video/mp4",
+        Some("m2t" | "m2ts" | "mts" | "ts") => "video/mp2t",
         Some("m4v") => "video/x-m4v",
         Some("mkv") => "video/x-matroska",
-        Some("mpe") | Some("mpeg") | Some("mpg") => "video/mpeg",
+        Some("mpe" | "mpeg" | "mpg") => "video/mpeg",
         Some("mov") => "video/quicktime",
         Some("mxf") => "application/mxf",
         Some("vob") => "video/dvd",

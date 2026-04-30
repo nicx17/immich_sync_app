@@ -312,6 +312,7 @@ async fn wait_for_file_completion(path: &str) -> bool {
                 let size = meta.len() as i64;
                 if size == last_size && size > 0 {
                     stable_count += 1;
+                    last_change = Instant::now();
                     if stable_count >= REQUIRED_STABLE_COUNTS {
                         return true;
                     }

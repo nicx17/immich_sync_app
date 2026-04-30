@@ -71,11 +71,13 @@ impl ThumbnailCache {
             .join("mimick")
             .join("thumbnails");
 
-        Self {
+        let cache = Self {
             api_client,
             memory: Mutex::new(SizedLruCache::new(Self::DEFAULT_MAX_BYTES)),
             cache_dir,
-        }
+        };
+        let _ = cache.prune_disk_cache(500 * 1024 * 1024);
+        cache
     }
 
     #[cfg(test)]
@@ -145,6 +147,46 @@ impl ThumbnailCache {
         if self.cache_dir.exists() {
             std::fs::remove_dir_all(&self.cache_dir).map_err(|err| err.to_string())?;
         }
+        Ok(())
+    }
+
+    fn prune_disk_cache(&self, max_bytes: u64) -> Result<(), String> {
+        if !self.cache_dir.exists() {
+            return Ok(());
+        }
+
+        let mut entries = Vec::new();
+        let mut total_size = 0u64;
+
+        if let Ok(dir) = std::fs::read_dir(&self.cache_dir) {
+            for entry in dir.flatten() {
+                if let Ok(metadata) = entry.metadata() {
+                    let size = metadata.len();
+                    let modified = metadata
+                        .modified()
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                    total_size += size;
+                    entries.push((entry.path(), size, modified));
+                }
+            }
+        }
+
+        if total_size <= max_bytes {
+            return Ok(());
+        }
+
+        // Sort by oldest first
+        entries.sort_by_key(|a| a.2);
+
+        for (path, size, _) in entries {
+            if total_size <= max_bytes {
+                break;
+            }
+            if std::fs::remove_file(path).is_ok() {
+                total_size = total_size.saturating_sub(size);
+            }
+        }
+
         Ok(())
     }
 

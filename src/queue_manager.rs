@@ -675,21 +675,24 @@ async fn wait_until_allowed(
 ) {
     loop {
         let policy = *policy_ref.lock().unwrap();
-        let defer_reason = if state_ref.lock().unwrap().paused {
-            state_ref
-                .lock()
-                .unwrap()
-                .pause_reason
-                .clone()
-                .or_else(|| Some("Paused by user".to_string()))
-        } else if policy.pause_on_metered_network && runtime_env::is_metered_connection() {
-            Some("Deferred on metered network".to_string())
-        } else if policy.pause_on_battery_power && runtime_env::is_on_battery_power() {
-            Some("Deferred while on battery power".to_string())
-        } else if is_quiet_hour(policy.quiet_hours_start, policy.quiet_hours_end) {
-            Some("Deferred during quiet hours".to_string())
-        } else {
-            None
+        let defer_reason = {
+            let state = state_ref.lock().unwrap();
+            if state.paused {
+                Some(
+                    state
+                        .pause_reason
+                        .clone()
+                        .unwrap_or_else(|| "Paused by user".to_string()),
+                )
+            } else if policy.pause_on_metered_network && runtime_env::is_metered_connection() {
+                Some("Deferred on metered network".to_string())
+            } else if policy.pause_on_battery_power && runtime_env::is_on_battery_power() {
+                Some("Deferred while on battery power".to_string())
+            } else if is_quiet_hour(policy.quiet_hours_start, policy.quiet_hours_end) {
+                Some("Deferred during quiet hours".to_string())
+            } else {
+                None
+            }
         };
 
         if let Some(reason) = defer_reason {
