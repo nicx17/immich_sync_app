@@ -727,7 +727,8 @@ pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
                     new_config.data.pause_on_battery_power = pause_on_battery_power;
                     new_config.data.notifications_enabled = notifications_enabled;
                     new_config.data.library_view_enabled = library_view_enabled;
-                    new_config.data.library_preview_full_resolution = library_preview_full_resolution;
+                    new_config.data.library_preview_full_resolution =
+                        library_preview_full_resolution;
                     new_config.data.library_thumbnail_cache_mb = library_thumbnail_cache_mb;
                     new_config.data.startup_catchup_mode = catchup_mode;
                     new_config.data.upload_concurrency = upload_concurrency;

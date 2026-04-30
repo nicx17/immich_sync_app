@@ -7,17 +7,28 @@ const PAGE_SIZE: usize = 50;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LibrarySource {
     AllAssets,
-    Album { id: String, name: String },
-    SmartSearch { query: String },
-    MetadataSearch { query: String },
+    Album {
+        id: String,
+        name: String,
+    },
+    SmartSearch {
+        query: String,
+    },
+    MetadataSearch {
+        query: String,
+    },
     /// Local watched-folder enumeration only (no remote calls).
     LocalAll,
     /// Filename substring filter applied over the local enumeration.
-    LocalSearch { query: String },
+    LocalSearch {
+        query: String,
+    },
     /// Remote assets overlayed with sync state from local SyncIndex.
     Unified,
     /// Local filename filter applied over a unified view.
-    UnifiedSearch { query: String },
+    UnifiedSearch {
+        query: String,
+    },
 }
 
 impl LibrarySource {

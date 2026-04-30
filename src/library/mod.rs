@@ -572,11 +572,7 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
                     }
                 }
                 LibrarySource::Unified => {
-                    let remote = ui
-                        .ctx
-                        .api_client
-                        .search_metadata("", page, PAGE_SIZE)
-                        .await;
+                    let remote = ui.ctx.api_client.search_metadata("", page, PAGE_SIZE).await;
                     merge_unified_page(remote, page, &ui, None).await
                 }
                 LibrarySource::UnifiedSearch { query } => {
@@ -800,12 +796,7 @@ fn asset_objects_from_state(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<As
         .collect()
 }
 
-fn open_lightbox(
-    ui: Rc<LibraryWindowUi>,
-    asset_id: String,
-    filename: String,
-    local_path: String,
-) {
+fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String, local_path: String) {
     let dialog = libadwaita::Window::builder()
         .transient_for(&ui.window)
         .modal(true)
@@ -899,7 +890,9 @@ fn open_lightbox(
                     // Fetch the original to a temp path under the cache dir
                     // and display from disk; reusing the file means a later
                     // Download click won't have to re-fetch.
-                    if let Some(cache_dir) = dirs::cache_dir().map(|p| p.join("mimick").join("preview")) {
+                    if let Some(cache_dir) =
+                        dirs::cache_dir().map(|p| p.join("mimick").join("preview"))
+                    {
                         let _ = std::fs::create_dir_all(&cache_dir);
                         let temp = cache_dir.join(format!("{}.bin", asset_id));
                         if !temp.exists() {
@@ -948,10 +941,9 @@ fn open_lightbox(
 /// Used for local videos per the spec — no in-app playback in v1.
 fn open_local_with_default_app(path: &str) {
     let uri = format!("file://{}", path);
-    if let Err(err) = gtk::gio::AppInfo::launch_default_for_uri(
-        &uri,
-        None::<&gtk::gio::AppLaunchContext>,
-    ) {
+    if let Err(err) =
+        gtk::gio::AppInfo::launch_default_for_uri(&uri, None::<&gtk::gio::AppLaunchContext>)
+    {
         log::warn!("Failed to open {}: {}", uri, err);
     }
 }
