@@ -47,6 +47,7 @@ struct LibraryWindowUi {
     search_mode: gtk::DropDown,
     sort_mode: gtk::DropDown,
     source_mode: gtk::DropDown,
+    timeline_toggle: gtk::ToggleButton,
     /// Sticky month/year heading shown above the grid in Timeline mode.
     /// Updated on scroll using the `created_at` of the topmost visible
     /// asset; hidden in non-timeline sources.
@@ -84,11 +85,15 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     let sidebar = build_sidebar();
     let grid = build_grid_view(ctx.clone());
 
-    let source_mode_model = gtk::StringList::new(&["Remote", "Local", "Unified", "Timeline"]);
+    let source_mode_model = gtk::StringList::new(&["Remote", "Local", "Unified"]);
     let source_mode = gtk::DropDown::builder()
         .model(&source_mode_model)
         .selected(0)
         .tooltip_text("Asset source")
+        .build();
+    let timeline_toggle = gtk::ToggleButton::builder()
+        .label("Timeline")
+        .tooltip_text("Timeline view (all assets only)")
         .build();
 
     // Three distinct search dimensions, each routed to a different Immich
@@ -96,7 +101,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     // search DTOs (`query` vs `ocr` per the live OpenAPI spec), so we
     // expose them independently rather than collapsing OCR into Smart.
     let search_mode_model =
-        gtk::StringList::new(&["Filename", "Smart (CLIP context)", "OCR (text in images)"]);
+        gtk::StringList::new(&["Filename", "Smart Search", "OCR"]);
     let search_mode = gtk::DropDown::builder()
         .model(&search_mode_model)
         .selected(0)
@@ -131,6 +136,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .margin_end(12)
         .build();
     controls.append(&source_mode);
+    controls.append(&timeline_toggle);
     controls.append(&search_mode);
     controls.append(&search_entry);
     controls.append(&filters_button);
@@ -231,6 +237,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         search_mode,
         sort_mode,
         source_mode,
+        timeline_toggle,
         timeline_banner,
     });
 
@@ -291,21 +298,46 @@ fn connect_controls(
             let source = match dropdown.selected() {
                 1 => LibrarySource::LocalAll,
                 2 => LibrarySource::Unified,
-                3 => LibrarySource::Timeline,
-                _ => LibrarySource::AllAssets,
+                _ => {
+                    if ui.timeline_toggle.is_active() {
+                        LibrarySource::Timeline
+                    } else {
+                        LibrarySource::AllAssets
+                    }
+                }
             };
             // Searching while switching sources would require thread-safe
             // re-routing of the search field; clear it on source change.
             ui.search_entry.set_text("");
-            // Timeline is meaningless without date-desc; force the sort
-            // and reflect it in the dropdown so the user can see the
-            // implicit override.
-            if matches!(source, LibrarySource::Timeline) {
-                ui.sort_mode.set_selected(0);
-            }
-            ui.timeline_banner
-                .set_visible(matches!(source, LibrarySource::Timeline));
             let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
+            apply_timeline_ui_state(&ui, &request.1);
+            load_source_page(ui.clone(), request, false);
+        }
+    ));
+
+    ui.timeline_toggle.connect_toggled(clone!(
+        #[strong]
+        ui,
+        move |toggle| {
+            if !toggle.is_sensitive() {
+                return;
+            }
+            let current = ui.ctx.library_state.lock().unwrap().source.clone();
+            if !matches!(current, LibrarySource::AllAssets | LibrarySource::Timeline) {
+                toggle.set_active(false);
+                return;
+            }
+            if matches!(current, LibrarySource::Timeline) == toggle.is_active() {
+                return;
+            }
+            ui.search_entry.set_text("");
+            let next_source = if toggle.is_active() {
+                LibrarySource::Timeline
+            } else {
+                LibrarySource::AllAssets
+            };
+            let request = ui.ctx.library_state.lock().unwrap().switch_source(next_source);
+            apply_timeline_ui_state(&ui, &request.1);
             load_source_page(ui.clone(), request, false);
         }
     ));
@@ -333,6 +365,7 @@ fn connect_controls(
                 },
             };
             let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
+            apply_timeline_ui_state(&ui, &request.1);
             load_source_page(ui.clone(), request, false);
         }
     ));
@@ -368,6 +401,7 @@ fn connect_controls(
                 .unwrap()
                 .clear_search_restore_previous_source();
             if let Some(request) = request {
+                apply_timeline_ui_state(&ui, &request.1);
                 load_source_page(ui.clone(), request, false);
             }
         }
@@ -497,6 +531,7 @@ fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
             }
 
             let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
+            apply_timeline_ui_state(&ui, &request.1);
             load_source_page(ui.clone(), request, false);
         }
     ));
@@ -556,6 +591,19 @@ fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
             }
         }
     ));
+}
+
+fn apply_timeline_ui_state(ui: &LibraryWindowUi, source: &LibrarySource) {
+    let timeline_allowed = matches!(source, LibrarySource::AllAssets | LibrarySource::Timeline);
+    let timeline_active = matches!(source, LibrarySource::Timeline);
+    ui.timeline_toggle.set_sensitive(timeline_allowed);
+    if ui.timeline_toggle.is_active() != timeline_active {
+        ui.timeline_toggle.set_active(timeline_active);
+    }
+    ui.timeline_banner.set_visible(timeline_active);
+    if timeline_active {
+        ui.sort_mode.set_selected(0);
+    }
 }
 
 fn update_timeline_banner_if_active(ui: &Rc<LibraryWindowUi>, adj: &gtk::Adjustment) {

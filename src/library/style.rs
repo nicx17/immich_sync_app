@@ -18,30 +18,17 @@ const LIBRARY_CSS: &str = r#"
 
 picture.mimick-thumbnail-loading {
     background-color: alpha(@view_fg_color, 0.08);
-    border-radius: 8px;
     animation: mimick-pulse 1.4s ease-in-out infinite;
 }
 
 picture.mimick-thumbnail-loaded {
-    border-radius: 8px;
 }
 
 picture.mimick-thumbnail-error {
     background-color: alpha(@error_color, 0.18);
-    border-radius: 8px;
 }
 
-box.mimick-cell {
-    border-radius: 10px;
-    transition: background-color 150ms ease;
-}
-
-box.mimick-cell:hover {
-    background-color: alpha(@view_fg_color, 0.05);
-}
-
-label.mimick-cell-name {
-    font-size: 0.85em;
+overlay.mimick-cell {
 }
 
 label.mimick-status-dot {

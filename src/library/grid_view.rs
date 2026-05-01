@@ -23,42 +23,31 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        let container = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(6)
-            .margin_top(6)
-            .margin_bottom(6)
-            .margin_start(6)
-            .margin_end(6)
-            .width_request(180)
+        let container = gtk::Overlay::builder()
             .css_classes(vec!["mimick-cell".to_string()])
             .build();
         let picture = gtk::Picture::builder()
             .width_request(160)
             .height_request(160)
             .can_shrink(true)
-            .content_fit(gtk::ContentFit::Cover)
+            .content_fit(gtk::ContentFit::Contain)
             .css_classes(vec!["mimick-thumbnail-loading".to_string()])
-            .build();
-        let name = gtk::Label::builder()
-            .xalign(0.0)
-            .ellipsize(gtk::pango::EllipsizeMode::End)
-            .max_width_chars(22)
-            .css_classes(vec!["mimick-cell-name".to_string()])
             .build();
         // `pixel_size` is set explicitly so the icon renders at the badge
         // size we expect (icons inside small Boxes can render at 0px when
         // both width-request and pixel-size are unset).
         let status = gtk::Image::builder()
             .icon_name("network-server-symbolic")
-            .halign(gtk::Align::Start)
+            .halign(gtk::Align::End)
+            .valign(gtk::Align::Start)
+            .margin_top(6)
+            .margin_end(6)
             .pixel_size(14)
             .css_classes(vec!["mimick-status-badge".to_string()])
             .build();
 
-        container.append(&picture);
-        container.append(&name);
-        container.append(&status);
+        container.set_child(Some(&picture));
+        container.add_overlay(&status);
         list_item.set_child(Some(&container));
     });
 
@@ -70,23 +59,19 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
             Some(item) => item,
             None => return,
         };
-        let Some(container) = list_item.child().and_downcast::<gtk::Box>() else {
+        let Some(container) = list_item.child().and_downcast::<gtk::Overlay>() else {
             return;
         };
-        let Some(picture) = container.first_child().and_downcast::<gtk::Picture>() else {
+        let Some(picture) = container.child().and_downcast::<gtk::Picture>() else {
             return;
         };
-        let Some(name) = picture.next_sibling().and_downcast::<gtk::Label>() else {
-            return;
-        };
-        let Some(status) = name.next_sibling().and_downcast::<gtk::Image>() else {
+        let Some(status) = container.last_child().and_downcast::<gtk::Image>() else {
             return;
         };
 
         let asset_id = item.property::<String>("id");
-        let filename = item.property::<String>("filename");
+        let local_path = item.property::<String>("local-path");
         let sync_state = item.property::<u32>("sync-state");
-        name.set_label(&filename);
         picture.set_tooltip_text(Some(&asset_id));
         picture.set_paintable(Option::<&Texture>::None);
         set_thumb_state(&picture, ThumbState::Loading);
@@ -108,6 +93,19 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
             picture.add_css_class("mimick-thumbnail-square");
         } else {
             picture.remove_css_class("mimick-thumbnail-square");
+        }
+
+        if !local_path.is_empty() {
+            match gdk4::Texture::from_filename(&local_path) {
+                Ok(texture) => {
+                    picture.set_paintable(Some(&texture));
+                    set_thumb_state(&picture, ThumbState::Loaded);
+                }
+                Err(_) => {
+                    set_thumb_state(&picture, ThumbState::Error);
+                }
+            }
+            return;
         }
 
         let cache = ctx.thumbnail_cache.clone();
@@ -147,8 +145,8 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        if let Some(container) = list_item.child().and_downcast::<gtk::Box>()
-            && let Some(picture) = container.first_child().and_downcast::<gtk::Picture>()
+        if let Some(container) = list_item.child().and_downcast::<gtk::Overlay>()
+            && let Some(picture) = container.child().and_downcast::<gtk::Picture>()
         {
             // Clearing the tooltip causes any in-flight thumbnail task to discard its
             // result on completion, so a recycled cell does not flash a stale image.
@@ -166,6 +164,10 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         .max_columns(6)
         .min_columns(2)
         .build();
+    if let Some(layout) = view.layout_manager().and_downcast::<gtk::GridLayout>() {
+        layout.set_column_spacing(0);
+        layout.set_row_spacing(0);
+    }
 
     let scrolled = gtk::ScrolledWindow::builder()
         .child(&view)
