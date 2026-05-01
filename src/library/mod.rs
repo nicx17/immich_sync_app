@@ -100,8 +100,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     // endpoint shape. Smart and OCR are *separate* fields on the Immich
     // search DTOs (`query` vs `ocr` per the live OpenAPI spec), so we
     // expose them independently rather than collapsing OCR into Smart.
-    let search_mode_model =
-        gtk::StringList::new(&["Filename", "Smart Search", "OCR"]);
+    let search_mode_model = gtk::StringList::new(&["Filename", "Smart Search", "OCR"]);
     let search_mode = gtk::DropDown::builder()
         .model(&search_mode_model)
         .selected(0)
@@ -336,7 +335,12 @@ fn connect_controls(
             } else {
                 LibrarySource::AllAssets
             };
-            let request = ui.ctx.library_state.lock().unwrap().switch_source(next_source);
+            let request = ui
+                .ctx
+                .library_state
+                .lock()
+                .unwrap()
+                .switch_source(next_source);
             apply_timeline_ui_state(&ui, &request.1);
             load_source_page(ui.clone(), request, false);
         }
