@@ -26,16 +26,17 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         let container = gtk::Overlay::builder()
             .css_classes(vec!["mimick-cell".to_string()])
             .build();
+        // `Cover` keeps the image's aspect ratio but fills the cell by cropping
+        // overflow — no transparent letterbox gaps between thumbnails. Width
+        // is driven by GridView column allocation so cells expand edge-to-edge.
         let picture = gtk::Picture::builder()
-            .width_request(160)
-            .height_request(160)
+            .height_request(200)
             .can_shrink(true)
-            .content_fit(gtk::ContentFit::Contain)
+            .hexpand(true)
+            .content_fit(gtk::ContentFit::Cover)
             .css_classes(vec!["mimick-thumbnail-loading".to_string()])
             .build();
-        // `pixel_size` is set explicitly so the icon renders at the badge
-        // size we expect (icons inside small Boxes can render at 0px when
-        // both width-request and pixel-size are unset).
+
         let status = gtk::Image::builder()
             .icon_name("network-server-symbolic")
             .halign(gtk::Align::End)
@@ -95,27 +96,35 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
             picture.remove_css_class("mimick-thumbnail-square");
         }
 
-        if !local_path.is_empty() {
-            match gdk4::Texture::from_filename(&local_path) {
-                Ok(texture) => {
-                    picture.set_paintable(Some(&texture));
-                    set_thumb_state(&picture, ThumbState::Loaded);
-                }
-                Err(_) => {
-                    set_thumb_state(&picture, ThumbState::Error);
-                }
-            }
-            return;
-        }
-
         let cache = ctx.thumbnail_cache.clone();
         let picture_clone = picture.clone();
 
+        // Memory-cache fast path: works for both local and remote rows since
+        // `load_local_thumbnail` and `load_thumbnail` share the same key shape.
         if let Some(texture) =
             cache.get_cached(&asset_id, crate::api_client::ThumbnailSize::Thumbnail)
         {
             picture.set_paintable(Some(&texture));
             set_thumb_state(&picture, ThumbState::Loaded);
+            return;
+        }
+
+        if !local_path.is_empty() {
+            let path = std::path::PathBuf::from(&local_path);
+            let asset_id_clone = asset_id.clone();
+            glib::MainContext::default().spawn_local(async move {
+                let result = cache.load_local_thumbnail(&asset_id_clone, &path).await;
+                if picture_clone.tooltip_text().as_deref() != Some(asset_id_clone.as_str()) {
+                    return;
+                }
+                match result {
+                    Ok(texture) => {
+                        picture_clone.set_paintable(Some(&texture));
+                        set_thumb_state(&picture_clone, ThumbState::Loaded);
+                    }
+                    Err(_) => set_thumb_state(&picture_clone, ThumbState::Error),
+                }
+            });
             return;
         }
 
@@ -190,11 +199,6 @@ pub fn replace_model(model: &gtk::gio::ListStore, objects: &[AssetObject]) {
     }
 }
 
-/// Map the `sync_state` enum (0 = remote-only, 1 = local-only, 2 = both) to
-/// an icon name that is reliably present in `adwaita-icon-theme`. The names
-/// previously used here (`cloud-symbolic`, `folder-cloud-symbolic`) ship in
-/// some distro icon themes but not in the upstream Adwaita set, which is
-/// why the badge rendered blank on most systems.
 fn sync_state_label(sync_state: u32) -> &'static str {
     match sync_state {
         2 => "On Immich and locally",

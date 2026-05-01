@@ -145,6 +145,28 @@ impl ThumbnailCache {
         Ok(texture)
     }
 
+    pub async fn load_local_thumbnail(
+        &self,
+        asset_id: &str,
+        path: &std::path::Path,
+    ) -> Result<Texture, String> {
+        let key = cache_key(asset_id, ThumbnailSize::Thumbnail);
+        if let Some(texture) = self.memory.lock().unwrap().get(&key) {
+            return Ok(texture);
+        }
+        let path = path.to_path_buf();
+        let texture = tokio::task::spawn_blocking(move || -> Result<Texture, String> {
+            let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_file_at_scale(&path, 256, 256, true)
+                .map_err(|err| err.to_string())?;
+            #[allow(deprecated)]
+            Ok(Texture::for_pixbuf(&pixbuf))
+        })
+        .await
+        .map_err(|err| err.to_string())??;
+        self.memory.lock().unwrap().insert(key, texture.clone());
+        Ok(texture)
+    }
+
     pub fn clear(&self) -> Result<(), String> {
         self.memory.lock().unwrap().clear();
         if self.cache_dir.exists() {

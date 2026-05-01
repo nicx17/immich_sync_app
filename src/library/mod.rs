@@ -47,10 +47,9 @@ struct LibraryWindowUi {
     search_mode: gtk::DropDown,
     sort_mode: gtk::DropDown,
     source_mode: gtk::DropDown,
+    filters_button: gtk::Button,
     timeline_toggle: gtk::ToggleButton,
-    /// Sticky month/year heading shown above the grid in Timeline mode.
-    /// Updated on scroll using the `created_at` of the topmost visible
-    /// asset; hidden in non-timeline sources.
+
     timeline_banner: gtk::Label,
 }
 
@@ -236,6 +235,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         search_mode,
         sort_mode,
         source_mode,
+        filters_button: filters_button.clone(),
         timeline_toggle,
         timeline_banner,
     });
@@ -255,6 +255,7 @@ fn bootstrap_window(ui: Rc<LibraryWindowUi>) {
         state.load_initial_source()
     };
 
+    apply_timeline_ui_state(&ui, &initial_request.1);
     load_albums(ui.clone());
     load_status(ui.clone());
     load_source_page(ui, initial_request, false);
@@ -355,10 +356,6 @@ fn connect_controls(
                 return;
             }
 
-            // Source dropdown picks the search dimension: Local/Unified use
-            // filename filtering; Remote uses Filename/Smart/OCR as selected
-            // in the search-mode dropdown. Indices line up with
-            // `search_mode_model`: 0 = Filename, 1 = Smart, 2 = OCR.
             let source = match ui.source_mode.selected() {
                 1 => LibrarySource::LocalSearch { query },
                 2 => LibrarySource::UnifiedSearch { query },
@@ -374,9 +371,6 @@ fn connect_controls(
         }
     ));
 
-    // Placeholder mirrors the selected search mode so the user sees the
-    // semantic shift the moment they change the dropdown — avoids the
-    // "why is my filename query returning weird CLIP matches" surprise.
     ui.search_mode.connect_selected_notify(clone!(
         #[strong]
         ui,
@@ -505,40 +499,57 @@ fn connect_controls(
 }
 
 fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
-    ui.sidebar.list.connect_row_selected(clone!(
+    // Photos / Explore (fixed destinations).
+    ui.sidebar.fixed_list.connect_row_selected(clone!(
         #[strong]
         ui,
         move |_, row| {
             let Some(row) = row else {
                 return;
             };
-
-            let source = row
-                .tooltip_text()
-                .map(|tooltip| {
-                    if tooltip == "all-assets" {
-                        LibrarySource::AllAssets
-                    } else {
-                        let mut parts = tooltip.splitn(2, ':');
-                        let id = parts.next().unwrap_or_default().to_string();
-                        let name = parts.next().unwrap_or("Album").to_string();
-                        LibrarySource::Album { id, name }
-                    }
-                })
-                .unwrap_or(LibrarySource::AllAssets);
-
-            // `reload_sidebar` clears and re-selects rows programmatically, which makes GTK
-            // re-emit `row-selected` for the same source. Skip when nothing actually changed
-            // so we don't kick off a redundant fetch that loops via reload_sidebar forever.
-            if ui.ctx.library_state.lock().unwrap().source == source {
-                return;
-            }
-
-            let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
-            apply_timeline_ui_state(&ui, &request.1);
-            load_source_page(ui.clone(), request, false);
+            let key = row.tooltip_text().unwrap_or_default();
+            let source = match key.as_str() {
+                "photos" => LibrarySource::Timeline,
+                "explore" => LibrarySource::Explore,
+                _ => return,
+            };
+            // Clear the album list's selection so the two boxes are mutually
+            // exclusive. `unselect_all` is safe even when nothing is selected.
+            ui.sidebar.albums_list.unselect_all();
+            sidebar_dispatch(ui.clone(), source);
         }
     ));
+
+    // Album list — tooltip carries "id:name" set in `reload_sidebar`.
+    ui.sidebar.albums_list.connect_row_selected(clone!(
+        #[strong]
+        ui,
+        move |_, row| {
+            let Some(row) = row else {
+                return;
+            };
+            let Some(tooltip) = row.tooltip_text() else {
+                return;
+            };
+            let mut parts = tooltip.splitn(2, ':');
+            let id = parts.next().unwrap_or_default().to_string();
+            let name = parts.next().unwrap_or("Album").to_string();
+            ui.sidebar.fixed_list.unselect_all();
+            sidebar_dispatch(ui.clone(), LibrarySource::Album { id, name });
+        }
+    ));
+}
+
+/// Common path for sidebar selections. Skips redundant dispatches so the
+/// `reload_sidebar` programmatic re-selection doesn't loop into another
+/// fetch.
+fn sidebar_dispatch(ui: Rc<LibraryWindowUi>, source: LibrarySource) {
+    if ui.ctx.library_state.lock().unwrap().source == source {
+        return;
+    }
+    let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
+    apply_timeline_ui_state(&ui, &request.1);
+    load_source_page(ui.clone(), request, false);
 }
 
 fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
@@ -573,10 +584,6 @@ fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
         #[strong]
         ui,
         move |adj| {
-            // Timeline banner — update on every scroll tick when the
-            // Timeline source is active. We approximate the topmost
-            // visible row by mapping scroll fraction → asset index, then
-            // reading `created_at` off that row's `LibraryAsset`.
             update_timeline_banner_if_active(&ui, adj);
 
             let threshold = (adj.upper() - adj.page_size()) * 0.75;
@@ -608,6 +615,38 @@ fn apply_timeline_ui_state(ui: &LibraryWindowUi, source: &LibrarySource) {
     if timeline_active {
         ui.sort_mode.set_selected(0);
     }
+
+    // Smart/OCR/AdvancedSearch all hit remote-only Immich endpoints — they
+    // make no sense for Local enumeration or the Unified merge view (which
+    // pages remote but pre-filters by filename only). Hide rather than
+    // disable so users don't try them and wonder why nothing happens.
+    let is_local = matches!(
+        source,
+        LibrarySource::LocalAll | LibrarySource::LocalSearch { .. }
+    );
+    let is_unified = matches!(
+        source,
+        LibrarySource::Unified | LibrarySource::UnifiedSearch { .. }
+    );
+    let remote_search_allowed = !is_local && !is_unified;
+    ui.search_mode.set_visible(remote_search_allowed);
+    ui.filters_button.set_visible(remote_search_allowed);
+    if !remote_search_allowed {
+        ui.search_mode.set_selected(0);
+    }
+
+    // Keep source dropdown visually consistent with the active source so
+    // sidebar selections don't leave it showing the wrong tab.
+    let target = if is_local {
+        1
+    } else if is_unified {
+        2
+    } else {
+        0
+    };
+    if ui.source_mode.selected() != target {
+        ui.source_mode.set_selected(target);
+    }
 }
 
 fn update_timeline_banner_if_active(ui: &Rc<LibraryWindowUi>, adj: &gtk::Adjustment) {
@@ -619,9 +658,7 @@ fn update_timeline_banner_if_active(ui: &Rc<LibraryWindowUi>, adj: &gtk::Adjustm
         ui.timeline_banner.set_label("");
         return;
     }
-    // Approximate "row at top of viewport" by mapping the scroll fraction
-    // onto the asset index. Exact row geometry would require querying the
-    // GridView, which doesn't expose its layout directly.
+
     let max = (adj.upper() - adj.page_size()).max(1.0);
     let frac = (adj.value() / max).clamp(0.0, 1.0);
     let idx = ((state.assets.len() as f64) * frac) as usize;
@@ -630,9 +667,6 @@ fn update_timeline_banner_if_active(ui: &Rc<LibraryWindowUi>, adj: &gtk::Adjustm
     ui.timeline_banner.set_label(&label);
 }
 
-/// Extract a "Month YYYY" heading from an ISO-8601 timestamp. Falls back to
-/// the raw prefix if parsing fails so the banner is never blank for a
-/// well-formed but unexpected format.
 fn month_year_label(iso: &str) -> String {
     use chrono::{DateTime, Datelike};
     if let Ok(dt) = DateTime::parse_from_rfc3339(iso) {
@@ -706,6 +740,13 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
             let result: Result<Vec<LibraryAsset>, String> = match source.clone() {
                 LibrarySource::AllAssets | LibrarySource::Timeline => {
                     ui.ctx.api_client.search_metadata("", page, PAGE_SIZE).await
+                }
+                LibrarySource::Explore => {
+                    if page > 1 {
+                        Ok(Vec::new())
+                    } else {
+                        ui.ctx.api_client.search_random(PAGE_SIZE).await
+                    }
                 }
                 LibrarySource::Album { id, .. } => {
                     ui.ctx
@@ -798,46 +839,40 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
 }
 
 fn reload_sidebar(ui: &LibraryWindowUi) {
-    while let Some(row) = ui.sidebar.list.first_child() {
-        ui.sidebar.list.remove(&row);
+    while let Some(row) = ui.sidebar.albums_list.first_child() {
+        ui.sidebar.albums_list.remove(&row);
     }
 
     let selected_source = ui.ctx.library_state.lock().unwrap().source.clone();
-    let all_assets = gtk::ListBoxRow::builder()
-        .tooltip_text("all-assets")
-        .child(
-            &libadwaita::ActionRow::builder()
-                .title("All Assets")
-                .subtitle("Browse the full library")
-                .build(),
-        )
-        .build();
-    ui.sidebar.list.append(&all_assets);
-
     let albums = ui.ctx.library_state.lock().unwrap().albums.clone();
     for album in albums {
         let subtitle = format!("{} asset(s)", album.asset_count);
+        let action = libadwaita::ActionRow::builder()
+            .title(&album.album_name)
+            .subtitle(&subtitle)
+            .build();
         let row = gtk::ListBoxRow::builder()
             .tooltip_text(format!("{}:{}", album.id, album.album_name))
-            .child(
-                &libadwaita::ActionRow::builder()
-                    .title(&album.album_name)
-                    .subtitle(&subtitle)
-                    .build(),
-            )
+            .child(&action)
             .build();
-        ui.sidebar.list.append(&row);
+        ui.sidebar.albums_list.append(&row);
     }
 
+    // Reflect the current source in whichever list owns it; clear the other.
     match selected_source {
-        LibrarySource::AllAssets => {
-            ui.sidebar.list.select_row(Some(&all_assets));
+        LibrarySource::Timeline => {
+            select_fixed_row(&ui.sidebar.fixed_list, "photos");
+            ui.sidebar.albums_list.unselect_all();
+            ui.sidebar.delete_button.set_sensitive(false);
+        }
+        LibrarySource::Explore => {
+            select_fixed_row(&ui.sidebar.fixed_list, "explore");
+            ui.sidebar.albums_list.unselect_all();
             ui.sidebar.delete_button.set_sensitive(false);
         }
         LibrarySource::Album { id, .. } => {
-            // Match on the album-id prefix delimited by ':' so that one album id being a
-            // textual prefix of another never causes a false selection.
-            let mut child = ui.sidebar.list.first_child();
+            ui.sidebar.fixed_list.unselect_all();
+            let mut child = ui.sidebar.albums_list.first_child();
             while let Some(widget) = child {
                 let next = widget.next_sibling();
                 if let Ok(row) = widget.downcast::<gtk::ListBoxRow>()
@@ -845,14 +880,33 @@ fn reload_sidebar(ui: &LibraryWindowUi) {
                         tooltip.split_once(':').map(|(prefix, _)| prefix) == Some(id.as_str())
                     })
                 {
-                    ui.sidebar.list.select_row(Some(&row));
+                    ui.sidebar.albums_list.select_row(Some(&row));
                     ui.sidebar.delete_button.set_sensitive(true);
                     break;
                 }
                 child = next;
             }
         }
-        _ => ui.sidebar.delete_button.set_sensitive(false),
+        _ => {
+            // AllAssets / search / local sources don't map to a sidebar row.
+            ui.sidebar.fixed_list.unselect_all();
+            ui.sidebar.albums_list.unselect_all();
+            ui.sidebar.delete_button.set_sensitive(false);
+        }
+    }
+}
+
+fn select_fixed_row(list: &gtk::ListBox, key: &str) {
+    let mut child = list.first_child();
+    while let Some(widget) = child {
+        let next = widget.next_sibling();
+        if let Ok(row) = widget.downcast::<gtk::ListBoxRow>()
+            && row.tooltip_text().as_deref() == Some(key)
+        {
+            list.select_row(Some(&row));
+            return;
+        }
+        child = next;
     }
 }
 
@@ -1319,11 +1373,6 @@ fn connect_filters_button(ui: Rc<LibraryWindowUi>, filters_button: gtk::Button) 
     ));
 }
 
-/// Build and present the advanced-filters dialog. The dialog wraps an
-/// `adw::PreferencesPage` so each filter dimension renders as an
-/// `AdwActionRow` / `AdwSwitchRow` / `AdwEntryRow` — the same design
-/// language as the main settings window — and submits a populated
-/// `MetadataSearchFilters` via the `LibrarySource::AdvancedSearch` path.
 fn present_advanced_filters_dialog(ui: Rc<LibraryWindowUi>) {
     let dialog = libadwaita::Dialog::builder()
         .title("Advanced Filters")

@@ -10,6 +10,9 @@ const PAGE_SIZE: usize = 50;
 pub enum LibrarySource {
     AllAssets,
     Timeline,
+    /// Random sample via `POST /api/search/random`. Used as the "Explore"
+    /// sidebar destination — refresh re-rolls; pagination is meaningless.
+    Explore,
     Album {
         id: String,
         name: String,
@@ -20,10 +23,6 @@ pub enum LibrarySource {
     MetadataSearch {
         query: String,
     },
-    /// OCR-only search routed through `POST /api/search/metadata` with the
-    /// `ocr` field set. Distinct from `SmartSearch` (which uses CLIP via
-    /// the `query` field) so the user can target text-in-image queries
-    /// without paying for inference.
     OcrSearch {
         query: String,
     },
@@ -46,9 +45,6 @@ pub enum LibrarySource {
 }
 
 impl LibrarySource {
-    /// True if this source is one of the search variants. Used to gate
-    /// `clear_search_restore_previous_source` and to skip persisting search
-    /// queries as the "fallback" source.
     pub fn is_search(&self) -> bool {
         matches!(
             self,

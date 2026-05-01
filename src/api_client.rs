@@ -1071,6 +1071,53 @@ impl ImmichApiClient {
         }
     }
 
+    /// Random asset sample via `POST /api/search/random`. Returns up to
+    /// `size` assets in a single response — the endpoint is unpaginated.
+    pub async fn search_random(&self, size: u32) -> Result<Vec<LibraryAsset>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/search/random", base_url);
+        let body = serde_json::json!({ "size": size.max(1) });
+
+        match self
+            .client
+            .post(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .json(&body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let assets = resp
+                    .json::<Vec<LibraryAsset>>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(assets)
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                self.set_issue(classify_http_issue(
+                    RequestContext::MetadataSearch,
+                    status.into(),
+                    None,
+                ))
+                .await;
+                Err(format!("HTTP {}", status))
+            }
+            Err(err) => {
+                self.set_issue(classify_network_issue(RequestContext::MetadataSearch, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
     pub async fn search_smart(
         &self,
         query: &str,
@@ -1091,12 +1138,6 @@ impl ImmichApiClient {
         .await
     }
 
-    /// OCR-only search. Routes through `POST /api/search/metadata` with the
-    /// `ocr` field set — distinct from `search_smart`'s `query` field
-    /// (which runs CLIP inference). Pure OCR queries skip CLIP and are
-    /// faster; the trade-off is they only match recognised in-image text,
-    /// not visual or contextual content. Both Immich `SmartSearchDto` and
-    /// `MetadataSearchDto` expose this field.
     pub async fn search_ocr(
         &self,
         query: &str,
@@ -1131,10 +1172,6 @@ impl ImmichApiClient {
             .await
     }
 
-    /// Full-fat metadata search supporting every filter dimension Immich's
-    /// `POST /api/search/metadata` accepts. Fields are skipped when `None`,
-    /// so the request body matches the filters the user actually picked
-    /// (Immich treats absence as "don't filter on this dimension").
     pub async fn search_metadata_with_filters(
         &self,
         filters: &MetadataSearchFilters,

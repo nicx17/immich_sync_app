@@ -1,12 +1,14 @@
-//! Album sidebar for the library view with album listing and selection.
-
 use gtk::prelude::*;
+use libadwaita::prelude::*;
 
 pub struct SidebarParts {
     pub root: gtk::Box,
     pub refresh_button: gtk::Button,
     pub delete_button: gtk::Button,
-    pub list: gtk::ListBox,
+    /// Fixed destinations: index 0 = Photos (Timeline), 1 = Explore (random).
+    pub fixed_list: gtk::ListBox,
+    /// Album list, populated dynamically by `reload_sidebar`.
+    pub albums_list: gtk::ListBox,
 }
 
 pub fn build_sidebar() -> SidebarParts {
@@ -40,19 +42,67 @@ pub fn build_sidebar() -> SidebarParts {
     actions.append(&refresh_button);
     actions.append(&delete_button);
 
-    let list = gtk::ListBox::builder()
+    let fixed_list = gtk::ListBox::builder()
         .selection_mode(gtk::SelectionMode::Single)
         .css_classes(vec!["boxed-list".to_string()])
+        .build();
+
+    fixed_list.append(&action_row(
+        "Photos",
+        "Timeline of every photo and video",
+        "image-symbolic",
+        "photos",
+    ));
+    fixed_list.append(&action_row(
+        "Explore",
+        "Random sample to rediscover the library",
+        "starred-symbolic",
+        "explore",
+    ));
+
+    let albums_header = gtk::Label::builder()
+        .label("Albums")
+        .xalign(0.0)
+        .css_classes(vec!["heading".to_string(), "dim-label".to_string()])
+        .margin_top(6)
+        .build();
+
+    let albums_list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::Single)
+        .css_classes(vec!["boxed-list".to_string()])
+        .build();
+
+    let albums_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
+        .child(&albums_list)
         .build();
 
     root.append(&actions);
-    root.append(&list);
+    root.append(&fixed_list);
+    root.append(&albums_header);
+    root.append(&albums_scroll);
 
     SidebarParts {
         root,
         refresh_button,
         delete_button,
-        list,
+        fixed_list,
+        albums_list,
     }
+}
+
+/// Destination row whose `tooltip_text` carries the source key the
+/// row-selected handler in `mod.rs` dispatches from.
+fn action_row(title: &str, subtitle: &str, icon_name: &str, key: &str) -> gtk::ListBoxRow {
+    let row = libadwaita::ActionRow::builder()
+        .title(title)
+        .subtitle(subtitle)
+        .build();
+    let icon = gtk::Image::from_icon_name(icon_name);
+    row.add_prefix(&icon);
+    gtk::ListBoxRow::builder()
+        .tooltip_text(key)
+        .child(&row)
+        .build()
 }
