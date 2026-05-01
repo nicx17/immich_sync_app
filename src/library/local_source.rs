@@ -19,6 +19,8 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use crate::app_context::AppContext;
 use crate::config::WatchPathEntry;
 use crate::monitor::{is_supported_media_path, is_temporary_file};
+// `crate::sync_index::SyncIndex` is referenced only in `local_sync_state`'s
+// signature and is imported there inline to keep the public surface narrow.
 
 /// A single file enumerated from the user's watched folders.
 #[derive(Clone, Debug)]
@@ -185,13 +187,15 @@ pub fn filter_by_filename(items: Vec<LocalAsset>, query: &str) -> Vec<LocalAsset
         .collect()
 }
 
-/// Decide the sync-state badge for a local asset by checking the SyncIndex.
-/// Returns `0` when the file's path is recorded as synced (so the grid will
-/// label it "Both"), `1` otherwise (LocalOnly).
-pub fn local_sync_state(ctx: &AppContext, path: &Path) -> u32 {
-    let Ok(idx) = ctx.sync_index.lock() else {
-        return 1;
-    };
+/// Decide the sync-state badge for a local asset.
+///
+/// Takes a borrowed `&SyncIndex` rather than `&AppContext` because callers
+/// like `asset_objects_from_state` already hold the `sync_index` mutex
+/// guard while iterating assets. Re-acquiring it inside this function
+/// would deadlock against the outer guard (`std::sync::Mutex` is
+/// non-reentrant). Returns 2 when the file's path is recorded as synced
+/// (badge "Both"), 1 otherwise (LocalOnly).
+pub fn local_sync_state(idx: &crate::sync_index::SyncIndex, path: &Path) -> u32 {
     if idx.stored_checksum(&path.display().to_string()).is_some() {
         2
     } else {

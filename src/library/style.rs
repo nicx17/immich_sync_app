@@ -76,6 +76,13 @@ label.mimick-timeline-banner {
 image.mimick-status-badge {
     opacity: 0.85;
 }
+
+picture.mimick-thumbnail-square,
+picture.mimick-thumbnail-square.mimick-thumbnail-loading,
+picture.mimick-thumbnail-square.mimick-thumbnail-loaded,
+picture.mimick-thumbnail-square.mimick-thumbnail-error {
+    border-radius: 0;
+}
 "#;
 
 static REGISTERED: OnceLock<()> = OnceLock::new();

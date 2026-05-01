@@ -91,19 +91,21 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .tooltip_text("Asset source")
         .build();
 
-    // Label the modes by what the user actually sees: Smart hits CLIP+OCR
-    // on Immich >= 1.95 (so it covers natural-language and text-in-image
-    // queries), while Filename is filename + EXIF only. Without these
-    // labels users had no way to discover where OCR search lives.
-    let search_mode_model = gtk::StringList::new(&["Filename", "Smart (context & OCR)"]);
+    // Three distinct search dimensions, each routed to a different Immich
+    // endpoint shape. Smart and OCR are *separate* fields on the Immich
+    // search DTOs (`query` vs `ocr` per the live OpenAPI spec), so we
+    // expose them independently rather than collapsing OCR into Smart.
+    let search_mode_model =
+        gtk::StringList::new(&["Filename", "Smart (CLIP context)", "OCR (text in images)"]);
     let search_mode = gtk::DropDown::builder()
         .model(&search_mode_model)
         .selected(0)
         .tooltip_text(
             "Filename: matches the file name and EXIF metadata.\n\
-             Smart: CLIP-based search over visual content, scenes, and OCR text \
-             extracted from images. Use natural language (\"invoices\", \"sunset beach\", \
-             \"handwritten notes\").",
+             Smart: CLIP-based semantic search — natural-language queries against visual scenes \
+             (\"sunset beach\", \"birthday cake\", \"invoices\").\n\
+             OCR: matches text recognised inside images by Immich's ML pipeline. Faster than \
+             Smart since it skips CLIP inference.",
         )
         .build();
     let search_entry = gtk::SearchEntry::builder()
@@ -318,12 +320,17 @@ fn connect_controls(
             }
 
             // Source dropdown picks the search dimension: Local/Unified use
-            // filename filtering; Remote uses Smart or Metadata as selected.
+            // filename filtering; Remote uses Filename/Smart/OCR as selected
+            // in the search-mode dropdown. Indices line up with
+            // `search_mode_model`: 0 = Filename, 1 = Smart, 2 = OCR.
             let source = match ui.source_mode.selected() {
                 1 => LibrarySource::LocalSearch { query },
                 2 => LibrarySource::UnifiedSearch { query },
-                _ if ui.search_mode.selected() == 1 => LibrarySource::SmartSearch { query },
-                _ => LibrarySource::MetadataSearch { query },
+                _ => match ui.search_mode.selected() {
+                    1 => LibrarySource::SmartSearch { query },
+                    2 => LibrarySource::OcrSearch { query },
+                    _ => LibrarySource::MetadataSearch { query },
+                },
             };
             let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
             load_source_page(ui.clone(), request, false);
@@ -339,6 +346,7 @@ fn connect_controls(
         move |dropdown| {
             let placeholder = match dropdown.selected() {
                 1 => "Describe what you're looking for…",
+                2 => "Find words shown inside images",
                 _ => "Search filenames",
             };
             ui.search_entry.set_placeholder_text(Some(placeholder));
@@ -659,6 +667,9 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
                         .search_smart(&query, page, PAGE_SIZE)
                         .await
                 }
+                LibrarySource::OcrSearch { query } => {
+                    ui.ctx.api_client.search_ocr(&query, page, PAGE_SIZE).await
+                }
                 LibrarySource::MetadataSearch { query } => {
                     ui.ctx
                         .api_client
@@ -875,10 +886,7 @@ fn asset_objects_from_state(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<As
         .iter()
         .map(|asset| {
             if let Some(local_path) = asset.id.strip_prefix(LOCAL_ID_PREFIX) {
-                // Locally-enumerated row: badge defaults to LocalOnly. If
-                // the SyncIndex shows this exact path was already uploaded,
-                // upgrade the badge to Both via the sync-state property.
-                let sync_state = local_sync_state(ctx, std::path::Path::new(local_path));
+                let sync_state = local_sync_state(&sync_index, std::path::Path::new(local_path));
                 let object = AssetObject::new_local(
                     &asset.id,
                     &asset.filename,
@@ -1014,9 +1022,6 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String, lo
                     return;
                 }
                 if full_res {
-                    // Fetch the original to a temp path under the cache dir
-                    // and display from disk; reusing the file means a later
-                    // Download click won't have to re-fetch.
                     if let Some(cache_dir) =
                         dirs::cache_dir().map(|p| p.join("mimick").join("preview"))
                     {
@@ -1060,9 +1065,6 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String, lo
 
     (*load_into_picture)(initial_full);
 
-    // adw::Dialog::present takes the parent widget so the dialog floats over
-    // the library window — that's the whole point of the migration away from
-    // a top-level Window.
     dialog.present(Some(&ui.window));
 }
 
@@ -1077,9 +1079,6 @@ fn open_local_with_default_app(path: &str) {
     }
 }
 
-/// Download a remote video to the cache dir and open it with the system's
-/// default player. Provides a minimal viewing experience without bundling
-/// a media player.
 fn spawn_video_handoff(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
     glib::MainContext::default().spawn_local(async move {
         let Some(cache_dir) = dirs::cache_dir().map(|p| p.join("mimick").join("video")) else {
@@ -1209,10 +1208,6 @@ async fn ensure_download_target(ui: &LibraryWindowUi) -> Option<PathBuf> {
     Some(path)
 }
 
-/// Convert a locally-enumerated file into a `LibraryAsset`-shaped row so the
-/// existing state/grid plumbing carries it without a parallel data path.
-/// The id is prefixed with `LOCAL_ID_PREFIX` so downstream code can branch
-/// on local vs remote without consulting another lookup.
 fn local_to_library_asset(local: LocalAsset) -> LibraryAsset {
     LibraryAsset {
         id: format!("{}{}", LOCAL_ID_PREFIX, local.path.display()),
@@ -1227,10 +1222,6 @@ fn local_to_library_asset(local: LocalAsset) -> LibraryAsset {
     }
 }
 
-/// Merge a remote page result with the locally-enumerated files for the
-/// Unified source. Locals are added once on page 1; subsequent pages only
-/// append remote rows. When `query` is `Some`, locals are filtered by
-/// case-insensitive filename match.
 async fn merge_unified_page(
     remote: Result<Vec<LibraryAsset>, String>,
     page: u32,
@@ -1247,11 +1238,6 @@ async fn merge_unified_page(
         locals = filter_by_filename(locals, q);
     }
 
-    // Drop locals already represented by a remote checksum match — those will
-    // render in the remote list with the "Both" badge via the existing
-    // `local_path_for_checksum` lookup in `asset_objects_from_state`.
-    // We don't have direct access to the SyncIndex path table; use checksums
-    // on remote assets to find sibling local paths instead.
     let synced_paths: std::collections::HashSet<String> = match ui.ctx.sync_index.lock() {
         Ok(idx) => remote
             .iter()
@@ -1267,9 +1253,6 @@ async fn merge_unified_page(
         .map(local_to_library_asset)
         .collect();
 
-    // Locals first so they aren't pushed off-screen by a paginated remote
-    // batch; sort orders applied by `LibraryState::apply_sort` will reshuffle
-    // anyway when the user selects something other than "Newest first".
     local_rows.append(&mut remote);
     Ok(local_rows)
 }
@@ -1301,14 +1284,12 @@ fn present_advanced_filters_dialog(ui: Rc<LibraryWindowUi>) {
 
     let page = libadwaita::PreferencesPage::new();
 
-    // --- Text dimensions ---
-    // The description filter hits Immich's `description` field only;
-    // text recognised inside images (OCR) lives in the smart-search
-    // index, so the description is the right surface to point users at
-    // Smart mode if they're hunting for words shown in a photo.
     let text_group = libadwaita::PreferencesGroup::builder()
         .title("Text")
-        .description("For OCR text inside images, use Smart search instead.")
+        .description(
+            "Description = user-set caption. OCR = text recognised inside images by Immich's ML \
+             pipeline. All three are independent filter dimensions on /api/search/metadata.",
+        )
         .build();
     let filename_row = libadwaita::EntryRow::builder()
         .title("Filename contains")
@@ -1316,8 +1297,12 @@ fn present_advanced_filters_dialog(ui: Rc<LibraryWindowUi>) {
     let description_row = libadwaita::EntryRow::builder()
         .title("Description contains")
         .build();
+    let ocr_row = libadwaita::EntryRow::builder()
+        .title("OCR text in image contains")
+        .build();
     text_group.add(&filename_row);
     text_group.add(&description_row);
+    text_group.add(&ocr_row);
     page.add(&text_group);
 
     // --- Type & flags ---
@@ -1430,6 +1415,8 @@ fn present_advanced_filters_dialog(ui: Rc<LibraryWindowUi>) {
         #[weak]
         description_row,
         #[weak]
+        ocr_row,
+        #[weak]
         type_row,
         #[weak]
         favorite_row,
@@ -1459,6 +1446,7 @@ fn present_advanced_filters_dialog(ui: Rc<LibraryWindowUi>) {
             let filters = MetadataSearchFilters {
                 original_file_name: opt_string(&filename_row.text()),
                 description: opt_string(&description_row.text()),
+                ocr: opt_string(&ocr_row.text()),
                 asset_type: match type_row.selected() {
                     1 => Some("IMAGE".into()),
                     2 => Some("VIDEO".into()),
@@ -1510,10 +1498,6 @@ fn opt_true(active: bool) -> Option<bool> {
     if active { Some(true) } else { None }
 }
 
-/// Accept either a bare date (`YYYY-MM-DD`) or an RFC3339 timestamp; in
-/// the bare-date case we expand to start-of-day UTC so Immich interprets
-/// the user's intent uniformly. Empty / unparseable input → None so the
-/// filter is omitted from the request.
 fn normalise_iso_date(text: &gtk::glib::GString) -> Option<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() {

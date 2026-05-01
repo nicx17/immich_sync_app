@@ -20,6 +20,13 @@ pub enum LibrarySource {
     MetadataSearch {
         query: String,
     },
+    /// OCR-only search routed through `POST /api/search/metadata` with the
+    /// `ocr` field set. Distinct from `SmartSearch` (which uses CLIP via
+    /// the `query` field) so the user can target text-in-image queries
+    /// without paying for inference.
+    OcrSearch {
+        query: String,
+    },
 
     AdvancedSearch {
         filters: Box<MetadataSearchFilters>,
@@ -47,6 +54,7 @@ impl LibrarySource {
             self,
             LibrarySource::SmartSearch { .. }
                 | LibrarySource::MetadataSearch { .. }
+                | LibrarySource::OcrSearch { .. }
                 | LibrarySource::AdvancedSearch { .. }
                 | LibrarySource::LocalSearch { .. }
                 | LibrarySource::UnifiedSearch { .. }

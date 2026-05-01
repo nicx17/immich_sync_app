@@ -70,6 +70,12 @@ pub struct MetadataSearchFilters {
     pub original_file_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Match against OCR-extracted text inside images. Distinct from
+    /// `description` (user-set caption) — Immich indexes recognised text
+    /// during ML processing and exposes it as its own filter dimension on
+    /// both `MetadataSearchDto` and `SmartSearchDto`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocr: Option<String>,
     /// `"IMAGE"` or `"VIDEO"`; `None` returns both.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub asset_type: Option<String>,
@@ -1080,6 +1086,32 @@ impl ImmichApiClient {
             "/api/search/smart",
             body,
             RequestContext::SmartSearch,
+            Some(query),
+        )
+        .await
+    }
+
+    /// OCR-only search. Routes through `POST /api/search/metadata` with the
+    /// `ocr` field set — distinct from `search_smart`'s `query` field
+    /// (which runs CLIP inference). Pure OCR queries skip CLIP and are
+    /// faster; the trade-off is they only match recognised in-image text,
+    /// not visual or contextual content. Both Immich `SmartSearchDto` and
+    /// `MetadataSearchDto` expose this field.
+    pub async fn search_ocr(
+        &self,
+        query: &str,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let body = serde_json::json!({
+            "ocr": query,
+            "page": page,
+            "size": size.max(1),
+        });
+        self.fetch_search_assets(
+            "/api/search/metadata",
+            body,
+            RequestContext::MetadataSearch,
             Some(query),
         )
         .await

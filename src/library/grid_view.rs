@@ -93,6 +93,23 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         status.set_icon_name(Some(sync_icon_name(sync_state)));
         status.set_tooltip_text(Some(sync_state_label(sync_state)));
 
+        // Timeline source: hide the per-cell sync badge and switch the
+        // thumbnail to square corners so the visual matches the Immich
+        // web app's flat grid. The check happens here instead of at grid
+        // build time because cells are reused across source switches —
+        // when the user toggles Timeline on/off, already-realised cells
+        // need to re-render in the new style.
+        let in_timeline = matches!(
+            ctx.library_state.lock().unwrap().source,
+            crate::library::state::LibrarySource::Timeline,
+        );
+        status.set_visible(!in_timeline);
+        if in_timeline {
+            picture.add_css_class("mimick-thumbnail-square");
+        } else {
+            picture.remove_css_class("mimick-thumbnail-square");
+        }
+
         let cache = ctx.thumbnail_cache.clone();
         let picture_clone = picture.clone();
 
