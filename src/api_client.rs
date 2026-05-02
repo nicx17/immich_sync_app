@@ -152,6 +152,64 @@ pub struct ExploreSection {
     pub items: Vec<ExploreItem>,
 }
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct ExifInfo {
+    #[serde(default)]
+    pub make: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub lens_model: Option<String>,
+    #[serde(default)]
+    pub f_number: Option<f64>,
+    #[serde(default)]
+    pub focal_length: Option<f64>,
+    #[serde(default)]
+    pub iso: Option<u32>,
+    #[serde(default)]
+    pub exposure_time: Option<String>,
+    #[serde(default)]
+    pub file_size_in_byte: Option<u64>,
+    #[serde(default)]
+    pub date_time_original: Option<String>,
+    #[serde(default)]
+    pub city: Option<String>,
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub country: Option<String>,
+    #[serde(default)]
+    pub latitude: Option<f64>,
+    #[serde(default)]
+    pub longitude: Option<f64>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub exif_image_width: Option<u32>,
+    #[serde(default)]
+    pub exif_image_height: Option<u32>,
+    #[serde(default)]
+    pub orientation: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct AssetDetails {
+    pub id: String,
+    pub original_file_name: String,
+    #[serde(rename = "type")]
+    pub asset_type: String,
+    #[serde(default)]
+    pub exif_info: Option<ExifInfo>,
+    #[serde(default)]
+    pub duration: Option<String>,
+    #[serde(default)]
+    pub file_created_at: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThumbnailSize {
     Thumbnail,
@@ -1004,6 +1062,31 @@ impl ImmichApiClient {
                     .await;
                 Err(err.to_string())
             }
+        }
+    }
+
+    pub async fn fetch_asset_details(&self, asset_id: &str) -> Result<AssetDetails, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/assets/{}", base_url, asset_id);
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<AssetDetails>()
+                .await
+                .map_err(|err| err.to_string()),
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(err) => Err(err.to_string()),
         }
     }
 

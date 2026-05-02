@@ -1,5 +1,6 @@
 //! Library view module -- browse, search, and download assets from an Immich server.
 
+use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -52,8 +53,8 @@ struct LibraryWindowUi {
     source_mode: gtk::DropDown,
     filters_button: gtk::Button,
     timeline_toggle: gtk::ToggleButton,
-
     timeline_banner: gtk::Label,
+    source_mode_suppressed: Cell<bool>,
 }
 
 pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>) {
@@ -70,6 +71,11 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .show_start_title_buttons(true)
         .show_end_title_buttons(true)
         .build();
+    let sidebar_toggle = gtk::ToggleButton::builder()
+        .icon_name("sidebar-show-symbolic")
+        .tooltip_text("Toggle sidebar (F9)")
+        .active(true)
+        .build();
     let prefs_button = gtk::Button::builder()
         .icon_name("emblem-system-symbolic")
         .tooltip_text("Open Settings")
@@ -78,6 +84,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .icon_name("view-refresh-symbolic")
         .tooltip_text("Refresh")
         .build();
+    header.pack_start(&sidebar_toggle);
     header.pack_end(&prefs_button);
     header.pack_end(&refresh_button);
 
@@ -216,8 +223,28 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .show_sidebar(true)
         .enable_show_gesture(true)
         .build();
+    split
+        .bind_property("show-sidebar", &sidebar_toggle, "active")
+        .sync_create()
+        .bidirectional()
+        .build();
     toolbar.set_content(Some(&split));
     window.set_content(Some(&toolbar));
+
+    let f9 = gtk::Shortcut::builder()
+        .trigger(&gtk::ShortcutTrigger::parse_string("F9").unwrap())
+        .action(&gtk::CallbackAction::new(clone!(
+            #[strong]
+            split,
+            move |_, _| {
+                split.set_show_sidebar(!split.shows_sidebar());
+                glib::Propagation::Stop
+            }
+        )))
+        .build();
+    let shortcut_controller = gtk::ShortcutController::new();
+    shortcut_controller.add_shortcut(f9);
+    window.add_controller(shortcut_controller);
 
     let ui = Rc::new(LibraryWindowUi {
         ctx,
@@ -238,6 +265,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         filters_button: filters_button.clone(),
         timeline_toggle,
         timeline_banner,
+        source_mode_suppressed: Cell::new(false),
     });
 
     connect_sidebar_handlers(ui.clone());
@@ -270,9 +298,6 @@ fn connect_controls(
         #[strong]
         ui,
         move |_| {
-            // Pass the library window as parent so the settings open as a
-            // transient/modal child, keeping the unified single-window feel
-            // the spec calls for.
             build_settings_window_with_parent(&ui.app, ui.ctx.clone(), Some(&ui.window));
         }
     ));
@@ -296,6 +321,9 @@ fn connect_controls(
         #[strong]
         ui,
         move |dropdown| {
+            if ui.source_mode_suppressed.get() {
+                return;
+            }
             let source = match dropdown.selected() {
                 1 => LibrarySource::LocalAll,
                 2 => LibrarySource::Unified,
@@ -512,7 +540,7 @@ fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
                 return;
             }
 
-            open_lightbox(ui.clone(), asset_id, filename, local_path);
+            open_lightbox(ui.clone(), position);
         }
     ));
 
@@ -592,7 +620,9 @@ fn apply_timeline_ui_state(ui: &LibraryWindowUi, source: &LibrarySource) {
         0
     };
     if ui.source_mode.selected() != target {
+        ui.source_mode_suppressed.set(true);
         ui.source_mode.set_selected(target);
+        ui.source_mode_suppressed.set(false);
     }
 }
 
@@ -1039,96 +1069,222 @@ fn asset_objects_from_state(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<As
         .collect()
 }
 
-fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String, local_path: String) {
-    // `adw::Dialog` floats over the library window instead of opening a new
-    // top-level. Adwaita handles Escape-to-close and focus restoration; we
-    // only have to wire the actual content. The header bar is empty
-    // because the dialog provides its own close affordance.
+fn fill_exif_box(container: &gtk::Box, exif: &crate::api_client::ExifInfo) {
+    let mut rows: Vec<(String, String)> = Vec::new();
+    let dims = match (exif.exif_image_width, exif.exif_image_height) {
+        (Some(w), Some(h)) => Some(format!("{} × {}", w, h)),
+        _ => None,
+    };
+    if let Some(d) = dims {
+        rows.push(("Dimensions".into(), d));
+    }
+    if let Some(size) = exif.file_size_in_byte {
+        rows.push(("Size".into(), format_bytes(size)));
+    }
+    if let Some(dt) = &exif.date_time_original {
+        rows.push(("Taken".into(), dt.clone()));
+    }
+    let camera = match (&exif.make, &exif.model) {
+        (Some(m), Some(n)) => Some(format!("{} {}", m, n)),
+        (Some(m), None) => Some(m.clone()),
+        (None, Some(n)) => Some(n.clone()),
+        _ => None,
+    };
+    if let Some(c) = camera {
+        rows.push(("Camera".into(), c));
+    }
+    if let Some(l) = &exif.lens_model {
+        rows.push(("Lens".into(), l.clone()));
+    }
+    let mut shot = Vec::new();
+    if let Some(f) = exif.f_number {
+        shot.push(format!("ƒ/{:.1}", f));
+    }
+    if let Some(et) = &exif.exposure_time {
+        shot.push(et.clone());
+    }
+    if let Some(iso) = exif.iso {
+        shot.push(format!("ISO {}", iso));
+    }
+    if let Some(focal) = exif.focal_length {
+        shot.push(format!("{:.0}mm", focal));
+    }
+    if !shot.is_empty() {
+        rows.push(("Exposure".into(), shot.join(" · ")));
+    }
+    let location = match (&exif.city, &exif.state, &exif.country) {
+        (Some(c), Some(s), Some(co)) => Some(format!("{}, {}, {}", c, s, co)),
+        (Some(c), None, Some(co)) => Some(format!("{}, {}", c, co)),
+        (Some(c), _, _) => Some(c.clone()),
+        (_, Some(s), Some(co)) => Some(format!("{}, {}", s, co)),
+        (_, _, Some(co)) => Some(co.clone()),
+        _ => None,
+    };
+    if let Some(loc) = location {
+        rows.push(("Location".into(), loc));
+    }
+    if let (Some(lat), Some(lon)) = (exif.latitude, exif.longitude) {
+        rows.push(("GPS".into(), format!("{:.5}, {:.5}", lat, lon)));
+    }
+    if let Some(desc) = &exif.description
+        && !desc.is_empty()
+    {
+        rows.push(("Description".into(), desc.clone()));
+    }
+
+    for (key, value) in rows {
+        let row = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(2)
+            .build();
+        let k = gtk::Label::builder()
+            .label(&key)
+            .xalign(0.0)
+            .css_classes(vec!["caption".to_string(), "dim-label".to_string()])
+            .build();
+        let v = gtk::Label::builder()
+            .label(&value)
+            .xalign(0.0)
+            .wrap(true)
+            .selectable(true)
+            .build();
+        row.append(&k);
+        row.append(&v);
+        container.append(&row);
+    }
+}
+
+fn format_bytes(n: u64) -> String {
+    const KIB: f64 = 1024.0;
+    let n_f = n as f64;
+    if n_f >= KIB * KIB * KIB {
+        format!("{:.2} GB", n_f / (KIB * KIB * KIB))
+    } else if n_f >= KIB * KIB {
+        format!("{:.2} MB", n_f / (KIB * KIB))
+    } else if n_f >= KIB {
+        format!("{:.1} KB", n_f / KIB)
+    } else {
+        format!("{} B", n)
+    }
+}
+
+fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
+    let Some(item) = ui.grid.model.item(position).and_downcast::<AssetObject>() else {
+        return;
+    };
+    let initial_filename = item.property::<String>("filename");
+
     let dialog = libadwaita::Dialog::builder()
-        .title(&filename)
-        .content_width(980)
-        .content_height(760)
+        .title(&initial_filename)
+        .content_width(1100)
+        .content_height(820)
         .build();
     let toolbar = libadwaita::ToolbarView::builder().build();
     let header = libadwaita::HeaderBar::builder().build();
+    let prev_btn = gtk::Button::builder()
+        .icon_name("go-previous-symbolic")
+        .tooltip_text("Previous (Left)")
+        .build();
+    let next_btn = gtk::Button::builder()
+        .icon_name("go-next-symbolic")
+        .tooltip_text("Next (Right)")
+        .build();
+    let details_btn = gtk::ToggleButton::builder()
+        .icon_name("dialog-information-symbolic")
+        .tooltip_text("Toggle details (I)")
+        .active(false)
+        .build();
+    header.pack_start(&prev_btn);
+    header.pack_start(&next_btn);
+    header.pack_end(&details_btn);
     toolbar.add_top_bar(&header);
-    let content = gtk::Box::builder()
+
+    let body = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .build();
+    let viewer = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
-        .spacing(12)
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(12)
-        .margin_end(12)
+        .spacing(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .margin_start(8)
+        .margin_end(8)
+        .hexpand(true)
         .build();
     let picture = gtk::Picture::builder()
         .content_fit(gtk::ContentFit::Contain)
         .vexpand(true)
         .hexpand(true)
         .build();
-    let actions = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(8)
-        .halign(gtk::Align::End)
-        .build();
-
-    // Per-image preview/original toggle. Default mirrors the Config setting,
-    // and flipping it triggers a re-fetch via the same loader path.
     let initial_full = Config::new().data.library_preview_full_resolution;
     let resolution_toggle = gtk::ToggleButton::builder()
         .label(if initial_full { "Original" } else { "Preview" })
         .tooltip_text("Toggle preview vs original full-resolution image")
         .active(initial_full)
         .build();
-
     let download = gtk::Button::builder().label("Download").build();
-    let close_btn = gtk::Button::builder().label("Close").build();
-
-    // For purely local rows, the network-side toggle is meaningless (the
-    // file IS the original on disk), so hide both.
-    let is_local = !local_path.is_empty() && asset_id.starts_with(LOCAL_ID_PREFIX);
-    if is_local {
-        resolution_toggle.set_visible(false);
-        download.set_visible(false);
-    }
+    let actions = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk::Align::End)
+        .build();
     actions.append(&resolution_toggle);
     actions.append(&download);
-    actions.append(&close_btn);
-    content.append(&picture);
-    content.append(&actions);
-    toolbar.set_content(Some(&content));
+    viewer.append(&picture);
+    viewer.append(&actions);
+
+    let details_inner = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(8)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    let details_pane = gtk::ScrolledWindow::builder()
+        .child(&details_inner)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vexpand(true)
+        .width_request(320)
+        .visible(false)
+        .build();
+    let details_filename = gtk::Label::builder()
+        .xalign(0.0)
+        .wrap(true)
+        .css_classes(vec!["title-3".to_string()])
+        .build();
+    let details_summary = gtk::Label::builder().xalign(0.0).wrap(true).build();
+    let details_loading = gtk::Label::builder()
+        .xalign(0.0)
+        .label("Loading details…")
+        .css_classes(vec!["dim-label".to_string()])
+        .build();
+    let details_exif = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(4)
+        .visible(false)
+        .build();
+    details_inner.append(&details_filename);
+    details_inner.append(&details_summary);
+    details_inner.append(&details_loading);
+    details_inner.append(&details_exif);
+
+    body.append(&viewer);
+    body.append(&details_pane);
+    toolbar.set_content(Some(&body));
     dialog.set_child(Some(&toolbar));
 
-    close_btn.connect_clicked(clone!(
-        #[weak]
-        dialog,
-        move |_| {
-            dialog.close();
-        }
-    ));
+    details_btn
+        .bind_property("active", &details_pane, "visible")
+        .sync_create()
+        .build();
 
-    if !is_local {
-        download.connect_clicked(clone!(
-            #[strong]
-            ui,
-            #[strong]
-            asset_id,
-            #[strong]
-            filename,
-            move |_| {
-                start_download(ui.clone(), asset_id.clone(), filename.clone());
-            }
-        ));
-    }
-
-    let load_into_picture = {
+    let pos_cell = Rc::new(Cell::new(position));
+    let load_into_picture = Rc::new({
         let ui = ui.clone();
-        let asset_id = asset_id.clone();
-        let local_path = local_path.clone();
         let picture = picture.clone();
-        std::rc::Rc::new(move |full_res: bool| {
+        move |asset_id: String, local_path: String, full_res: bool| {
             let ui = ui.clone();
-            let asset_id = asset_id.clone();
-            let local_path = local_path.clone();
             let picture = picture.clone();
             glib::MainContext::default().spawn_local(async move {
                 if !local_path.is_empty() {
@@ -1166,20 +1322,222 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String, lo
                     picture.set_paintable(Some(&texture));
                 }
             });
-        })
-    };
+        }
+    });
 
-    resolution_toggle.connect_toggled(clone!(
+    let render = Rc::new({
+        let ui = ui.clone();
+        let dialog = dialog.clone();
+        let pos_cell = pos_cell.clone();
+        let load_into_picture = load_into_picture.clone();
+        let resolution_toggle = resolution_toggle.clone();
+        let download = download.clone();
+        let prev_btn = prev_btn.clone();
+        let next_btn = next_btn.clone();
+        let details_filename = details_filename.clone();
+        let details_summary = details_summary.clone();
+        let details_loading = details_loading.clone();
+        let details_exif = details_exif.clone();
+        move || {
+            let pos = pos_cell.get();
+            let n = ui.grid.model.n_items();
+            let Some(item) = ui.grid.model.item(pos).and_downcast::<AssetObject>() else {
+                return;
+            };
+            let asset_id = item.property::<String>("id");
+            let filename = item.property::<String>("filename");
+            let local_path = item.property::<String>("local-path");
+            let mime = item.property::<String>("mime-type");
+            let created = item.property::<String>("created-at");
+            let sync_state = item.property::<u32>("sync-state");
+
+            dialog.set_title(&filename);
+            details_filename.set_label(&filename);
+            let sync_label = match sync_state {
+                2 => "On Immich and locally",
+                1 => "Local only",
+                _ => "On Immich only",
+            };
+            details_summary.set_label(&format!("{} · {}\nCreated: {}", mime, sync_label, created));
+
+            while let Some(c) = details_exif.first_child() {
+                details_exif.remove(&c);
+            }
+            details_exif.set_visible(false);
+
+            prev_btn.set_sensitive(pos > 0);
+            next_btn.set_sensitive(pos + 1 < n);
+
+            let is_local = !local_path.is_empty() && asset_id.starts_with(LOCAL_ID_PREFIX);
+            resolution_toggle.set_visible(!is_local);
+            download.set_visible(!is_local);
+
+            (*load_into_picture)(asset_id.clone(), local_path, resolution_toggle.is_active());
+
+            if is_local {
+                details_loading.set_visible(false);
+                return;
+            }
+
+            details_loading.set_visible(true);
+            let pos_cell_async = pos_cell.clone();
+            let ui_async = ui.clone();
+            let details_loading = details_loading.clone();
+            let details_exif = details_exif.clone();
+            let asset_id_async = asset_id.clone();
+            glib::MainContext::default().spawn_local(async move {
+                let result = ui_async
+                    .ctx
+                    .api_client
+                    .fetch_asset_details(&asset_id_async)
+                    .await;
+                if pos_cell_async.get() != pos {
+                    return;
+                }
+                details_loading.set_visible(false);
+                let Ok(details) = result else { return };
+                if let Some(exif) = details.exif_info {
+                    fill_exif_box(&details_exif, &exif);
+                    details_exif.set_visible(true);
+                }
+            });
+        }
+    });
+
+    (*render)();
+
+    prev_btn.connect_clicked(clone!(
         #[strong]
-        load_into_picture,
-        move |btn| {
-            let full = btn.is_active();
-            btn.set_label(if full { "Original" } else { "Preview" });
-            (*load_into_picture)(full);
+        pos_cell,
+        #[strong]
+        render,
+        move |_| {
+            let pos = pos_cell.get();
+            if pos > 0 {
+                pos_cell.set(pos - 1);
+                (*render)();
+            }
+        }
+    ));
+    let goto_next = Rc::new(clone!(
+        #[strong]
+        ui,
+        #[strong]
+        pos_cell,
+        #[strong]
+        render,
+        #[strong]
+        next_btn,
+        move || {
+            let pos = pos_cell.get();
+            if pos + 1 < ui.grid.model.n_items() {
+                pos_cell.set(pos + 1);
+                (*render)();
+                return;
+            }
+            let next_request = ui
+                .ctx
+                .library_state
+                .lock()
+                .unwrap()
+                .load_next_page_if_needed();
+            let Some(req) = next_request else {
+                return;
+            };
+            next_btn.set_sensitive(false);
+            let model = ui.grid.model.clone();
+            let pos_cell_h = pos_cell.clone();
+            let render_h = render.clone();
+            let next_btn_h = next_btn.clone();
+            let prev_count = model.n_items();
+            let handler_id = Rc::new(std::cell::RefCell::new(None::<glib::SignalHandlerId>));
+            let handler_id_clone = handler_id.clone();
+            let id = model.connect_items_changed(move |m, _, _, _| {
+                if m.n_items() <= prev_count {
+                    return;
+                }
+                let pos = pos_cell_h.get();
+                if pos + 1 < m.n_items() {
+                    pos_cell_h.set(pos + 1);
+                    (*render_h)();
+                }
+                next_btn_h.set_sensitive(true);
+                if let Some(hid) = handler_id_clone.borrow_mut().take() {
+                    m.disconnect(hid);
+                }
+            });
+            *handler_id.borrow_mut() = Some(id);
+            load_source_page(ui.clone(), req, true);
         }
     ));
 
-    (*load_into_picture)(initial_full);
+    next_btn.connect_clicked(clone!(
+        #[strong]
+        goto_next,
+        move |_| (*goto_next)()
+    ));
+
+    let key_controller = gtk::EventControllerKey::new();
+    key_controller.connect_key_pressed(clone!(
+        #[strong]
+        pos_cell,
+        #[strong]
+        render,
+        #[strong]
+        details_btn,
+        #[strong]
+        goto_next,
+        move |_, key, _, _| match key {
+            gtk::gdk::Key::Left => {
+                let pos = pos_cell.get();
+                if pos > 0 {
+                    pos_cell.set(pos - 1);
+                    (*render)();
+                }
+                glib::Propagation::Stop
+            }
+            gtk::gdk::Key::Right => {
+                (*goto_next)();
+                glib::Propagation::Stop
+            }
+            gtk::gdk::Key::i | gtk::gdk::Key::I => {
+                details_btn.set_active(!details_btn.is_active());
+                glib::Propagation::Stop
+            }
+            _ => glib::Propagation::Proceed,
+        }
+    ));
+    dialog.add_controller(key_controller);
+
+    download.connect_clicked(clone!(
+        #[strong]
+        ui,
+        #[strong]
+        pos_cell,
+        move |_| {
+            let pos = pos_cell.get();
+            if let Some(item) = ui.grid.model.item(pos).and_downcast::<AssetObject>() {
+                let asset_id = item.property::<String>("id");
+                let filename = item.property::<String>("filename");
+                if !asset_id.starts_with(LOCAL_ID_PREFIX) {
+                    start_download(ui.clone(), asset_id, filename);
+                }
+            }
+        }
+    ));
+
+    resolution_toggle.connect_toggled(clone!(
+        #[strong]
+        render,
+        move |btn| {
+            btn.set_label(if btn.is_active() {
+                "Original"
+            } else {
+                "Preview"
+            });
+            (*render)();
+        }
+    ));
 
     dialog.present(Some(&ui.window));
 }
