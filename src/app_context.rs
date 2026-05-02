@@ -3,6 +3,7 @@
 //! Replaces the growing list of individual `Arc<T>` parameters that were previously
 //! threaded through `build_settings_window()` and `open_settings_if_needed()`.
 
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -27,4 +28,5 @@ pub struct AppContext {
     pub sync_now_tx: UnboundedSender<()>,
     pub thumbnail_cache: Arc<ThumbnailCache>,
     pub library_state: Arc<Mutex<LibraryState>>,
+    pub library_timeline_active: AtomicBool,
 }

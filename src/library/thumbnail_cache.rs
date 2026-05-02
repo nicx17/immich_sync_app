@@ -1,13 +1,15 @@
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use gdk4::Texture;
 use gdk4::prelude::TextureExt;
 use glib::Bytes;
 use lru::LruCache;
+use tokio::sync::Semaphore;
 
 use crate::api_client::{ImmichApiClient, ThumbnailSize};
+const MAX_CONCURRENT_LOADS: usize = 8;
 
 struct SizedLruCache {
     inner: LruCache<String, Texture>,
@@ -17,8 +19,10 @@ struct SizedLruCache {
 
 impl SizedLruCache {
     fn new(max_bytes: usize) -> Self {
+        let approx_per_entry = 256 * 1024;
+        let count_cap = (max_bytes / approx_per_entry).max(8);
         Self {
-            inner: LruCache::new(NonZeroUsize::new(1024).unwrap()),
+            inner: LruCache::new(NonZeroUsize::new(count_cap).unwrap()),
             current_bytes: 0,
             max_bytes,
         }
@@ -57,14 +61,12 @@ pub struct ThumbnailCache {
     api_client: std::sync::Arc<ImmichApiClient>,
     memory: Mutex<SizedLruCache>,
     cache_dir: PathBuf,
+    load_semaphore: Arc<Semaphore>,
 }
 
 impl ThumbnailCache {
     const DEFAULT_MAX_BYTES: usize = 80 * 1024 * 1024;
 
-    /// Build a cache with a configured byte budget. `mb == 0` falls back to
-    /// `DEFAULT_MAX_BYTES`, which keeps tests and any future zero-config
-    /// callsite simple without making them aware of the Config field.
     pub fn with_capacity_mb(api_client: std::sync::Arc<ImmichApiClient>, mb: u32) -> Self {
         let cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
@@ -81,6 +83,7 @@ impl ThumbnailCache {
             api_client,
             memory: Mutex::new(SizedLruCache::new(max_bytes)),
             cache_dir,
+            load_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_LOADS)),
         };
         let _ = cache.prune_disk_cache(500 * 1024 * 1024);
         cache
@@ -96,6 +99,7 @@ impl ThumbnailCache {
             api_client,
             memory: Mutex::new(SizedLruCache::new(max_bytes)),
             cache_dir,
+            load_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_LOADS)),
         }
     }
 
@@ -109,6 +113,17 @@ impl ThumbnailCache {
         asset_id: &str,
         size: ThumbnailSize,
     ) -> Result<Texture, String> {
+        if let Some(texture) = self.get_cached(asset_id, size) {
+            return Ok(texture);
+        }
+
+        let _permit = self
+            .load_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|err| err.to_string())?;
+
         if let Some(texture) = self.get_cached(asset_id, size) {
             return Ok(texture);
         }
@@ -154,6 +169,18 @@ impl ThumbnailCache {
         if let Some(texture) = self.memory.lock().unwrap().get(&key) {
             return Ok(texture);
         }
+
+        let _permit = self
+            .load_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|err| err.to_string())?;
+
+        if let Some(texture) = self.memory.lock().unwrap().get(&key) {
+            return Ok(texture);
+        }
+
         let path = path.to_path_buf();
         let texture = tokio::task::spawn_blocking(move || -> Result<Texture, String> {
             let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_file_at_scale(&path, 256, 256, true)

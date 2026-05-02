@@ -47,16 +47,19 @@ pub fn build_sidebar() -> SidebarParts {
         .css_classes(vec!["boxed-list".to_string()])
         .build();
 
+    // `image-symbolic` ships in some distros' icon themes but not the
+    // upstream Adwaita set, so the row rendered with no glyph. Use names
+    // guaranteed by `adwaita-icon-theme`.
     fixed_list.append(&action_row(
         "Photos",
         "Timeline of every photo and video",
-        "image-symbolic",
+        "image-x-generic-symbolic",
         "photos",
     ));
     fixed_list.append(&action_row(
         "Explore",
-        "Random sample to rediscover the library",
-        "starred-symbolic",
+        "People, places, and things",
+        "view-grid-symbolic",
         "explore",
     ));
 

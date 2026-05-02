@@ -64,6 +64,16 @@ image.mimick-status-badge {
     opacity: 0.85;
 }
 
+picture.mimick-person-avatar {
+    border-radius: 9999px;
+    background-color: alpha(@view_fg_color, 0.08);
+}
+
+picture.mimick-explore-tile {
+    border-radius: 6px;
+    background-color: alpha(@view_fg_color, 0.08);
+}
+
 picture.mimick-thumbnail-square,
 picture.mimick-thumbnail-square.mimick-thumbnail-loading,
 picture.mimick-thumbnail-square.mimick-thumbnail-loaded,

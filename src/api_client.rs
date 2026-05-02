@@ -127,6 +127,31 @@ pub struct ServerAbout {
     pub version: String,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct Person {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct PeopleResponse {
+    people: Vec<Person>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ExploreItem {
+    pub value: String,
+    pub data: LibraryAsset,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ExploreSection {
+    #[serde(rename = "fieldName")]
+    pub field_name: String,
+    pub items: Vec<ExploreItem>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThumbnailSize {
     Thumbnail,
@@ -1071,50 +1096,95 @@ impl ImmichApiClient {
         }
     }
 
-    /// Random asset sample via `POST /api/search/random`. Returns up to
-    /// `size` assets in a single response — the endpoint is unpaginated.
-    pub async fn search_random(&self, size: u32) -> Result<Vec<LibraryAsset>, String> {
+    /// Top recognised people, mirroring the Explore page's first row.
+    pub async fn fetch_people(&self) -> Result<Vec<Person>, String> {
         let base_url = self
             .get_active_url()
             .await
             .ok_or_else(|| "No active connection".to_string())?;
         let settings = self.settings_snapshot();
-        let url = format!("{}/api/search/random", base_url);
-        let body = serde_json::json!({ "size": size.max(1) });
-
+        let url = format!("{}/api/people?withHidden=false", base_url);
         match self
             .client
-            .post(&url)
+            .get(&url)
             .header("x-api-key", &settings.api_key)
             .header("Accept", "application/json")
-            .json(&body)
             .timeout(Duration::from_secs(10))
             .send()
             .await
         {
             Ok(resp) if resp.status().is_success() => {
-                let assets = resp
-                    .json::<Vec<LibraryAsset>>()
+                let body = resp
+                    .json::<PeopleResponse>()
                     .await
                     .map_err(|err| err.to_string())?;
                 self.clear_issue().await;
-                Ok(assets)
+                Ok(body.people)
             }
-            Ok(resp) => {
-                let status = resp.status();
-                self.set_issue(classify_http_issue(
-                    RequestContext::MetadataSearch,
-                    status.into(),
-                    None,
-                ))
-                .await;
-                Err(format!("HTTP {}", status))
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
+    /// Sectioned tile data (places + things) for the Explore landing.
+    pub async fn fetch_explore(&self) -> Result<Vec<ExploreSection>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/search/explore", base_url);
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let sections = resp
+                    .json::<Vec<ExploreSection>>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(sections)
             }
-            Err(err) => {
-                self.set_issue(classify_network_issue(RequestContext::MetadataSearch, &err))
-                    .await;
-                Err(err.to_string())
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
+    /// Per-person face thumbnail. Distinct from `fetch_thumbnail` (asset).
+    pub async fn fetch_person_thumbnail(&self, person_id: &str) -> Result<Vec<u8>, String> {
+        let _permit = self
+            .thumbnail_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|err| err.to_string())?;
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/people/{}/thumbnail", base_url, person_id);
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/octet-stream")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let bytes = resp.bytes().await.map_err(|err| err.to_string())?;
+                Ok(bytes.to_vec())
             }
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(err) => Err(err.to_string()),
         }
     }
 

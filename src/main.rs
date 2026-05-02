@@ -297,6 +297,7 @@ async fn main() {
             sync_now_tx: manual_sync_tx.clone(),
             thumbnail_cache,
             library_state,
+            library_timeline_active: std::sync::atomic::AtomicBool::new(false),
         });
         let _ = APP_CONTEXT.set(ctx.clone());
 

@@ -12,7 +12,8 @@ use crate::api_client::{LibraryAsset, MetadataSearchFilters, ThumbnailSize};
 use crate::app_context::AppContext;
 use crate::config::Config;
 use crate::library::asset_object::AssetObject;
-use crate::library::grid_view::{GridViewParts, build_grid_view, replace_model};
+use crate::library::explore_view::{ExploreViewParts, build_explore_view};
+use crate::library::grid_view::{GridViewParts, build_grid_view, extend_model, replace_model};
 use crate::library::local_source::{
     LocalAsset, enumerate_local, filter_by_filename, local_sync_state,
 };
@@ -23,6 +24,7 @@ use crate::settings_window::build_settings_window_with_parent;
 const LOCAL_ID_PREFIX: &str = "local::";
 
 pub mod asset_object;
+pub mod explore_view;
 pub mod grid_view;
 pub mod local_source;
 pub mod sidebar;
@@ -38,6 +40,7 @@ struct LibraryWindowUi {
     window: libadwaita::ApplicationWindow,
     sidebar: SidebarParts,
     grid: GridViewParts,
+    explore: ExploreViewParts,
     content_stack: gtk::Stack,
     error_label: gtk::Label,
     footer_label: gtk::Label,
@@ -83,6 +86,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
 
     let sidebar = build_sidebar();
     let grid = build_grid_view(ctx.clone());
+    let explore = build_explore_view();
 
     let source_mode_model = gtk::StringList::new(&["Remote", "Local", "Unified"]);
     let source_mode = gtk::DropDown::builder()
@@ -140,10 +144,6 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     controls.append(&filters_button);
     controls.append(&sort_mode);
 
-    // Timeline banner — shown only when the Timeline source is active. The
-    // text updates on scroll to the month/year of the asset at the top of
-    // the visible grid. Hidden by default to avoid eating vertical space
-    // in other sources.
     let timeline_banner = gtk::Label::builder()
         .xalign(0.0)
         .css_classes(vec!["mimick-timeline-banner".to_string()])
@@ -177,6 +177,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     content_stack.add_named(&empty_view, Some("empty"));
     content_stack.add_named(&error_view, Some("error"));
     content_stack.add_named(&grid.scrolled, Some("grid"));
+    content_stack.add_named(&explore.root, Some("explore"));
 
     let footer = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -191,9 +192,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .css_classes(vec!["mimick-status-dot".to_string(), "offline".to_string()])
         .build();
     let route_label = gtk::Label::builder().xalign(0.0).build();
-    // `footer_label` carries the server stats + version. Pushing it to the
-    // far right with hexpand keeps the spec's "status badge bottom-left"
-    // layout while still surfacing the same data.
+
     let footer_label = gtk::Label::builder()
         .xalign(1.0)
         .hexpand(true)
@@ -226,6 +225,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         window: window.clone(),
         sidebar,
         grid,
+        explore,
         content_stack,
         error_label,
         footer_label,
@@ -580,26 +580,38 @@ fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
         }
     ));
 
+    let scroll_pending = Rc::new(std::cell::Cell::new(false));
     ui.grid.scrolled.vadjustment().connect_value_changed(clone!(
         #[strong]
         ui,
-        move |adj| {
-            update_timeline_banner_if_active(&ui, adj);
-
-            let threshold = (adj.upper() - adj.page_size()) * 0.75;
-            if adj.value() < threshold {
+        #[strong]
+        scroll_pending,
+        move |_adj| {
+            if scroll_pending.replace(true) {
                 return;
             }
+            let ui = ui.clone();
+            let scroll_pending = scroll_pending.clone();
+            glib::idle_add_local_once(move || {
+                scroll_pending.set(false);
+                let adj = ui.grid.scrolled.vadjustment();
+                update_timeline_banner_if_active(&ui, &adj);
 
-            let next = ui
-                .ctx
-                .library_state
-                .lock()
-                .unwrap()
-                .load_next_page_if_needed();
-            if let Some(request) = next {
-                load_source_page(ui.clone(), request, true);
-            }
+                let threshold = (adj.upper() - adj.page_size()) * 0.75;
+                if adj.value() < threshold {
+                    return;
+                }
+
+                let next = ui
+                    .ctx
+                    .library_state
+                    .lock()
+                    .unwrap()
+                    .load_next_page_if_needed();
+                if let Some(request) = next {
+                    load_source_page(ui.clone(), request, true);
+                }
+            });
         }
     ));
 }
@@ -607,6 +619,9 @@ fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
 fn apply_timeline_ui_state(ui: &LibraryWindowUi, source: &LibrarySource) {
     let timeline_allowed = matches!(source, LibrarySource::AllAssets | LibrarySource::Timeline);
     let timeline_active = matches!(source, LibrarySource::Timeline);
+    ui.ctx
+        .library_timeline_active
+        .store(timeline_active, std::sync::atomic::Ordering::Relaxed);
     ui.timeline_toggle.set_sensitive(timeline_allowed);
     if ui.timeline_toggle.is_active() != timeline_active {
         ui.timeline_toggle.set_active(timeline_active);
@@ -616,10 +631,6 @@ fn apply_timeline_ui_state(ui: &LibraryWindowUi, source: &LibrarySource) {
         ui.sort_mode.set_selected(0);
     }
 
-    // Smart/OCR/AdvancedSearch all hit remote-only Immich endpoints — they
-    // make no sense for Local enumeration or the Unified merge view (which
-    // pages remote but pre-filters by filename only). Hide rather than
-    // disable so users don't try them and wonder why nothing happens.
     let is_local = matches!(
         source,
         LibrarySource::LocalAll | LibrarySource::LocalSearch { .. }
@@ -730,7 +741,109 @@ fn load_status(ui: Rc<LibraryWindowUi>) {
     ));
 }
 
+fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
+    ui.content_stack.set_visible_child_name("explore");
+    let ctx = ui.ctx.clone();
+
+    // Show the page immediately so users see headings while data streams in.
+    let click_ui = ui.clone();
+    explore_view::populate_people(&ui.explore, ctx.clone(), Vec::new(), move |id, name| {
+        let filters = MetadataSearchFilters {
+            person_ids: Some(vec![id]),
+            ..Default::default()
+        };
+        let request = click_ui.ctx.library_state.lock().unwrap().switch_source(
+            LibrarySource::AdvancedSearch {
+                filters: Box::new(filters),
+            },
+        );
+        click_ui.search_entry.set_text(&name);
+        apply_timeline_ui_state(&click_ui, &request.1);
+        load_source_page(click_ui.clone(), request, false);
+    });
+    let click_ui = ui.clone();
+    explore_view::populate_explore(&ui.explore, ctx.clone(), Vec::new(), move |kind, value| {
+        let next = match kind {
+            "place" => LibrarySource::AdvancedSearch {
+                filters: Box::new(MetadataSearchFilters {
+                    city: Some(value.clone()),
+                    ..Default::default()
+                }),
+            },
+            _ => LibrarySource::SmartSearch {
+                query: value.clone(),
+            },
+        };
+        let request = click_ui
+            .ctx
+            .library_state
+            .lock()
+            .unwrap()
+            .switch_source(next);
+        click_ui.search_entry.set_text(&value);
+        apply_timeline_ui_state(&click_ui, &request.1);
+        load_source_page(click_ui.clone(), request, false);
+    });
+
+    glib::MainContext::default().spawn_local(clone!(
+        #[strong]
+        ui,
+        async move {
+            let people = ctx.api_client.fetch_people().await.unwrap_or_default();
+            let sections = ctx.api_client.fetch_explore().await.unwrap_or_default();
+
+            let click_ui = ui.clone();
+            explore_view::populate_people(&ui.explore, ctx.clone(), people, move |id, name| {
+                let filters = MetadataSearchFilters {
+                    person_ids: Some(vec![id]),
+                    ..Default::default()
+                };
+                let request = click_ui.ctx.library_state.lock().unwrap().switch_source(
+                    LibrarySource::AdvancedSearch {
+                        filters: Box::new(filters),
+                    },
+                );
+                click_ui.search_entry.set_text(&name);
+                apply_timeline_ui_state(&click_ui, &request.1);
+                load_source_page(click_ui.clone(), request, false);
+            });
+            let click_ui = ui.clone();
+            explore_view::populate_explore(
+                &ui.explore,
+                ctx.clone(),
+                sections,
+                move |kind, value| {
+                    let next = match kind {
+                        "place" => LibrarySource::AdvancedSearch {
+                            filters: Box::new(MetadataSearchFilters {
+                                city: Some(value.clone()),
+                                ..Default::default()
+                            }),
+                        },
+                        _ => LibrarySource::SmartSearch {
+                            query: value.clone(),
+                        },
+                    };
+                    let request = click_ui
+                        .ctx
+                        .library_state
+                        .lock()
+                        .unwrap()
+                        .switch_source(next);
+                    click_ui.search_entry.set_text(&value);
+                    apply_timeline_ui_state(&click_ui, &request.1);
+                    load_source_page(click_ui.clone(), request, false);
+                },
+            );
+        }
+    ));
+}
+
 fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32), append: bool) {
+    if matches!(request.1, LibrarySource::Explore) {
+        load_explore_landing(ui);
+        return;
+    }
     ui.content_stack.set_visible_child_name("loading");
     glib::MainContext::default().spawn_local(clone!(
         #[strong]
@@ -741,13 +854,7 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
                 LibrarySource::AllAssets | LibrarySource::Timeline => {
                     ui.ctx.api_client.search_metadata("", page, PAGE_SIZE).await
                 }
-                LibrarySource::Explore => {
-                    if page > 1 {
-                        Ok(Vec::new())
-                    } else {
-                        ui.ctx.api_client.search_random(PAGE_SIZE).await
-                    }
-                }
+                LibrarySource::Explore => unreachable!("intercepted above"),
                 LibrarySource::Album { id, .. } => {
                     ui.ctx
                         .api_client
@@ -809,8 +916,9 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
 
             match result {
                 Ok(items) => {
-                    let objects = {
+                    let outcome = {
                         let mut state = ui.ctx.library_state.lock().unwrap();
+                        let prev_len = state.assets.len();
                         let applied = if append {
                             state.append_assets(generation, items)
                         } else {
@@ -819,9 +927,15 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
                         if !applied {
                             return;
                         }
-                        asset_objects_from_state(&state.assets, &ui.ctx)
+                        let objects = asset_objects_from_state(&state.assets, &ui.ctx);
+                        (objects, prev_len)
                     };
-                    replace_model(&ui.grid.model, &objects);
+                    let (objects, prev_len) = outcome;
+                    if append && prev_len <= objects.len() {
+                        extend_model(&ui.grid.model, &objects[prev_len..]);
+                    } else {
+                        replace_model(&ui.grid.model, &objects);
+                    }
                     sync_content_state(&ui);
                     reload_sidebar(&ui);
                     update_timeline_banner_if_active(&ui, &ui.grid.scrolled.vadjustment());

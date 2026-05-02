@@ -26,9 +26,7 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         let container = gtk::Overlay::builder()
             .css_classes(vec!["mimick-cell".to_string()])
             .build();
-        // `Cover` keeps the image's aspect ratio but fills the cell by cropping
-        // overflow — no transparent letterbox gaps between thumbnails. Width
-        // is driven by GridView column allocation so cells expand edge-to-edge.
+
         let picture = gtk::Picture::builder()
             .height_request(200)
             .can_shrink(true)
@@ -79,16 +77,9 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         status.set_icon_name(Some(sync_icon_name(sync_state)));
         status.set_tooltip_text(Some(sync_state_label(sync_state)));
 
-        // Timeline source: hide the per-cell sync badge and switch the
-        // thumbnail to square corners so the visual matches the Immich
-        // web app's flat grid. The check happens here instead of at grid
-        // build time because cells are reused across source switches —
-        // when the user toggles Timeline on/off, already-realised cells
-        // need to re-render in the new style.
-        let in_timeline = matches!(
-            ctx.library_state.lock().unwrap().source,
-            crate::library::state::LibrarySource::Timeline,
-        );
+        let in_timeline = ctx
+            .library_timeline_active
+            .load(std::sync::atomic::Ordering::Relaxed);
         status.set_visible(!in_timeline);
         if in_timeline {
             picture.add_css_class("mimick-thumbnail-square");
@@ -112,41 +103,54 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         if !local_path.is_empty() {
             let path = std::path::PathBuf::from(&local_path);
             let asset_id_clone = asset_id.clone();
-            glib::MainContext::default().spawn_local(async move {
-                let result = cache.load_local_thumbnail(&asset_id_clone, &path).await;
+            glib::timeout_add_local_once(std::time::Duration::from_millis(80), move || {
                 if picture_clone.tooltip_text().as_deref() != Some(asset_id_clone.as_str()) {
                     return;
                 }
-                match result {
-                    Ok(texture) => {
-                        picture_clone.set_paintable(Some(&texture));
-                        set_thumb_state(&picture_clone, ThumbState::Loaded);
+                let picture_async = picture_clone.clone();
+                let cache = cache.clone();
+                let asset_id_async = asset_id_clone.clone();
+                glib::MainContext::default().spawn_local(async move {
+                    let result = cache.load_local_thumbnail(&asset_id_async, &path).await;
+                    if picture_async.tooltip_text().as_deref() != Some(asset_id_async.as_str()) {
+                        return;
                     }
-                    Err(_) => set_thumb_state(&picture_clone, ThumbState::Error),
-                }
+                    match result {
+                        Ok(texture) => {
+                            picture_async.set_paintable(Some(&texture));
+                            set_thumb_state(&picture_async, ThumbState::Loaded);
+                        }
+                        Err(_) => set_thumb_state(&picture_async, ThumbState::Error),
+                    }
+                });
             });
             return;
         }
 
-        glib::MainContext::default().spawn_local(async move {
-            let result = cache
-                .load_thumbnail(&asset_id, crate::api_client::ThumbnailSize::Thumbnail)
-                .await;
-
-            // Cell may have been rebound to a different asset while we were loading.
+        glib::timeout_add_local_once(std::time::Duration::from_millis(80), move || {
             if picture_clone.tooltip_text().as_deref() != Some(asset_id.as_str()) {
                 return;
             }
-
-            match result {
-                Ok(texture) => {
-                    picture_clone.set_paintable(Some(&texture));
-                    set_thumb_state(&picture_clone, ThumbState::Loaded);
+            let picture_async = picture_clone.clone();
+            let cache = cache.clone();
+            let asset_id_async = asset_id.clone();
+            glib::MainContext::default().spawn_local(async move {
+                let result = cache
+                    .load_thumbnail(&asset_id_async, crate::api_client::ThumbnailSize::Thumbnail)
+                    .await;
+                if picture_async.tooltip_text().as_deref() != Some(asset_id_async.as_str()) {
+                    return;
                 }
-                Err(_) => {
-                    set_thumb_state(&picture_clone, ThumbState::Error);
+                match result {
+                    Ok(texture) => {
+                        picture_async.set_paintable(Some(&texture));
+                        set_thumb_state(&picture_async, ThumbState::Loaded);
+                    }
+                    Err(_) => {
+                        set_thumb_state(&picture_async, ThumbState::Error);
+                    }
                 }
-            }
+            });
         });
     });
 
@@ -194,6 +198,12 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
 
 pub fn replace_model(model: &gtk::gio::ListStore, objects: &[AssetObject]) {
     model.remove_all();
+    for object in objects {
+        model.append(object);
+    }
+}
+
+pub fn extend_model(model: &gtk::gio::ListStore, objects: &[AssetObject]) {
     for object in objects {
         model.append(object);
     }
