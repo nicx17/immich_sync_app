@@ -4,6 +4,7 @@
 //! tiles). Tile clicks invoke caller-provided closures so dispatch lives in
 //! `mod.rs` and this module stays UI-only.
 
+use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -18,6 +19,7 @@ type ExploreClick = Rc<dyn Fn(&str, String)>;
 
 pub struct ExploreViewParts {
     pub root: gtk::ScrolledWindow,
+    pub populated: Rc<Cell<bool>>,
     people_row: gtk::Box,
     places_grid: gtk::FlowBox,
     things_grid: gtk::FlowBox,
@@ -53,6 +55,7 @@ pub fn build_explore_view() -> ExploreViewParts {
 
     ExploreViewParts {
         root,
+        populated: Rc::new(Cell::new(false)),
         people_row,
         places_grid,
         things_grid,

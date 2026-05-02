@@ -283,6 +283,7 @@ fn connect_controls(
         move |_| {
             load_albums(ui.clone());
             load_status(ui.clone());
+            ui.explore.populated.set(false);
             let request = {
                 let source = ui.ctx.library_state.lock().unwrap().source.clone();
                 ui.ctx.library_state.lock().unwrap().switch_source(source)
@@ -384,14 +385,11 @@ fn connect_controls(
         }
     ));
 
-    ui.search_entry.connect_search_changed(clone!(
+    ui.search_entry.connect_stop_search(clone!(
         #[strong]
         ui,
         move |entry| {
-            if !entry.text().trim().is_empty() {
-                return;
-            }
-
+            entry.set_text("");
             let request = ui
                 .ctx
                 .library_state
@@ -437,65 +435,6 @@ fn connect_controls(
             load_source_page(ui.clone(), request, false);
         }
     ));
-
-    ui.sidebar.delete_button.connect_clicked(clone!(
-        #[strong]
-        ui,
-        move |_| {
-            let current = ui.ctx.library_state.lock().unwrap().source.clone();
-            let LibrarySource::Album { id, .. } = current else {
-                return;
-            };
-
-            let dialog = libadwaita::AlertDialog::builder()
-                .heading("Delete Album?")
-                .body(
-                    "This removes the album container from Immich but leaves the assets untouched.",
-                )
-                .build();
-            dialog.add_response("cancel", "Cancel");
-            dialog.add_response("delete", "Delete");
-            dialog.set_response_appearance("delete", libadwaita::ResponseAppearance::Destructive);
-            dialog.connect_response(
-                None,
-                clone!(
-                    #[strong]
-                    ui,
-                    #[strong]
-                    id,
-                    move |dialog, response| {
-                        dialog.close();
-                        if response != "delete" {
-                            return;
-                        }
-                        glib::MainContext::default().spawn_local(clone!(
-                            #[strong]
-                            ui,
-                            #[strong]
-                            id,
-                            async move {
-                                if let Err(err) = ui.ctx.api_client.delete_album(&id).await {
-                                    ui.error_label
-                                        .set_label(&format!("Album delete failed: {}", err));
-                                    ui.content_stack.set_visible_child_name("error");
-                                    return;
-                                }
-
-                                let request = {
-                                    let mut state = ui.ctx.library_state.lock().unwrap();
-                                    state.albums.retain(|album| album.id != id);
-                                    state.switch_source(LibrarySource::AllAssets)
-                                };
-                                reload_sidebar(&ui);
-                                load_source_page(ui.clone(), request, false);
-                            }
-                        ));
-                    }
-                ),
-            );
-            dialog.present(Some(&ui.window));
-        }
-    ));
 }
 
 fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
@@ -513,14 +452,11 @@ fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
                 "explore" => LibrarySource::Explore,
                 _ => return,
             };
-            // Clear the album list's selection so the two boxes are mutually
-            // exclusive. `unselect_all` is safe even when nothing is selected.
             ui.sidebar.albums_list.unselect_all();
             sidebar_dispatch(ui.clone(), source);
         }
     ));
 
-    // Album list — tooltip carries "id:name" set in `reload_sidebar`.
     ui.sidebar.albums_list.connect_row_selected(clone!(
         #[strong]
         ui,
@@ -743,47 +679,11 @@ fn load_status(ui: Rc<LibraryWindowUi>) {
 
 fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
     ui.content_stack.set_visible_child_name("explore");
+    if ui.explore.populated.get() {
+        return;
+    }
+    ui.explore.populated.set(true);
     let ctx = ui.ctx.clone();
-
-    // Show the page immediately so users see headings while data streams in.
-    let click_ui = ui.clone();
-    explore_view::populate_people(&ui.explore, ctx.clone(), Vec::new(), move |id, name| {
-        let filters = MetadataSearchFilters {
-            person_ids: Some(vec![id]),
-            ..Default::default()
-        };
-        let request = click_ui.ctx.library_state.lock().unwrap().switch_source(
-            LibrarySource::AdvancedSearch {
-                filters: Box::new(filters),
-            },
-        );
-        click_ui.search_entry.set_text(&name);
-        apply_timeline_ui_state(&click_ui, &request.1);
-        load_source_page(click_ui.clone(), request, false);
-    });
-    let click_ui = ui.clone();
-    explore_view::populate_explore(&ui.explore, ctx.clone(), Vec::new(), move |kind, value| {
-        let next = match kind {
-            "place" => LibrarySource::AdvancedSearch {
-                filters: Box::new(MetadataSearchFilters {
-                    city: Some(value.clone()),
-                    ..Default::default()
-                }),
-            },
-            _ => LibrarySource::SmartSearch {
-                query: value.clone(),
-            },
-        };
-        let request = click_ui
-            .ctx
-            .library_state
-            .lock()
-            .unwrap()
-            .switch_source(next);
-        click_ui.search_entry.set_text(&value);
-        apply_timeline_ui_state(&click_ui, &request.1);
-        load_source_page(click_ui.clone(), request, false);
-    });
 
     glib::MainContext::default().spawn_local(clone!(
         #[strong]
@@ -844,7 +744,9 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
         load_explore_landing(ui);
         return;
     }
-    ui.content_stack.set_visible_child_name("loading");
+    if !append {
+        ui.content_stack.set_visible_child_name("loading");
+    }
     glib::MainContext::default().spawn_local(clone!(
         #[strong]
         ui,
@@ -952,7 +854,7 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
     ));
 }
 
-fn reload_sidebar(ui: &LibraryWindowUi) {
+fn reload_sidebar(ui: &Rc<LibraryWindowUi>) {
     while let Some(row) = ui.sidebar.albums_list.first_child() {
         ui.sidebar.albums_list.remove(&row);
     }
@@ -972,17 +874,14 @@ fn reload_sidebar(ui: &LibraryWindowUi) {
         ui.sidebar.albums_list.append(&row);
     }
 
-    // Reflect the current source in whichever list owns it; clear the other.
     match selected_source {
         LibrarySource::Timeline => {
             select_fixed_row(&ui.sidebar.fixed_list, "photos");
             ui.sidebar.albums_list.unselect_all();
-            ui.sidebar.delete_button.set_sensitive(false);
         }
         LibrarySource::Explore => {
             select_fixed_row(&ui.sidebar.fixed_list, "explore");
             ui.sidebar.albums_list.unselect_all();
-            ui.sidebar.delete_button.set_sensitive(false);
         }
         LibrarySource::Album { id, .. } => {
             ui.sidebar.fixed_list.unselect_all();
@@ -995,17 +894,14 @@ fn reload_sidebar(ui: &LibraryWindowUi) {
                     })
                 {
                     ui.sidebar.albums_list.select_row(Some(&row));
-                    ui.sidebar.delete_button.set_sensitive(true);
                     break;
                 }
                 child = next;
             }
         }
         _ => {
-            // AllAssets / search / local sources don't map to a sidebar row.
             ui.sidebar.fixed_list.unselect_all();
             ui.sidebar.albums_list.unselect_all();
-            ui.sidebar.delete_button.set_sensitive(false);
         }
     }
 }

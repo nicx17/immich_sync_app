@@ -90,8 +90,6 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         let cache = ctx.thumbnail_cache.clone();
         let picture_clone = picture.clone();
 
-        // Memory-cache fast path: works for both local and remote rows since
-        // `load_local_thumbnail` and `load_thumbnail` share the same key shape.
         if let Some(texture) =
             cache.get_cached(&asset_id, crate::api_client::ThumbnailSize::Thumbnail)
         {
@@ -161,8 +159,6 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         if let Some(container) = list_item.child().and_downcast::<gtk::Overlay>()
             && let Some(picture) = container.child().and_downcast::<gtk::Picture>()
         {
-            // Clearing the tooltip causes any in-flight thumbnail task to discard its
-            // result on completion, so a recycled cell does not flash a stale image.
             picture.set_tooltip_text(None);
             picture.set_paintable(Option::<&Texture>::None);
             set_thumb_state(&picture, ThumbState::Loading);

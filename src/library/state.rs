@@ -133,7 +133,6 @@ impl LibraryState {
         if !source.is_search() {
             self.previous_non_search_source = source.clone();
         }
-
         self.source = source.clone();
         self.selected_asset_id = None;
         self.assets.clear();
@@ -142,7 +141,6 @@ impl LibraryState {
         self.page_in_flight = true;
         self.generation = self.generation.saturating_add(1);
         self.load_state = LibraryLoadState::Loading;
-
         (self.generation, source, 1)
     }
 

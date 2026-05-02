@@ -1057,6 +1057,7 @@ impl ImmichApiClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn delete_album(&self, album_id: &str) -> Result<(), String> {
         let base_url = self
             .get_active_url()
@@ -1401,6 +1402,7 @@ impl ImmichApiClient {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 enum RequestContext {
     Upload,
     Albums,
