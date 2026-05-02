@@ -71,6 +71,12 @@ Each watched directory operates with isolated logical constraints:
 - Predetermined allowance lists strictly for explicit file extensions (e.g. `.avif`, `.mp4`).
 - Upper-bound maximum file size ceilings.
 
+### Library View (Optional)
+- Built-in album browser with thumbnail grid and Explore landing page.
+- Search modes: filename/metadata, Smart (CLIP), and OCR text lookup.
+- Download originals and open full-resolution previews in the lightbox.
+- Toggle via **Settings → Behavior → Enable Library View** (restart required).
+
 ---
 
 ## Installation (Recommended)
@@ -139,7 +145,7 @@ The UI is fully responsive and automatically adapts its layout for narrow widths
 
 1. **Internal URL** — LAN address (e.g., `http://192.168.1.50:2283`).
 2. **External URL** — WAN/Public address (e.g., `https://photos.example.com`). *At least one must be enabled.*
-3. **API Key** — Generate in Immich Web UI under Account Settings > API Keys. Needs **Asset** read/create/update permissions and **Album** read/create/update permissions.
+3. **API Key** — Generate in Immich Web UI under Account Settings > API Keys. Needs **Asset** read/create/update/download permissions and **Album** read/create/update permissions.
 4. **Watch Paths** — Add folders to monitor with the built-in folder picker. Each folder can be assigned a target Immich album.
 5. **Run on Startup** — Enable this in the **Behavior** section to start Mimick automatically when you log in.
 6. **Folder Rules** — Each watched folder can open a rules dialog to ignore hidden paths, set a max size in MB, or restrict uploads to specific extensions.
