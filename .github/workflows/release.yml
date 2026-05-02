@@ -83,7 +83,7 @@ jobs:
           {
             printf '[Flatpak Ref]\n'
             printf 'Title=Mimick\n'
-            printf 'Name=io.github.nicx17.mimick\n'
+            printf 'Name=dev.nicx.mimick\n'
             printf 'Branch=stable\n'
             printf 'Url=https://nicx17.github.io/mimick/\n'
             printf 'SuggestRemoteName=mimick\n'

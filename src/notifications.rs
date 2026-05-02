@@ -73,7 +73,7 @@ fn send_gio(title: &str, body: &str, notification_id: &str) {
         let notification = gtk::gio::Notification::new(&title);
         notification.set_body(Some(&body));
 
-        let icon = gtk::gio::ThemedIcon::new("io.github.nicx17.mimick");
+        let icon = gtk::gio::ThemedIcon::new("dev.nicx.mimick");
         notification.set_icon(&icon);
 
         app.send_notification(Some(&id), &notification);

@@ -26,8 +26,8 @@ This can happen when upgrading from an older version of Mimick, or if the Flatpa
 **Fix**: Delete the stale keyring file and relaunch. Mimick will create a fresh one:
 
 ```bash
-rm -f ~/.var/app/io.github.nicx17.mimick/data/keyrings/default.keyring
-flatpak run io.github.nicx17.mimick
+rm -f ~/.var/app/dev.nicx.mimick/data/keyrings/default.keyring
+flatpak run dev.nicx.mimick
 ```
 
 Then re-enter and save your API key from the settings window.
@@ -84,7 +84,7 @@ If the application gets permanently stuck constantly trying to upload a corrupt 
 ```bash
 rm -f ~/.cache/mimick/retries.json
 ```
-*(In Flatpak, use `~/.var/app/io.github.nicx17.mimick/cache/mimick/retries.json`)*
+*(In Flatpak, use `~/.var/app/dev.nicx.mimick/cache/mimick/retries.json`)*
 
 ### Export a Diagnostics Bundle
 Use `Export Diagnostics` from the Status page to collect:
@@ -101,7 +101,7 @@ API keys, raw logs, full local paths, and raw server URLs are intentionally omit
 
 Flatpak log:
 ```bash
-tail -f ~/.var/app/io.github.nicx17.mimick/cache/mimick/mimick.log
+tail -f ~/.var/app/dev.nicx.mimick/cache/mimick/mimick.log
 ```
 
 Native log:
@@ -131,7 +131,7 @@ If `jq` reports an error, the file is malformed.
 ### Cache Files (Advanced)
 
 Important runtime files (Flatpak paths shown, replace with `~/.cache/mimick/` for native):
-- `~/.var/app/io.github.nicx17.mimick/cache/mimick/mimick.log`
-- `~/.var/app/io.github.nicx17.mimick/cache/mimick/retries.json`
-- `~/.var/app/io.github.nicx17.mimick/cache/mimick/synced_index.json`
-- `~/.var/app/io.github.nicx17.mimick/cache/mimick/status.json`
+- `~/.var/app/dev.nicx.mimick/cache/mimick/mimick.log`
+- `~/.var/app/dev.nicx.mimick/cache/mimick/retries.json`
+- `~/.var/app/dev.nicx.mimick/cache/mimick/synced_index.json`
+- `~/.var/app/dev.nicx.mimick/cache/mimick/status.json`

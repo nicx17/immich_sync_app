@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.nicx17.mimick</id>
+  <id>dev.nicx.mimick</id>
   <name>Mimick</name>
   <summary>A background daemon to auto-sync photos to Immich on Linux</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
-  <developer id="io.github.nicx17">
+  <developer id="dev.nicx">
     <name>Nick Cardoso</name>
   </developer>
   <description>
@@ -49,7 +49,7 @@
     </screenshot>
   </screenshots>
 
-  <launchable type="desktop-id">io.github.nicx17.mimick.desktop</launchable>
+  <launchable type="desktop-id">dev.nicx.mimick.desktop</launchable>
   <requires>
     <display_length compare="ge">360</display_length>
   </requires>

@@ -16,7 +16,7 @@ The Mimick UI and logs convert those into friendlier folder names where possible
 
 Mimick uses the [oo7](https://github.com/linux-credentials/oo7) crate for secure API key storage. The backend is selected automatically:
 
-- **Inside Flatpak**: Credentials are stored in an encrypted file within the sandbox (`~/.var/app/io.github.nicx17.mimick/data/keyrings/`). The encryption key is retrieved from the `org.freedesktop.portal.Secret` portal. This avoids exposing secrets to other sandboxed applications.
+- **Inside Flatpak**: Credentials are stored in an encrypted file within the sandbox (`~/.var/app/dev.nicx.mimick/data/keyrings/`). The encryption key is retrieved from the `org.freedesktop.portal.Secret` portal. This avoids exposing secrets to other sandboxed applications.
 - **Outside Flatpak (native)**: Credentials are stored in the desktop's Secret Service (GNOME Keyring, KWallet) via the `org.freedesktop.secrets` D-Bus interface.
 
 ### D-Bus Permissions

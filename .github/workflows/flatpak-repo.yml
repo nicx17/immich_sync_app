@@ -33,10 +33,10 @@ jobs:
         run: ostree init --repo=repo --mode=archive-z2
 
       - name: Validate desktop entry
-        run: desktop-file-validate setup/io.github.nicx17.mimick.desktop
+        run: desktop-file-validate setup/dev.nicx.mimick.desktop
 
       - name: Validate AppStream metadata
-        run: appstreamcli validate --no-net setup/metainfo/io.github.nicx17.mimick.metainfo.xml
+        run: appstreamcli validate --no-net setup/metainfo/dev.nicx.mimick.metainfo.xml
 
       - name: Import Flatpak signing key
         id: signing_key
@@ -90,10 +90,10 @@ jobs:
         env:
           GNUPGHOME: ${{ steps.signing_key.outputs.gpg_homedir }}
         with:
-          manifest-path: io.github.nicx17.mimick.local.yml
+          manifest-path: dev.nicx.mimick.local.yml
           build-bundle: false
           upload-artifact: false
-          cache-key: flatpak-builder-gnome50-${{ hashFiles('io.github.nicx17.mimick.local.yml', 'Cargo.lock', 'cargo-sources.json') }}
+          cache-key: flatpak-builder-gnome50-${{ hashFiles('dev.nicx.mimick.local.yml', 'Cargo.lock', 'cargo-sources.json') }}
           gpg-sign: ${{ steps.signing_key.outputs.gpg_key_id }}
           verbose: true
 
@@ -130,7 +130,7 @@ jobs:
           {
             printf '[Flatpak Ref]\n'
             printf 'Title=Mimick\n'
-            printf 'Name=io.github.nicx17.mimick\n'
+            printf 'Name=dev.nicx.mimick\n'
             printf 'Branch=stable\n'
             printf 'Url=https://nicx17.github.io/mimick/\n'
             printf 'SuggestRemoteName=mimick\n'

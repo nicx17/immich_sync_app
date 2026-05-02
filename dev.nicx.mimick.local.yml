@@ -1,7 +1,7 @@
-app-id: io.github.nicx17.mimick
+app-id: dev.nicx.mimick
 branch: stable
 runtime: org.gnome.Platform
-runtime-version: '50'
+runtime-version: "50"
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
@@ -20,7 +20,6 @@ finish-args:
   - --share=ipc
   - --talk-name=org.kde.StatusNotifierWatcher
   - --share=network
-  # Folder access is granted per-directory via the file chooser portal
 
 modules:
   - name: mimick
@@ -29,9 +28,9 @@ modules:
       - mv cargo/config cargo/config.toml
       - cargo --offline build --release
       - install -Dm755 target/release/mimick /app/bin/mimick
-      - install -Dm644 setup/io.github.nicx17.mimick.desktop /app/share/applications/io.github.nicx17.mimick.desktop
-      - install -Dm644 src/assets/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.nicx17.mimick.svg
-      - install -Dm644 setup/metainfo/io.github.nicx17.mimick.metainfo.xml /app/share/metainfo/io.github.nicx17.mimick.metainfo.xml
+      - install -Dm644 setup/dev.nicx.mimick.desktop /app/share/applications/dev.nicx.mimick.desktop
+      - install -Dm644 src/assets/icon.svg /app/share/icons/hicolor/scalable/apps/dev.nicx.mimick.svg
+      - install -Dm644 setup/metainfo/dev.nicx.mimick.metainfo.xml /app/share/metainfo/dev.nicx.mimick.metainfo.xml
     sources:
       - type: dir
         path: .

@@ -70,7 +70,7 @@ Portal-backed folders may appear by folder name in the UI and logs instead of sh
 Use the **Run on Startup** switch in the **Behavior** section if you want Mimick to launch automatically when you log in.
 
 * Flatpak builds ask the desktop for permission using the background portal.
-* Native builds create `~/.config/autostart/io.github.nicx17.mimick.desktop`.
+* Native builds create `~/.config/autostart/dev.nicx.mimick.desktop`.
 
 You can also enable:
 
@@ -178,7 +178,7 @@ The configuration is stored in a JSON file located at:
 
 `~/.config/mimick/config.json`
 
-(Inside flatpak, this path is `~/.var/app/io.github.nicx17.mimick/config/mimick/config.json`).
+(Inside flatpak, this path is `~/.var/app/dev.nicx.mimick/config/mimick/config.json`).
 
 ### File Structure
 

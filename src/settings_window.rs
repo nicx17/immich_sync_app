@@ -1883,7 +1883,7 @@ fn show_about_dialog(parent: &impl gtk::prelude::IsA<gtk::Widget>) {
 
     let about = adw::AboutDialog::builder()
         .application_name("Mimick")
-        .application_icon("io.github.nicx17.mimick")
+        .application_icon("dev.nicx.mimick")
         .version(env!("CARGO_PKG_VERSION"))
         .developer_name("Nick Cardoso")
         .website("https://github.com/nicx17/mimick")

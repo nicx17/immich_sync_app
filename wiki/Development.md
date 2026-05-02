@@ -79,13 +79,13 @@ See `/implementation.md` for the prioritized UX plan and acceptance criteria.
 For local Flatpak work:
 
 ```bash
-flatpak-builder --user --install --force-clean build-dir io.github.nicx17.mimick.local.yml
+flatpak-builder --user --install --force-clean build-dir dev.nicx.mimick.local.yml
 ```
 
 Run the staged Flatpak without installing:
 
 ```bash
-flatpak-builder --run build-dir io.github.nicx17.mimick.local.yml mimick --settings
+flatpak-builder --run build-dir dev.nicx.mimick.local.yml mimick --settings
 ```
 
 ### Regenerating Cargo Sources for Flatpak

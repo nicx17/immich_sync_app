@@ -100,7 +100,7 @@ Or by adding the repository manually:
 flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
 
 # Install the application
-flatpak install --user mimick-repo io.github.nicx17.mimick
+flatpak install --user mimick-repo dev.nicx.mimick
 ```
 
 *Note: If Flatpak fails to install due to a missing `runtime/org.gnome.Platform`, ensure that you have the [Flathub](https://flathub.org/setup) remote configured on your system.*
@@ -156,7 +156,7 @@ The bottom footer keeps **Close**, **Quit**, and **Save Changes** visible even w
 Use the built-in **Run on Startup** switch in the settings window.
 
 * Flatpak builds request background/autostart permission through the desktop portal.
-* Native builds write an autostart desktop entry to `~/.config/autostart/io.github.nicx17.mimick.desktop`.
+* Native builds write an autostart desktop entry to `~/.config/autostart/dev.nicx.mimick.desktop`.
 
 ### Folder Access
 
@@ -270,8 +270,8 @@ Terminal logs are colorized by level, and file logs rotate automatically.
 ```bash
 git clone https://github.com/nicx17/mimick.git
 cd mimick
-flatpak-builder --user --install --force-clean build-dir io.github.nicx17.mimick.local.yml
-flatpak run io.github.nicx17.mimick
+flatpak-builder --user --install --force-clean build-dir dev.nicx.mimick.local.yml
+flatpak run dev.nicx.mimick
 
 ```
 
