@@ -28,7 +28,7 @@ graph TD
     end
 
     subgraph Settings UI [Settings Window - GTK4 / Libadwaita]
-        Window[Settings Window - built once, hidden on close] -->|500ms timer - lock only| SharedState
+        Window[Settings Window] -->|500ms timer - lock only| SharedState
         Window -->|Diagnostics export| Diagnostics[diagnostics.rs]
     end
 
@@ -58,7 +58,7 @@ Initializes the GTK4 `adw::Application` with ID `dev.nicx.mimick`. Only the prim
 
 - `connect_command_line` opens the settings window when `--settings` is passed **or** when `cmdline.is_remote()` is true (user clicks the app icon while the daemon is already running)
 - Shared `Arc<Mutex<AppState>>` is created before all closures and threaded into both `connect_startup` (workers) and `connect_command_line` (settings window)
-- Shared `Arc<ImmichApiClient>` is stored in a `OnceLock` and reused by the settings window -- only one reqwest connection pool is ever allocated
+- Shared `AppContext` is stored in a `OnceLock` and reused by UI windows and shutdown paths (single API client, queue manager, monitor handle)
 
 ### 2. File Monitor (`src/monitor.rs`)
 
@@ -82,7 +82,7 @@ Thread-safe upload orchestrator using a single `Arc<Mutex<AppState>>` for all co
 - Reads persisted retries from disk on startup (crash recovery); re-queues after 5s delay
 - Supports manual `Pause / Resume`, `Sync Now`, queue inspection, per-item retry, retry-all, and failed-queue clearing
 - Records recent queue events and pause reasons in shared state for UI visibility and diagnostics
-- `QM_HANDLE: OnceLock<Arc<QueueManager>>` allows `main()` to call `flush_retries()` after `app.run()` returns
+- The `QueueManager` lives in `AppContext`; shutdown calls `flush_retries()` from the shared handle after `app.run()` returns
 - Environment-aware pause policy: metered network, battery power, and quiet-hours window deferral
 
 ### 4. API Client (`src/api_client.rs`)
@@ -92,14 +92,13 @@ Thread-safe upload orchestrator using a single `Arc<Mutex<AppState>>` for all co
 - Files streamed with `reqwest::multipart::Part::stream_with_length` -- zero RAM buffering
 - Full 40-char SHA-1 hex used as `device_asset_id` for reliable Immich server-side deduplication
 - Connection pool: max 1 idle connection per host, 30s idle timeout
-- Single shared instance via `API_CLIENT_HANDLE: OnceLock<Arc<ImmichApiClient>>` -- no new pool per settings window open
+- Single shared instance via `AppContext` -- no new reqwest pool per settings window open
 - Structured error diagnostics with actionable guidance for common failure modes
 
 ### 5. Settings UI (`src/settings_window.rs`)
 
-- **Built once per process**, then hidden on close (`window.connect_close_request` -> `set_visible(false)` + `Propagation::Stop`)  
-- Subsequent opens call `win.present()` on the existing hidden window -- zero new GTK allocations per open/close cycle
-- `Arc<Mutex<AppState>>` passed in directly; the 500ms `glib::timeout_add_local` timer reads it without any disk I/O
+- Built on demand from `AppContext`; close destroys the window (unless background sync is disabled, in which case the app quits)
+- `Arc<Mutex<AppState>>` accessed from `AppContext`; the 500ms `glib::timeout_add_local` timer reads it without any disk I/O
 - Album list fetched via the shared `Arc<ImmichApiClient>` on first show; a `glib::WeakRef` guard on the window ensures the async task returns early if the window is closed before the API responds
 - Test Connection button uses the shared client -- no new reqwest pool per click
 - Uses a two-page `Settings` / `Status` layout with a persistent footer for `Close`, `Quit`, and live `Save Changes`
