@@ -7,12 +7,13 @@ edition = "2024"
 ashpd = { version = "0.13.10", features = ["background", "gtk4"] }
 chrono = "0.4.44"
 dirs = "6.0.0"
-glib = "0.22.5"
+gdk4 = "0.11"
+glib = "0.22.7"
 gtk = { version = "0.11.2", package = "gtk4", features = ["v4_22"] }
 ksni = "0.3.4"
-lazy_static = "1.5.0"
 libadwaita = { version = "0.9.1", features = ["v1_6"] }
 log = "0.4.29"
+lru = "0.18.0"
 notify = "8.2.0"
 oo7 = { version = "0.6.0", default-features = false, features = ["tokio", "native_crypto"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["native-tls", "charset", "http2", "json", "multipart", "stream"] }

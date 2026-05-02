@@ -8,9 +8,11 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 mod api_client;
+mod app_context;
 mod autostart;
 mod config;
 mod diagnostics;
+mod library;
 mod monitor;
 mod notifications;
 mod queue_manager;
@@ -23,8 +25,11 @@ mod tray_icon;
 mod watch_path_display;
 
 use api_client::ImmichApiClient;
+use app_context::AppContext;
 use config::{Config, best_matching_watch_entry};
-use monitor::{Monitor, MonitorHandle};
+use library::state::LibraryState;
+use library::thumbnail_cache::ThumbnailCache;
+use monitor::Monitor;
 use queue_manager::{EnvironmentPolicy, FileTask, QueueManager};
 use settings_window::build_settings_window;
 use startup_scan::queue_unsynced_files;
@@ -37,18 +42,8 @@ use flexi_logger::{
 };
 use std::io::Write;
 
-/// Retains the queue manager handle so the graceful shutdown path can flush pending retries.
-static QM_HANDLE: std::sync::OnceLock<Arc<QueueManager>> = std::sync::OnceLock::new();
-/// Shared API client instance reused by the settings window and startup scan.
-static API_CLIENT_HANDLE: std::sync::OnceLock<Arc<ImmichApiClient>> = std::sync::OnceLock::new();
-/// Live monitor handle used to update watched folders without restarting the daemon.
-static MONITOR_HANDLE: std::sync::OnceLock<Arc<MonitorHandle>> = std::sync::OnceLock::new();
-/// Latest watch-path configuration used to resolve live file events after settings changes.
-static LIVE_WATCH_PATHS: std::sync::OnceLock<Arc<Mutex<Vec<config::WatchPathEntry>>>> =
-    std::sync::OnceLock::new();
-/// Used to request an immediate startup-style catch-up scan from the UI or tray controls.
-static MANUAL_SYNC_TX: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<()>> =
-    std::sync::OnceLock::new();
+/// Shared application context reused by UI entry points and the shutdown path.
+static APP_CONTEXT: std::sync::OnceLock<Arc<AppContext>> = std::sync::OnceLock::new();
 
 fn format_log_location(record: &Record) -> String {
     match (record.file(), record.line()) {
@@ -119,7 +114,7 @@ async fn main() {
         .expect("Failed to initialize logger");
 
     let app = adw::Application::builder()
-        .application_id("io.github.nicx17.mimick")
+        .application_id("dev.nicx.mimick")
         .flags(gtk::gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
 
@@ -148,7 +143,6 @@ async fn main() {
     }));
 
     let shared_state_startup = shared_state.clone();
-    let shared_state_cmdline = shared_state.clone();
 
     // Only the primary instance should initialize background services.
     // Secondary launches remote-control the primary through GTK's single-instance support.
@@ -159,14 +153,17 @@ async fn main() {
         // Always follow the desktop's light/dark preference.
         adw::StyleManager::default().set_color_scheme(adw::ColorScheme::Default);
 
-        // Keep the process alive when the settings window is hidden.
-        Box::leak(Box::new(app.hold()));
+        thread_local! {
+            static APP_HOLD: std::cell::RefCell<Option<gtk::gio::ApplicationHoldGuard>> = const { std::cell::RefCell::new(None) };
+        }
+        APP_HOLD.with(|hold| {
+            *hold.borrow_mut() = Some(app.hold());
+        });
 
         // Load config
         let config = Config::new();
         let watch_folder_count = config.data.watch_paths.len();
         let live_watch_paths = Arc::new(Mutex::new(config.data.watch_paths.clone()));
-        let _ = LIVE_WATCH_PATHS.set(live_watch_paths.clone());
         log::info!(
             "Config: internal={} external={} paths={:?}",
             config.data.internal_url,
@@ -198,11 +195,20 @@ async fn main() {
             runtime_external_url,
             api_key,
         ));
-        let _ = API_CLIENT_HANDLE.set(api_client.clone());
         let sync_index = Arc::new(Mutex::new(SyncIndex::new()));
 
+        let sync_index_flusher = sync_index.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                if let Ok(mut index) = sync_index_flusher.lock() {
+                    let _ = index.flush();
+                }
+            }
+        });
+
         let qm = Arc::new(QueueManager::new(
-            api_client,
+            api_client.clone(),
             config.data.upload_concurrency.max(1) as usize,
             shared_state_startup.clone(),
             sync_index.clone(),
@@ -226,7 +232,6 @@ async fn main() {
         };
         let monitor = Monitor::new(monitor_paths, background_sync_enabled);
         let monitor_handle = Arc::new(monitor.start(tx));
-        let _ = MONITOR_HANDLE.set(monitor_handle);
         if background_sync_enabled {
             log::info!("File monitor started");
         } else {
@@ -276,18 +281,31 @@ async fn main() {
         let startup_qm = qm.clone();
         let startup_paths = config.data.watch_paths.clone();
         let startup_sync_index = sync_index.clone();
-
-        // Retain the queue manager so the shutdown path can flush retries to disk.
-        let _ = QM_HANDLE.set(qm.clone());
+        let (manual_sync_tx, mut manual_sync_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+        let thumbnail_cache = Arc::new(ThumbnailCache::with_capacity_mb(
+            api_client.clone(),
+            config.data.library_thumbnail_cache_mb,
+        ));
+        let library_state = Arc::new(Mutex::new(LibraryState::new()));
+        let ctx = Arc::new(AppContext {
+            state: shared_state_startup.clone(),
+            api_client: api_client.clone(),
+            queue_manager: qm.clone(),
+            monitor_handle: monitor_handle.clone(),
+            sync_index: sync_index.clone(),
+            live_watch_paths: live_watch_paths.clone(),
+            sync_now_tx: manual_sync_tx.clone(),
+            thumbnail_cache,
+            library_state,
+            library_timeline_active: std::sync::atomic::AtomicBool::new(false),
+        });
+        let _ = APP_CONTEXT.set(ctx.clone());
 
         // The startup scan backfills anything that arrived while Mimick was not running.
         if background_sync_enabled {
             let shared_state_startup_task = shared_state_startup.clone();
+            let startup_api = ctx.api_client.clone();
             tokio::spawn(async move {
-                let startup_api = API_CLIENT_HANDLE
-                    .get()
-                    .cloned()
-                    .expect("API client should be initialized before startup scan");
                 queue_unsynced_files(
                     startup_paths,
                     startup_qm,
@@ -303,10 +321,7 @@ async fn main() {
         }
 
         let startup_state = shared_state_startup.clone();
-        let status_api = API_CLIENT_HANDLE
-            .get()
-            .cloned()
-            .expect("API client should be initialized before connectivity check");
+        let status_api = ctx.api_client.clone();
         tokio::spawn(async move {
             let connected = status_api.check_connection().await;
             let route = status_api.active_route_label().await;
@@ -323,23 +338,18 @@ async fn main() {
             }
         });
 
-        let (manual_sync_tx, mut manual_sync_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
-        let _ = MANUAL_SYNC_TX.set(manual_sync_tx);
         let manual_qm = qm.clone();
         let manual_sync_index = sync_index.clone();
+        let manual_sync_api = ctx.api_client.clone();
         let shared_state_manual_task = shared_state_startup.clone();
         tokio::spawn(async move {
             while manual_sync_rx.recv().await.is_some() {
                 let config = Config::new();
-                let api = API_CLIENT_HANDLE
-                    .get()
-                    .cloned()
-                    .expect("API client should be initialized before manual sync");
                 queue_unsynced_files(
                     config.data.watch_paths.clone(),
                     manual_qm.clone(),
                     manual_sync_index.clone(),
-                    api,
+                    manual_sync_api.clone(),
                     config.data.startup_catchup_mode,
                     shared_state_manual_task.clone(),
                 )
@@ -349,7 +359,6 @@ async fn main() {
 
         let app_clone2 = app.clone();
         let app_clone3 = app.clone();
-        let shared_state2 = shared_state_startup.clone();
 
         // Cross-thread flag: Tokio sets it; the GTK timer reads and clears it.
         // Arc<Mutex<bool>> is Send + Sync, so it can cross the tokio::spawn boundary.
@@ -363,7 +372,7 @@ async fn main() {
         let sync_now_flag_writer = sync_now_flag.clone();
 
         // GTK-side: poll the flag every 250ms on the main thread.
-        // app_clone2 / shared_state2 are !Send — they stay here, never enter spawns.
+        // The application handle stays on the GTK thread and never enters Tokio tasks.
         glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
             let settings_triggered = {
                 let mut f = settings_flag.lock().unwrap();
@@ -375,20 +384,11 @@ async fn main() {
                 }
             };
             if settings_triggered {
-                let client = API_CLIENT_HANDLE.get().cloned();
-                let qm = QM_HANDLE.get().cloned();
-                let monitor = MONITOR_HANDLE.get().cloned();
-                let live_watch_paths = LIVE_WATCH_PATHS.get().cloned();
-                let sync_now_tx = MANUAL_SYNC_TX.get().cloned();
-                open_settings_if_needed(
-                    &app_clone2,
-                    shared_state2.clone(),
-                    client,
-                    qm,
-                    monitor,
-                    live_watch_paths,
-                    sync_now_tx,
-                );
+                let ctx = APP_CONTEXT
+                    .get()
+                    .cloned()
+                    .expect("App context should be initialized before opening settings");
+                open_settings_if_needed(&app_clone2, ctx);
             }
 
             let quit_triggered = {
@@ -414,7 +414,11 @@ async fn main() {
                     false
                 }
             };
-            if pause_triggered && let Some(qm) = QM_HANDLE.get() {
+            if pause_triggered {
+                let qm = &APP_CONTEXT
+                    .get()
+                    .expect("App context should be initialized before pause handling")
+                    .queue_manager;
                 let paused = !qm.is_paused();
                 let reason = if paused {
                     Some("Paused by user".to_string())
@@ -433,7 +437,11 @@ async fn main() {
                     false
                 }
             };
-            if sync_now_triggered && let Some(tx) = MANUAL_SYNC_TX.get() {
+            if sync_now_triggered {
+                let tx = &APP_CONTEXT
+                    .get()
+                    .expect("App context should be initialized before manual sync handling")
+                    .sync_now_tx;
                 let _ = tx.send(());
             }
 
@@ -511,20 +519,11 @@ async fn main() {
             || !runtime_config.data.background_sync_enabled;
 
         if open_settings {
-            let client = API_CLIENT_HANDLE.get().cloned();
-            let qm = QM_HANDLE.get().cloned();
-            let monitor = MONITOR_HANDLE.get().cloned();
-            let live_watch_paths = LIVE_WATCH_PATHS.get().cloned();
-            let sync_now_tx = MANUAL_SYNC_TX.get().cloned();
-            open_settings_if_needed(
-                app,
-                shared_state_cmdline.clone(),
-                client,
-                qm,
-                monitor,
-                live_watch_paths,
-                sync_now_tx,
-            );
+            let ctx = APP_CONTEXT
+                .get()
+                .cloned()
+                .expect("App context should be initialized before command-line activation");
+            open_settings_if_needed(app, ctx);
         }
 
         app.activate();
@@ -540,38 +539,28 @@ async fn main() {
 
     // Persist final state and any pending retries on graceful shutdown.
     if is_primary_instance.load(Ordering::SeqCst) {
-        if let Some(qm) = QM_HANDLE.get() {
-            qm.flush_retries();
+        if let Some(ctx) = APP_CONTEXT.get() {
+            ctx.queue_manager.flush_retries();
         }
-        let state = shared_state.lock().unwrap().clone();
+        let state = APP_CONTEXT
+            .get()
+            .map(|ctx| ctx.state.lock().unwrap().clone())
+            .unwrap_or_else(|| shared_state.lock().unwrap().clone());
         StateManager::new().write_state(state);
         log::info!("Mimick exiting");
     }
 }
 
 /// Open the settings window only if one is not already visible.
-fn open_settings_if_needed(
-    app: &adw::Application,
-    shared_state: Arc<Mutex<AppState>>,
-    api_client: Option<Arc<ImmichApiClient>>,
-    queue_manager: Option<Arc<QueueManager>>,
-    monitor_handle: Option<Arc<MonitorHandle>>,
-    live_watch_paths: Option<Arc<Mutex<Vec<config::WatchPathEntry>>>>,
-    sync_now_tx: Option<tokio::sync::mpsc::UnboundedSender<()>>,
-) {
+fn open_settings_if_needed(app: &adw::Application, ctx: Arc<AppContext>) {
     if let Some(win) = app.windows().first() {
         win.present();
+    } else if Config::new().data.library_view_enabled {
+        log::debug!("Opening library window");
+        library::build_library_window(app, ctx);
     } else {
         log::debug!("Opening settings window");
-        build_settings_window(
-            app,
-            shared_state,
-            api_client,
-            queue_manager,
-            monitor_handle,
-            live_watch_paths,
-            sync_now_tx,
-        );
+        build_settings_window(app, ctx);
     }
 }
 

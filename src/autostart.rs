@@ -6,8 +6,8 @@ use gtk::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const AUTOSTART_DESKTOP_ID: &str = "io.github.nicx17.mimick.desktop";
-const APP_ID: &str = "io.github.nicx17.mimick";
+const AUTOSTART_DESKTOP_ID: &str = "dev.nicx.mimick.desktop";
+const APP_ID: &str = "dev.nicx.mimick";
 const AUTOSTART_REASON: &str = "Reason for requesting background access: Mimick must run in the background to automatically sync media to Immich.";
 
 pub async fn apply(window: &impl IsA<gtk::Window>, enable: bool) -> Result<bool, String> {
@@ -58,7 +58,7 @@ fn install_desktop_entry() -> Result<(), String> {
     let escaped_exec = escape_desktop_exec_arg(&executable.to_string_lossy());
 
     let desktop_entry = format!(
-        "[Desktop Entry]\nType=Application\nVersion=1.0\nName=Mimick\nComment=Automatically upload photos to Immich\nExec={escaped_exec}\nIcon=io.github.nicx17.mimick\nTerminal=false\nCategories=Utility;\nX-GNOME-Autostart-enabled=true\nStartupNotify=false\n"
+        "[Desktop Entry]\nType=Application\nVersion=1.0\nName=Mimick\nComment=Automatically upload photos to Immich\nExec={escaped_exec}\nIcon=dev.nicx.mimick\nTerminal=false\nCategories=Utility;\nX-GNOME-Autostart-enabled=true\nStartupNotify=false\n"
     );
 
     fs::write(&entry_path, desktop_entry)
@@ -153,10 +153,8 @@ mod tests {
     #[test]
     fn test_flatpak_host_config_dir_from_sandbox_path() {
         assert_eq!(
-            flatpak_host_config_dir_from(Path::new(
-                "/home/nick/.var/app/io.github.nicx17.mimick/config"
-            ))
-            .unwrap(),
+            flatpak_host_config_dir_from(Path::new("/home/nick/.var/app/dev.nicx.mimick/config"))
+                .unwrap(),
             Path::new("/home/nick/.config")
         );
     }

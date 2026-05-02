@@ -4,9 +4,9 @@ use chrono::{SecondsFormat, TimeZone, Utc};
 use reqwest::Client;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiIssue {
@@ -28,6 +28,213 @@ struct AlbumSummary {
     album_name: String,
 }
 
+#[derive(Debug, Clone, serde::Deserialize, PartialEq)]
+pub struct LibraryAlbum {
+    pub id: String,
+    #[serde(rename = "albumName")]
+    pub album_name: String,
+    #[serde(rename = "assetCount")]
+    pub asset_count: u32,
+    #[serde(rename = "albumThumbnailAssetId")]
+    pub thumbnail_asset_id: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, PartialEq)]
+pub struct LibraryAsset {
+    pub id: String,
+    #[serde(rename = "originalFileName")]
+    pub filename: String,
+    #[serde(rename = "originalMimeType")]
+    pub mime_type: String,
+    #[serde(rename = "fileCreatedAt")]
+    pub created_at: String,
+    #[serde(rename = "type")]
+    pub asset_type: String,
+    pub thumbhash: Option<String>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    #[serde(default)]
+    pub checksum: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataSearchFilters {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub original_file_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Match against OCR-extracted text inside images. Distinct from
+    /// `description` (user-set caption) — Immich indexes recognised text
+    /// during ML processing and exposes it as its own filter dimension on
+    /// both `MetadataSearchDto` and `SmartSearchDto`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ocr: Option<String>,
+    /// `"IMAGE"` or `"VIDEO"`; `None` returns both.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub asset_type: Option<String>,
+    /// ISO 8601 inclusive lower bound on `fileCreatedAt`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub taken_after: Option<String>,
+    /// ISO 8601 inclusive upper bound on `fileCreatedAt`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub taken_before: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub make: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lens_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub city: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_favorite: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_archived: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_motion: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_not_in_album: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub with_exif: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub with_deleted: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub person_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, PartialEq)]
+pub struct ServerStats {
+    pub images: u64,
+    pub videos: u64,
+    pub total: u64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, PartialEq)]
+pub struct ServerAbout {
+    pub version: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct Person {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct PeopleResponse {
+    people: Vec<Person>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ExploreItem {
+    pub value: String,
+    pub data: LibraryAsset,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ExploreSection {
+    #[serde(rename = "fieldName")]
+    pub field_name: String,
+    pub items: Vec<ExploreItem>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct ExifInfo {
+    #[serde(default)]
+    pub make: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub lens_model: Option<String>,
+    #[serde(default)]
+    pub f_number: Option<f64>,
+    #[serde(default)]
+    pub focal_length: Option<f64>,
+    #[serde(default)]
+    pub iso: Option<u32>,
+    #[serde(default)]
+    pub exposure_time: Option<String>,
+    #[serde(default)]
+    pub file_size_in_byte: Option<u64>,
+    #[serde(default)]
+    pub date_time_original: Option<String>,
+    #[serde(default)]
+    pub city: Option<String>,
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub country: Option<String>,
+    #[serde(default)]
+    pub latitude: Option<f64>,
+    #[serde(default)]
+    pub longitude: Option<f64>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub exif_image_width: Option<u32>,
+    #[serde(default)]
+    pub exif_image_height: Option<u32>,
+    #[serde(default)]
+    pub orientation: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct AssetDetails {
+    pub id: String,
+    pub original_file_name: String,
+    #[serde(rename = "type")]
+    pub asset_type: String,
+    #[serde(default)]
+    pub exif_info: Option<ExifInfo>,
+    #[serde(default)]
+    pub duration: Option<String>,
+    #[serde(default)]
+    pub file_created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThumbnailSize {
+    Thumbnail,
+    Preview,
+}
+
+impl ThumbnailSize {
+    fn as_str(self) -> &'static str {
+        match self {
+            ThumbnailSize::Thumbnail => "thumbnail",
+            ThumbnailSize::Preview => "preview",
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SearchResponse {
+    assets: SearchAssetSection,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SearchAssetSection {
+    items: Vec<LibraryAsset>,
+}
+
 pub struct ImmichApiClient {
     pub client: Client,
     settings: RwLock<ApiClientSettings>,
@@ -38,6 +245,7 @@ pub struct ImmichApiClient {
     /// Caches album names to album IDs to avoid repeated list/create API calls.
     album_cache: Mutex<HashMap<String, String>>,
     albums_fetched: Mutex<bool>,
+    thumbnail_semaphore: Arc<Semaphore>,
 }
 
 impl ImmichApiClient {
@@ -69,6 +277,7 @@ impl ImmichApiClient {
             last_issue: Mutex::new(None),
             album_cache: Mutex::new(HashMap::new()),
             albums_fetched: Mutex::new(false),
+            thumbnail_semaphore: Arc::new(Semaphore::new(8)),
         }
     }
 
@@ -105,6 +314,10 @@ impl ImmichApiClient {
 
     async fn clear_issue(&self) {
         *self.last_issue.lock().await = None;
+    }
+
+    fn settings_snapshot(&self) -> ApiClientSettings {
+        self.settings.read().unwrap().clone()
     }
 
     fn route_label_for_url(&self, url: &str) -> String {
@@ -353,9 +566,6 @@ impl ImmichApiClient {
                     }
                     413 => {
                         log::error!("Upload failed (file too large): {}", filename);
-                        // Reset active_url to force re-check
-                        let mut active = self.active_url.lock().await;
-                        *active = None;
                         self.set_issue(ApiIssue {
                             summary: "Immich rejected a file as too large".to_string(),
                             guidance: "Reduce the file size, raise the server's upload limits, or use a folder rule to skip oversized files."
@@ -736,14 +946,559 @@ impl ImmichApiClient {
             }
         }
     }
+
+    pub async fn fetch_library_albums(&self) -> Result<Vec<LibraryAlbum>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/albums", base_url);
+
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let albums = resp
+                    .json::<Vec<LibraryAlbum>>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(albums)
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::Albums,
+                    resp.status().as_u16(),
+                    None,
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::Albums, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    pub async fn fetch_album_assets(
+        &self,
+        album_id: &str,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let body = serde_json::json!({
+            "albumIds": [album_id],
+            "page": page,
+            "size": size.max(1),
+        });
+        self.fetch_search_assets(
+            "/api/search/metadata",
+            body,
+            RequestContext::AssetList,
+            Some(album_id),
+        )
+        .await
+    }
+
+    pub async fn fetch_thumbnail(
+        &self,
+        asset_id: &str,
+        size: ThumbnailSize,
+    ) -> Result<Vec<u8>, String> {
+        let _permit = self
+            .thumbnail_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|err| err.to_string())?;
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!(
+            "{}/api/assets/{}/thumbnail?size={}",
+            base_url,
+            asset_id,
+            size.as_str()
+        );
+
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/octet-stream")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let bytes = resp.bytes().await.map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(bytes.to_vec())
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::ThumbnailFetch,
+                    resp.status().as_u16(),
+                    Some(asset_id),
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::ThumbnailFetch, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    pub async fn fetch_asset_details(&self, asset_id: &str) -> Result<AssetDetails, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/assets/{}", base_url, asset_id);
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<AssetDetails>()
+                .await
+                .map_err(|err| err.to_string()),
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
+    pub async fn download_original_to_file(
+        &self,
+        asset_id: &str,
+        output_path: &std::path::Path,
+    ) -> Result<(), String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/assets/{}/original", base_url, asset_id);
+
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/octet-stream")
+            .timeout(Duration::from_secs(300))
+            .send()
+            .await
+        {
+            Ok(mut resp) if resp.status().is_success() => {
+                use tokio::io::AsyncWriteExt;
+                let mut file = tokio::fs::File::create(output_path)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+                    file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+                }
+                self.clear_issue().await;
+                Ok(())
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::AssetDownload,
+                    resp.status().as_u16(),
+                    Some(asset_id),
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::AssetDownload, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub async fn delete_album(&self, album_id: &str) -> Result<(), String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/albums/{}", base_url, album_id);
+
+        match self
+            .client
+            .delete(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                self.clear_issue().await;
+                Ok(())
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::AlbumDelete,
+                    resp.status().as_u16(),
+                    Some(album_id),
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::AlbumDelete, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    /// Top recognised people, mirroring the Explore page's first row.
+    pub async fn fetch_people(&self) -> Result<Vec<Person>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/people?withHidden=false", base_url);
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let body = resp
+                    .json::<PeopleResponse>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(body.people)
+            }
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
+    /// Sectioned tile data (places + things) for the Explore landing.
+    pub async fn fetch_explore(&self) -> Result<Vec<ExploreSection>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/search/explore", base_url);
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let sections = resp
+                    .json::<Vec<ExploreSection>>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(sections)
+            }
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
+    /// Per-person face thumbnail. Distinct from `fetch_thumbnail` (asset).
+    pub async fn fetch_person_thumbnail(&self, person_id: &str) -> Result<Vec<u8>, String> {
+        let _permit = self
+            .thumbnail_semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|err| err.to_string())?;
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/people/{}/thumbnail", base_url, person_id);
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/octet-stream")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let bytes = resp.bytes().await.map_err(|err| err.to_string())?;
+                Ok(bytes.to_vec())
+            }
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
+    pub async fn search_smart(
+        &self,
+        query: &str,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let body = serde_json::json!({
+            "query": query,
+            "page": page,
+            "size": size.max(1),
+        });
+        self.fetch_search_assets(
+            "/api/search/smart",
+            body,
+            RequestContext::SmartSearch,
+            Some(query),
+        )
+        .await
+    }
+
+    pub async fn search_ocr(
+        &self,
+        query: &str,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let body = serde_json::json!({
+            "ocr": query,
+            "page": page,
+            "size": size.max(1),
+        });
+        self.fetch_search_assets(
+            "/api/search/metadata",
+            body,
+            RequestContext::MetadataSearch,
+            Some(query),
+        )
+        .await
+    }
+
+    pub async fn search_metadata(
+        &self,
+        query: &str,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let filters = MetadataSearchFilters {
+            original_file_name: Some(query.to_string()),
+            ..Default::default()
+        };
+        self.search_metadata_with_filters(&filters, page, size)
+            .await
+    }
+
+    pub async fn search_metadata_with_filters(
+        &self,
+        filters: &MetadataSearchFilters,
+        page: u32,
+        size: u32,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let mut body = serde_json::to_value(filters).map_err(|err| err.to_string())?;
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("page".into(), serde_json::json!(page));
+            obj.insert("size".into(), serde_json::json!(size.max(1)));
+        }
+        let label = filters.original_file_name.as_deref().unwrap_or("");
+        self.fetch_search_assets(
+            "/api/search/metadata",
+            body,
+            RequestContext::MetadataSearch,
+            Some(label),
+        )
+        .await
+    }
+
+    pub async fn fetch_server_stats(&self) -> Result<ServerStats, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/assets/statistics", base_url);
+
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let stats = resp
+                    .json::<ServerStats>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(stats)
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::ServerStats,
+                    resp.status().as_u16(),
+                    None,
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::ServerStats, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    pub async fn fetch_server_about(&self) -> Result<ServerAbout, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/server/about", base_url);
+
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let about = resp
+                    .json::<ServerAbout>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(about)
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    RequestContext::ServerAbout,
+                    resp.status().as_u16(),
+                    None,
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(RequestContext::ServerAbout, &err))
+                    .await;
+                Err(err.to_string())
+            }
+        }
+    }
+
+    async fn fetch_search_assets(
+        &self,
+        endpoint: &str,
+        body: serde_json::Value,
+        context: RequestContext,
+        subject: Option<&str>,
+    ) -> Result<Vec<LibraryAsset>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}{}", base_url, endpoint);
+
+        match self
+            .client
+            .post(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .json(&body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let response = resp
+                    .json::<SearchResponse>()
+                    .await
+                    .map_err(|err| err.to_string())?;
+                self.clear_issue().await;
+                Ok(response.assets.items)
+            }
+            Ok(resp) => {
+                self.set_issue(classify_http_issue(
+                    context,
+                    resp.status().as_u16(),
+                    subject,
+                ))
+                .await;
+                Err(format!("HTTP {}", resp.status()))
+            }
+            Err(err) => {
+                *self.active_url.lock().await = None;
+                self.set_issue(classify_network_issue(context, &err)).await;
+                Err(err.to_string())
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 enum RequestContext {
     Upload,
     Albums,
     AlbumCreate,
     AlbumAssign,
+    ThumbnailFetch,
+    AssetList,
+    SmartSearch,
+    MetadataSearch,
+    AssetDownload,
+    AlbumDelete,
+    ServerStats,
+    ServerAbout,
 }
 
 fn classify_http_issue(context: RequestContext, status: u16, subject: Option<&str>) -> ApiIssue {
@@ -788,6 +1543,30 @@ fn classify_http_issue(context: RequestContext, status: u16, subject: Option<&st
                 RequestContext::AlbumAssign => {
                     "Immich could not add the asset to the selected album".to_string()
                 }
+                RequestContext::ThumbnailFetch => {
+                    "Immich could not load a library thumbnail".to_string()
+                }
+                RequestContext::AssetList => {
+                    "Immich could not load library assets".to_string()
+                }
+                RequestContext::SmartSearch => {
+                    "Immich could not run the smart library search".to_string()
+                }
+                RequestContext::MetadataSearch => {
+                    "Immich could not run the metadata library search".to_string()
+                }
+                RequestContext::AssetDownload => {
+                    "Immich could not download the selected asset".to_string()
+                }
+                RequestContext::AlbumDelete => {
+                    "Immich could not delete the selected album".to_string()
+                }
+                RequestContext::ServerStats => {
+                    "Immich could not load library statistics".to_string()
+                }
+                RequestContext::ServerAbout => {
+                    "Immich could not load server version information".to_string()
+                }
             },
             guidance: format!(
                 "The server responded with HTTP {}. Check the server logs and retry after confirming the current configuration.",
@@ -820,6 +1599,30 @@ fn classify_network_issue(context: RequestContext, error: &reqwest::Error) -> Ap
                 RequestContext::AlbumAssign => {
                     "The album assignment request failed before completion".to_string()
                 }
+                RequestContext::ThumbnailFetch => {
+                    "The thumbnail request failed before completion".to_string()
+                }
+                RequestContext::AssetList => {
+                    "The library asset request failed before completion".to_string()
+                }
+                RequestContext::SmartSearch => {
+                    "The smart search request failed before completion".to_string()
+                }
+                RequestContext::MetadataSearch => {
+                    "The metadata search request failed before completion".to_string()
+                }
+                RequestContext::AssetDownload => {
+                    "The asset download request failed before completion".to_string()
+                }
+                RequestContext::AlbumDelete => {
+                    "The album deletion request failed before completion".to_string()
+                }
+                RequestContext::ServerStats => {
+                    "The library statistics request failed before completion".to_string()
+                }
+                RequestContext::ServerAbout => {
+                    "The server version request failed before completion".to_string()
+                }
             },
             guidance: "Retry the request after checking network connectivity and server health."
                 .to_string(),
@@ -833,29 +1636,66 @@ fn mime_for_path(path: &Path) -> &'static str {
         .map(|e| e.to_string_lossy().to_lowercase())
         .as_deref()
     {
+        // Standard image formats
         Some("avif") => "image/avif",
         Some("bmp") => "image/bmp",
         Some("gif") => "image/gif",
         Some("heic") => "image/heic",
-        Some("heif") => "image/heif",
-        Some("insp") | Some("jpe") | Some("jpeg") | Some("jpg") => "image/jpeg",
+        Some("heif" | "hif") => "image/heif",
+        Some("insp" | "jpe" | "jpeg" | "jpg") => "image/jpeg",
         Some("jp2") => "image/jp2",
         Some("jxl") => "image/jxl",
         Some("png") => "image/png",
+        Some("mpo") => "image/jpeg",
         Some("psd") => "image/vnd.adobe.photoshop",
         Some("svg") => "image/svg+xml",
-        Some("tif") | Some("tiff") => "image/tiff",
+        Some("tif" | "tiff") => "image/tiff",
         Some("webp") => "image/webp",
-        Some("3gp") | Some("3gpp") => "video/3gpp",
+        // RAW camera formats — Immich treats most as image/x-<vendor>; fall through to
+        // application/octet-stream is safe but vendor-specific MIME helps the server pick
+        // the right pipeline (libraw vs. dcraw) on older Immich builds.
+        Some("3fr") => "image/x-hasselblad-3fr",
+        Some("ari") => "image/x-arriflex-ari",
+        Some("arw") => "image/x-sony-arw",
+        Some("cap") => "image/x-phaseone-cap",
+        Some("cin") => "image/cineon",
+        Some("cr2") => "image/x-canon-cr2",
+        Some("cr3") => "image/x-canon-cr3",
+        Some("crw") => "image/x-canon-crw",
+        Some("dcr") => "image/x-kodak-dcr",
+        Some("dng") => "image/x-adobe-dng",
+        Some("erf") => "image/x-epson-erf",
+        Some("fff") => "image/x-hasselblad-fff",
+        Some("iiq") => "image/x-phaseone-iiq",
+        Some("k25") => "image/x-kodak-k25",
+        Some("kdc") => "image/x-kodak-kdc",
+        Some("mrw") => "image/x-minolta-mrw",
+        Some("nef") => "image/x-nikon-nef",
+        Some("nrw") => "image/x-nikon-nrw",
+        Some("orf" | "ori") => "image/x-olympus-orf",
+        Some("pef") => "image/x-pentax-pef",
+        Some("raf") => "image/x-fuji-raf",
+        Some("raw") => "image/x-panasonic-raw",
+        Some("rw2") => "image/x-panasonic-rw2",
+        Some("rwl") => "image/x-leica-rwl",
+        Some("sr2" | "srf") => "image/x-sony-sr2",
+        Some("srw") => "image/x-samsung-srw",
+        Some("x3f") => "image/x-sigma-x3f",
+        // Video formats
+        Some("3gp" | "3gpp") => "video/3gpp",
         Some("avi") => "video/x-msvideo",
         Some("flv") => "video/x-flv",
-        Some("insv") | Some("mp4") => "video/mp4",
-        Some("m2t") | Some("m2ts") | Some("mts") => "video/mp2t",
+        Some("insv" | "mp4") => "video/mp4",
+        Some("m2t" | "m2ts" | "mts" | "ts") => "video/mp2t",
         Some("m4v") => "video/x-m4v",
         Some("mkv") => "video/x-matroska",
-        Some("mpe") | Some("mpeg") | Some("mpg") => "video/mpeg",
+        Some("mpe" | "mpeg" | "mpg") => "video/mpeg",
         Some("mov") => "video/quicktime",
         Some("mxf") => "application/mxf",
+        Some("vob") => "video/dvd",
+        Some("webm") => "video/webm",
+        Some("wmv") => "video/x-ms-wmv",
+        Some("xmp") => "application/xml",
         _ => "application/octet-stream",
     }
 }
@@ -1003,10 +1843,38 @@ mod tests {
         assert_eq!(mime_for_path(Path::new("test.insv")), "video/mp4");
         assert_eq!(mime_for_path(Path::new("test.mkv")), "video/x-matroska");
         assert_eq!(mime_for_path(Path::new("test.mxf")), "application/mxf");
+        assert_eq!(mime_for_path(Path::new("test.xmp")), "application/xml");
         assert_eq!(
             mime_for_path(Path::new("test.unknown")),
             "application/octet-stream"
         );
+    }
+
+    #[test]
+    fn test_mime_for_path_covers_immich_spec() {
+        // Every extension from pv_docs/Library_view_feature.md must map to a
+        // non-fallback MIME so uploads/downloads pick the right pipeline.
+        const SPEC_EXTENSIONS: &[&str] = &[
+            // RAW
+            "3fr", "ari", "arw", "cap", "cin", "cr2", "cr3", "crw", "dcr", "dng", "erf", "fff",
+            "iiq", "k25", "kdc", "mrw", "nef", "nrw", "orf", "ori", "pef", "psd", "raf", "raw",
+            "rw2", "rwl", "sr2", "srf", "srw", "x3f", // Web image
+            "avif", "bmp", "gif", "jpeg", "jpg", "png", "webp", // Other image
+            "heic", "heif", "hif", "insp", "jp2", "jpe", "jxl", "mpo", "svg", "tif", "tiff",
+            // Video
+            "3gp", "3gpp", "avi", "flv", "insv", "m2t", "m2ts", "m4v", "mkv", "mov", "mp4", "mpe",
+            "mpeg", "mpg", "mts", "mxf", "ts", "vob", "webm", "wmv", // Sidecar
+            "xmp",
+        ];
+        for ext in SPEC_EXTENSIONS {
+            let p = std::path::PathBuf::from(format!("a.{}", ext));
+            let mime = mime_for_path(&p);
+            assert_ne!(
+                mime, "application/octet-stream",
+                "extension `.{}` falls through to octet-stream",
+                ext
+            );
+        }
     }
 
     #[test]
@@ -1020,6 +1888,97 @@ mod tests {
     fn test_classify_http_issue_for_album_assign_404() {
         let issue = classify_http_issue(RequestContext::AlbumAssign, 404, Some("album-1"));
         assert_eq!(issue.summary, "An album reference is no longer valid");
+    }
+
+    #[test]
+    fn test_library_album_deserializes_from_immich_shape() {
+        let album: LibraryAlbum = serde_json::from_value(serde_json::json!({
+            "id": "album-1",
+            "albumName": "Trips",
+            "assetCount": 42,
+            "albumThumbnailAssetId": "asset-9",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-02T00:00:00.000Z",
+            "description": "Vacation"
+        }))
+        .unwrap();
+
+        assert_eq!(album.id, "album-1");
+        assert_eq!(album.album_name, "Trips");
+        assert_eq!(album.asset_count, 42);
+        assert_eq!(album.thumbnail_asset_id.as_deref(), Some("asset-9"));
+        assert_eq!(album.description, "Vacation");
+    }
+
+    #[test]
+    fn test_library_asset_deserializes_from_search_result_shape() {
+        let asset: LibraryAsset = serde_json::from_value(serde_json::json!({
+            "id": "asset-1",
+            "originalFileName": "IMG_0001.JPG",
+            "originalMimeType": "image/jpeg",
+            "fileCreatedAt": "2024-01-01T12:00:00.000Z",
+            "type": "IMAGE",
+            "thumbhash": "abcd",
+            "width": 4032.0,
+            "height": 3024.0
+        }))
+        .unwrap();
+
+        assert_eq!(asset.id, "asset-1");
+        assert_eq!(asset.filename, "IMG_0001.JPG");
+        assert_eq!(asset.mime_type, "image/jpeg");
+        assert_eq!(asset.asset_type, "IMAGE");
+        assert_eq!(asset.thumbhash.as_deref(), Some("abcd"));
+        assert_eq!(asset.width, Some(4032.0));
+        assert_eq!(asset.height, Some(3024.0));
+        assert!(asset.checksum.is_none());
+    }
+
+    #[test]
+    fn test_search_response_deserializes_items() {
+        let response: SearchResponse = serde_json::from_value(serde_json::json!({
+            "assets": {
+                "items": [
+                    {
+                        "id": "asset-1",
+                        "originalFileName": "IMG_0001.JPG",
+                        "originalMimeType": "image/jpeg",
+                        "fileCreatedAt": "2024-01-01T12:00:00.000Z",
+                        "type": "IMAGE",
+                        "thumbhash": null,
+                        "width": 12.0,
+                        "height": 10.0
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(response.assets.items.len(), 1);
+        assert_eq!(response.assets.items[0].filename, "IMG_0001.JPG");
+    }
+
+    #[test]
+    fn test_server_structs_deserialize() {
+        let stats: ServerStats = serde_json::from_value(serde_json::json!({
+            "images": 100,
+            "videos": 25,
+            "total": 125
+        }))
+        .unwrap();
+        let about: ServerAbout = serde_json::from_value(serde_json::json!({
+            "version": "1.132.0"
+        }))
+        .unwrap();
+
+        assert_eq!(stats.total, 125);
+        assert_eq!(about.version, "1.132.0");
+    }
+
+    #[test]
+    fn test_thumbnail_size_serialization_values() {
+        assert_eq!(ThumbnailSize::Thumbnail.as_str(), "thumbnail");
+        assert_eq!(ThumbnailSize::Preview.as_str(), "preview");
     }
 
     #[test]

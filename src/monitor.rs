@@ -12,10 +12,16 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 /// List of allowed media file extensions accepted for upload.
+///
+/// Sorted alphabetically. Includes still-image formats (incl. RAW),
+/// video formats, and high-bit-depth/professional formats supported by Immich.
 pub(crate) const MEDIA_EXTENSIONS: &[&str] = &[
-    "3gp", "3gpp", "arw", "avif", "avi", "bmp", "dng", "flv", "gif", "heic", "heif", "insp",
-    "insv", "jp2", "jpe", "jpeg", "jpg", "jxl", "m2t", "m2ts", "m4v", "mkv", "mov", "mp4", "mpe",
-    "mpeg", "mpg", "mts", "mxf", "png", "psd", "raw", "rw2", "svg", "tif", "tiff", "webp",
+    "3fr", "3gp", "3gpp", "ari", "arw", "avi", "avif", "bmp", "cap", "cin", "cr2", "cr3", "crw",
+    "dcr", "dng", "erf", "fff", "flv", "gif", "heic", "heif", "hif", "iiq", "insp", "insv", "jp2",
+    "jpe", "jpeg", "jpg", "jxl", "k25", "kdc", "m2t", "m2ts", "m4v", "mkv", "mov", "mp4", "mpe",
+    "mpeg", "mpg", "mpo", "mrw", "mts", "mxf", "nef", "nrw", "orf", "ori", "pef", "png", "psd",
+    "raf", "raw", "rw2", "rwl", "sr2", "srf", "srw", "svg", "tif", "tiff", "ts", "vob", "webm",
+    "webp", "wmv", "x3f",
 ];
 
 /// Number of consecutive stable size checks required before a file is considered complete.
@@ -306,6 +312,7 @@ async fn wait_for_file_completion(path: &str) -> bool {
                 let size = meta.len() as i64;
                 if size == last_size && size > 0 {
                     stable_count += 1;
+                    last_change = Instant::now();
                     if stable_count >= REQUIRED_STABLE_COUNTS {
                         return true;
                     }

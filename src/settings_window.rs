@@ -16,15 +16,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::UnboundedSender;
 
-use crate::api_client::ImmichApiClient;
+use crate::app_context::AppContext;
 use crate::config::Config;
-use crate::monitor::MonitorHandle;
 use crate::queue_manager::QueueManager;
-use crate::state_manager::AppState;
 use crate::watch_path_display::{display_watch_path, watch_path_subtitle};
 
 /// Holds GTK widgets for a single watch-folder row in the settings list.
@@ -69,23 +66,35 @@ fn format_sync_age(timestamp: Option<f64>) -> String {
     }
 }
 
-/// Build the main settings window and wire it to the shared app state.
-pub fn build_settings_window(
+pub fn build_settings_window(app: &adw::Application, ctx: Arc<AppContext>) {
+    build_settings_window_with_parent(app, ctx, None);
+}
+
+pub fn build_settings_window_with_parent(
     app: &adw::Application,
-    shared_state: Arc<Mutex<AppState>>,
-    api_client: Option<Arc<ImmichApiClient>>,
-    queue_manager: Option<Arc<QueueManager>>,
-    monitor_handle: Option<Arc<MonitorHandle>>,
-    live_watch_paths: Option<Arc<Mutex<Vec<WatchPathEntry>>>>,
-    sync_now_tx: Option<UnboundedSender<()>>,
+    ctx: Arc<AppContext>,
+    parent: Option<&adw::ApplicationWindow>,
 ) {
+    let shared_state = ctx.state.clone();
+    let api_client = ctx.api_client.clone();
+    let queue_manager = ctx.queue_manager.clone();
+    let monitor_handle = ctx.monitor_handle.clone();
+    let live_watch_paths = ctx.live_watch_paths.clone();
+    let sync_now_tx = ctx.sync_now_tx.clone();
+    let thumbnail_cache = ctx.thumbnail_cache.clone();
     // Use an application window with a Libadwaita header switcher and two pages.
-    let window = adw::ApplicationWindow::builder()
+    let mut window_builder = adw::ApplicationWindow::builder()
         .application(app)
         .title("Mimick")
         .default_width(520)
-        .default_height(780)
-        .build();
+        .default_height(780);
+    if let Some(parent) = parent {
+        window_builder = window_builder
+            .transient_for(parent)
+            .modal(true)
+            .destroy_with_parent(true);
+    }
+    let window = window_builder.build();
     window.set_size_request(360, 640);
 
     let view_stack = adw::ViewStack::builder()
@@ -327,27 +336,22 @@ pub fn build_settings_window(
             // Use the application-wide API client — do NOT create ImmichApiClient::new() here.
             // Creating a fresh reqwest client per click allocates a new connection pool
             // that lingers for 30s even after the test completes.
-            if let Some(ref shared_client) = api_client_for_test {
-                let ping_client = shared_client.clone();
-                let internal2 = internal.clone();
-                let external2 = external.clone();
-                tokio::spawn(async move {
-                    let int_ok = if !internal2.is_empty() {
-                        ping_client.ping_url(&internal2).await
-                    } else {
-                        false
-                    };
-                    let ext_ok = if !external2.is_empty() {
-                        ping_client.ping_url(&external2).await
-                    } else {
-                        false
-                    };
-                    let _ = tx.send((int_ok, ext_ok));
-                });
-            } else {
-                // No client available — report failure
-                let _ = tx.send((false, false));
-            }
+            let ping_client = api_client_for_test.clone();
+            let internal2 = internal.clone();
+            let external2 = external.clone();
+            tokio::spawn(async move {
+                let int_ok = if !internal2.is_empty() {
+                    ping_client.ping_url(&internal2).await
+                } else {
+                    false
+                };
+                let ext_ok = if !external2.is_empty() {
+                    ping_client.ping_url(&external2).await
+                } else {
+                    false
+                };
+                let _ = tx.send((int_ok, ext_ok));
+            });
 
             // Poll the oneshot receiver from the GTK main loop
             glib::timeout_add_local(
@@ -430,6 +434,27 @@ pub fn build_settings_window(
         .build();
     behavior_group.add(&notifications_row);
 
+    let library_view_row = adw::SwitchRow::builder()
+        .title("Enable Library View")
+        .subtitle(
+            "Turn on the in-app library browser. Restart Mimick to switch which window opens.",
+        )
+        .build();
+    behavior_group.add(&library_view_row);
+
+    // Surface a clear "restart required" hint the moment the user flips the
+    // toggle, since the running window is still the old one until next launch.
+    let initial_library_view = config.data.library_view_enabled;
+    library_view_row.connect_active_notify(move |row| {
+        let needs_restart = row.is_active() != initial_library_view;
+        let subtitle = if needs_restart {
+            "Restart Mimick to apply the new window layout."
+        } else {
+            "Turn on the in-app library browser. Restart Mimick to switch which window opens."
+        };
+        row.set_subtitle(subtitle);
+    });
+
     let catchup_model = gtk::StringList::new(&["Full Scan", "Recent Only (7d)", "New Files Only"]);
     let catchup_row = adw::ComboRow::builder()
         .title("Startup Catch-up Mode")
@@ -480,6 +505,29 @@ pub fn build_settings_window(
         }
     ));
 
+    // --- LIBRARY GROUP ---
+    let library_group = adw::PreferencesGroup::builder()
+        .title("Library")
+        .description("Settings that affect the in-app library browser.")
+        .build();
+    settings_page.add(&library_group);
+
+    let preview_full_row = adw::SwitchRow::builder()
+        .title("Open Originals in Lightbox")
+        .subtitle(
+            "When on, the library lightbox loads full-resolution originals instead of the ~1440px preview.",
+        )
+        .build();
+    library_group.add(&preview_full_row);
+
+    let cache_adj = gtk::Adjustment::new(80.0, 16.0, 1024.0, 16.0, 64.0, 0.0);
+    let cache_size_row = adw::SpinRow::builder()
+        .title("Thumbnail Memory Cache (MB)")
+        .subtitle("Approximate cap on decoded thumbnails kept in RAM.")
+        .adjustment(&cache_adj)
+        .build();
+    library_group.add(&cache_size_row);
+
     // --- WATCH FOLDERS GROUP ---
     let folders_group = adw::PreferencesGroup::builder()
         .title("Watch Folders")
@@ -514,6 +562,12 @@ pub fn build_settings_window(
         battery_row,
         #[weak]
         notifications_row,
+        #[weak]
+        library_view_row,
+        #[weak]
+        preview_full_row,
+        #[weak]
+        cache_size_row,
         #[weak]
         concurrency_row,
         #[weak]
@@ -571,6 +625,9 @@ pub fn build_settings_window(
             let pause_on_metered_network = metered_row.is_active();
             let pause_on_battery_power = battery_row.is_active();
             let notifications_enabled = notifications_row.is_active();
+            let library_view_enabled = library_view_row.is_active();
+            let library_preview_full_resolution = preview_full_row.is_active();
+            let library_thumbnail_cache_mb = cache_size_row.value() as u32;
             let upload_concurrency = concurrency_row.value() as u8;
             let quiet_hours_enabled = quiet_hours_row.is_active();
             let quiet_hours_start = quiet_hours_enabled.then(|| quiet_start_row.value() as u8);
@@ -682,6 +739,10 @@ pub fn build_settings_window(
                     new_config.data.pause_on_metered_network = pause_on_metered_network;
                     new_config.data.pause_on_battery_power = pause_on_battery_power;
                     new_config.data.notifications_enabled = notifications_enabled;
+                    new_config.data.library_view_enabled = library_view_enabled;
+                    new_config.data.library_preview_full_resolution =
+                        library_preview_full_resolution;
+                    new_config.data.library_thumbnail_cache_mb = library_thumbnail_cache_mb;
                     new_config.data.startup_catchup_mode = catchup_mode;
                     new_config.data.upload_concurrency = upload_concurrency;
                     new_config.data.quiet_hours_start = quiet_hours_start;
@@ -715,39 +776,34 @@ pub fn build_settings_window(
                     *startup_state.borrow_mut() = run_on_startup;
                     *background_sync_state.borrow_mut() = background_sync_enabled;
 
-                    if let Some(client) = api_client.clone() {
-                        client
-                            .update_settings(
-                                runtime_internal_url.clone(),
-                                runtime_external_url.clone(),
-                                api_key.clone(),
-                            )
-                            .await;
+                    api_client
+                        .update_settings(
+                            runtime_internal_url.clone(),
+                            runtime_external_url.clone(),
+                            api_key.clone(),
+                        )
+                        .await;
 
-                        if include_connectivity && !api_key.is_empty() {
-                            match client.get_all_albums().await {
-                                Ok(fetched) => {
-                                    *albums.borrow_mut() = fetched;
-                                }
-                                Err(err) => {
-                                    log::warn!(
-                                        "Could not fetch albums after saving settings: {}",
-                                        err
-                                    );
-                                }
+                    if include_connectivity && !api_key.is_empty() {
+                        match api_client.get_all_albums().await {
+                            Ok(fetched) => {
+                                *albums.borrow_mut() = fetched;
+                            }
+                            Err(err) => {
+                                log::warn!("Could not fetch albums after saving settings: {}", err);
                             }
                         }
                     }
 
-                    if let Some(qm) = queue_manager.clone() {
-                        qm.set_worker_limit(upload_concurrency);
-                        qm.update_environment_policy(crate::queue_manager::EnvironmentPolicy {
+                    queue_manager.set_worker_limit(upload_concurrency);
+                    queue_manager.update_environment_policy(
+                        crate::queue_manager::EnvironmentPolicy {
                             pause_on_metered_network,
                             pause_on_battery_power,
                             quiet_hours_start,
                             quiet_hours_end,
-                        });
-                    }
+                        },
+                    );
 
                     crate::notifications::set_enabled(notifications_enabled);
 
@@ -760,24 +816,19 @@ pub fn build_settings_window(
                         }
                     }
 
-                    if let Some(monitor) = monitor_handle.clone() {
-                        let monitor_paths = if background_sync_enabled {
-                            watch_paths.clone()
-                        } else {
-                            Vec::new()
-                        };
-                        monitor.replace_watch_paths(monitor_paths, background_sync_enabled);
-                    }
+                    let monitor_paths = if background_sync_enabled {
+                        watch_paths.clone()
+                    } else {
+                        Vec::new()
+                    };
+                    monitor_handle.replace_watch_paths(monitor_paths, background_sync_enabled);
 
-                    if let Some(live_watch_paths) = live_watch_paths.as_ref() {
-                        *live_watch_paths.lock().unwrap() = watch_paths.clone();
-                    }
+                    *live_watch_paths.lock().unwrap() = watch_paths.clone();
 
                     if background_sync_enabled
                         && previous_background_sync != background_sync_enabled
-                        && let Some(tx) = sync_now_tx.as_ref()
                     {
-                        let _ = tx.send(());
+                        let _ = sync_now_tx.send(());
                     }
 
                     {
@@ -811,30 +862,29 @@ pub fn build_settings_window(
     // that takes ~30s to self-clean, causing RAM to grow with each open/close cycle.
     let albums_ref = albums.clone();
 
-    if let Some(client) = api_client.clone() {
-        // Downgrade the window to a weak ref BEFORE the spawn.
-        // After the async await, we upgrade it — if it's None the window was closed
-        // while the API call was in-flight. We bail immediately, releasing all strong
-        // refs to FolderRowData (and their contained GTK widgets) so they can be freed.
-        // Without this, rapid open/close cycles would accumulate orphaned widget sets.
-        let weak_win = window.downgrade();
+    // Downgrade the window to a weak ref BEFORE the spawn.
+    // After the async await, we upgrade it — if it's None the window was closed
+    // while the API call was in-flight. We bail immediately, releasing all strong
+    // refs to FolderRowData (and their contained GTK widgets) so they can be freed.
+    // Without this, rapid open/close cycles would accumulate orphaned widget sets.
+    let weak_win = window.downgrade();
+    let client = api_client.clone();
 
-        glib::MainContext::default().spawn_local(async move {
-            let fetched = client.get_all_albums().await.unwrap_or_default();
+    glib::MainContext::default().spawn_local(async move {
+        let fetched = client.get_all_albums().await.unwrap_or_default();
 
-            // Window may have been closed while we awaited the network response.
-            // Bail out early — drops tracked_rows_async and albums_ref immediately.
-            if weak_win.upgrade().is_none() {
-                log::debug!("Settings window closed during album fetch — discarding result.");
-                return;
-            }
+        // Window may have been closed while we awaited the network response.
+        // Bail out early — drops tracked_rows_async and albums_ref immediately.
+        if weak_win.upgrade().is_none() {
+            log::debug!("Settings window closed during album fetch — discarding result.");
+            return;
+        }
 
-            *albums_ref.borrow_mut() = fetched.clone();
+        *albums_ref.borrow_mut() = fetched.clone();
 
-            // Album picker dialog fetches directly from albums_ref when opened.
-            // We don't need to push updates to existing rows anymore.
-        });
-    }
+        // Album picker dialog fetches directly from albums_ref when opened.
+        // We don't need to push updates to existing rows anymore.
+    });
 
     // List FIRST (matching Python layout), then Add button below
     let folders_list = ListBox::builder()
@@ -933,6 +983,12 @@ pub fn build_settings_window(
         .build();
     actions_flow.insert(&export_btn, -1);
 
+    let clear_cache_btn = Button::builder()
+        .label("Clear Thumbnail Cache")
+        .hexpand(true)
+        .build();
+    actions_flow.insert(&clear_cache_btn, -1);
+
     let app_group = adw::PreferencesGroup::builder()
         .title("Application")
         .build();
@@ -959,40 +1015,35 @@ pub fn build_settings_window(
         .build();
     app_flow.insert(&quit_btn, -1);
 
-    if let Some(qm) = queue_manager.clone() {
-        pause_btn.set_label(if qm.is_paused() { "Resume" } else { "Pause" });
-
-        let qm_for_inspector = qm.clone();
-        queue_btn.connect_clicked(clone!(
-            #[weak]
-            window,
-            move |_| {
-                show_queue_inspector(&window, qm_for_inspector.clone());
-            }
-        ));
-
-        let qm_for_pause = qm.clone();
-        pause_btn.connect_clicked(clone!(
-            #[weak]
-            pause_btn,
-            move |_| {
-                let paused = !qm_for_pause.is_paused();
-                qm_for_pause.set_paused(paused, paused.then(|| "Paused by user".to_string()));
-                pause_btn.set_label(if paused { "Resume" } else { "Pause" });
-            }
-        ));
+    pause_btn.set_label(if queue_manager.is_paused() {
+        "Resume"
     } else {
-        queue_btn.set_sensitive(false);
-        pause_btn.set_sensitive(false);
-    }
+        "Pause"
+    });
 
-    if let Some(sync_now_tx) = sync_now_tx.clone() {
-        sync_now_btn.connect_clicked(move |_| {
-            let _ = sync_now_tx.send(());
-        });
-    } else {
-        sync_now_btn.set_sensitive(false);
-    }
+    let qm_for_inspector = queue_manager.clone();
+    queue_btn.connect_clicked(clone!(
+        #[weak]
+        window,
+        move |_| {
+            show_queue_inspector(&window, qm_for_inspector.clone());
+        }
+    ));
+
+    let qm_for_pause = queue_manager.clone();
+    pause_btn.connect_clicked(clone!(
+        #[weak]
+        pause_btn,
+        move |_| {
+            let paused = !qm_for_pause.is_paused();
+            qm_for_pause.set_paused(paused, paused.then(|| "Paused by user".to_string()));
+            pause_btn.set_label(if paused { "Resume" } else { "Pause" });
+        }
+    ));
+
+    sync_now_btn.connect_clicked(move |_| {
+        let _ = sync_now_tx.send(());
+    });
 
     export_btn.connect_clicked(clone!(
         #[weak]
@@ -1052,6 +1103,21 @@ pub fn build_settings_window(
         }
     ));
 
+    clear_cache_btn.connect_clicked(clone!(
+        #[weak]
+        window,
+        move |_| {
+            let (heading, body) = match thumbnail_cache.clear() {
+                Ok(()) => (
+                    "Thumbnail Cache Cleared",
+                    "Removed cached library thumbnails.".to_string(),
+                ),
+                Err(err) => ("Could Not Clear Cache", err),
+            };
+            show_alert(&window, heading, &body);
+        }
+    ));
+
     quit_btn.connect_clicked(clone!(
         #[strong]
         app_clone,
@@ -1080,6 +1146,11 @@ pub fn build_settings_window(
     battery_row.set_active(config.data.pause_on_battery_power);
     background_sync_row.set_active(config.data.background_sync_enabled);
     notifications_row.set_active(config.data.notifications_enabled);
+    library_view_row.set_active(config.data.library_view_enabled);
+    preview_full_row.set_active(config.data.library_preview_full_resolution);
+    if config.data.library_thumbnail_cache_mb > 0 {
+        cache_size_row.set_value(config.data.library_thumbnail_cache_mb as f64);
+    }
     concurrency_row.set_value(config.data.upload_concurrency as f64);
     let qh_enabled = config.data.quiet_hours_start.is_some();
     quiet_hours_row.set_active(qh_enabled);
@@ -1812,7 +1883,7 @@ fn show_about_dialog(parent: &impl gtk::prelude::IsA<gtk::Widget>) {
 
     let about = adw::AboutDialog::builder()
         .application_name("Mimick")
-        .application_icon("io.github.nicx17.mimick")
+        .application_icon("dev.nicx.mimick")
         .version(env!("CARGO_PKG_VERSION"))
         .developer_name("Nick Cardoso")
         .website("https://github.com/nicx17/mimick")

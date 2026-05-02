@@ -28,7 +28,7 @@ Or by adding the repository manually:
 flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
 
 # Install the application
-flatpak install --user mimick-repo io.github.nicx17.mimick
+flatpak install --user mimick-repo dev.nicx.mimick
 ```
 
 Flatpak will automatically resolve and download the required GNOME Platform runtime from Flathub during installation. *Note: If Flatpak fails to install due to a missing `runtime/org.gnome.Platform`, ensure that you have the [Flathub](https://flathub.org/setup) remote configured on your system as mentioned in the prerequisites.*
@@ -56,13 +56,13 @@ Compare the resulting fingerprint to the value above. Treat the fingerprint, not
 Run the app with:
 
 ```bash
-flatpak run io.github.nicx17.mimick
+flatpak run dev.nicx.mimick
 ```
 
 Open the settings window directly with:
 
 ```bash
-flatpak run io.github.nicx17.mimick --settings
+flatpak run dev.nicx.mimick --settings
 ```
 
 ## Local Development Build
@@ -82,13 +82,13 @@ cargo run -- --settings
 For a local Flatpak build that uses the current checkout instead of the GitHub source tag:
 
 ```bash
-flatpak-builder --user --install --force-clean build-dir io.github.nicx17.mimick.local.yml
+flatpak-builder --user --install --force-clean build-dir dev.nicx.mimick.local.yml
 ```
 
 ## What Gets Installed
 
-- Application ID: `io.github.nicx17.mimick`
+- Application ID: `dev.nicx.mimick`
 - Binary: `mimick`
-- Config file: `~/.config/mimick/config.json` (native) or `~/.var/app/io.github.nicx17.mimick/config/mimick/config.json` (Flatpak)
-- Cache directory: `~/.cache/mimick/` (native) or `~/.var/app/io.github.nicx17.mimick/cache/mimick/` (Flatpak)
+- Config file: `~/.config/mimick/config.json` (native) or `~/.var/app/dev.nicx.mimick/config/mimick/config.json` (Flatpak)
+- Cache directory: `~/.cache/mimick/` (native) or `~/.var/app/dev.nicx.mimick/cache/mimick/` (Flatpak)
 - Keyring: Managed by `oo7` -- encrypted file inside the sandbox (Flatpak) or D-Bus Secret Service (native)

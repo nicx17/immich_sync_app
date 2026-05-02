@@ -4,6 +4,6 @@
 # Keep repository automation and release wiring under maintainer review.
 /.github/ @nicx17
 /setup/ @nicx17
-/io.github.nicx17.mimick.yml @nicx17
-/io.github.nicx17.mimick.local.yml @nicx17
+/dev.nicx.mimick.yml @nicx17
+/dev.nicx.mimick.local.yml @nicx17
 /cargo-sources.json @nicx17

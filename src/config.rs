@@ -155,12 +155,24 @@ pub struct ConfigData {
     /// Number of parallel upload workers (1–10). Defaults to 3.
     #[serde(default = "default_upload_concurrency")]
     pub upload_concurrency: u8,
-    /// Quiet-hours window start (local clock hour, 0–23). `None` means disabled.
+    /// Quiet-hours window start (local clock hour, 0-23). `None` means disabled.
     #[serde(default)]
     pub quiet_hours_start: Option<u8>,
-    /// Quiet-hours window end (local clock hour, 0–23, exclusive).
+    /// Quiet-hours window end (local clock hour, 0-23, exclusive).
     #[serde(default)]
     pub quiet_hours_end: Option<u8>,
+    /// Whether the built-in library viewer is the primary window.
+    #[serde(default)]
+    pub library_view_enabled: bool,
+    /// Target folder for asset downloads from the library viewer.
+    #[serde(default)]
+    pub download_target_path: Option<String>,
+    /// When true, lightbox loads original full-resolution image instead of preview.
+    #[serde(default)]
+    pub library_preview_full_resolution: bool,
+    /// In-memory thumbnail cache cap in megabytes (0 = use built-in default of 80MB).
+    #[serde(default)]
+    pub library_thumbnail_cache_mb: u32,
 }
 
 impl Default for ConfigData {
@@ -180,6 +192,10 @@ impl Default for ConfigData {
             upload_concurrency: default_upload_concurrency(),
             quiet_hours_start: None,
             quiet_hours_end: None,
+            library_view_enabled: false,
+            download_target_path: None,
+            library_preview_full_resolution: false,
+            library_thumbnail_cache_mb: 0,
         }
     }
 }

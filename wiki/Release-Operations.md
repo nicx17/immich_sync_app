@@ -9,8 +9,8 @@ For a normal release, update:
 - `Cargo.toml`
 - `Cargo.lock`
 - `CHANGELOG.md`
-- `io.github.nicx17.mimick.yml`
-- `setup/metainfo/io.github.nicx17.mimick.metainfo.xml`
+- `dev.nicx.mimick.yml`
+- `setup/metainfo/dev.nicx.mimick.metainfo.xml`
 
 ## Signed Distribution Outputs
 
