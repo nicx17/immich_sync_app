@@ -153,10 +153,8 @@ mod tests {
     #[test]
     fn test_flatpak_host_config_dir_from_sandbox_path() {
         assert_eq!(
-            flatpak_host_config_dir_from(Path::new(
-                "/home/nick/.var/app/dev.nicx.mimick/config"
-            ))
-            .unwrap(),
+            flatpak_host_config_dir_from(Path::new("/home/nick/.var/app/dev.nicx.mimick/config"))
+                .unwrap(),
             Path::new("/home/nick/.config")
         );
     }

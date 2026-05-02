@@ -268,31 +268,42 @@ fn explore_tile(
 }
 
 fn spawn_asset_thumbnail(ctx: Arc<AppContext>, asset_id: String, picture: gtk::Picture) {
-    glib::MainContext::default().spawn_local(async move {
-        if let Ok(texture) = ctx
-            .thumbnail_cache
-            .load_thumbnail(&asset_id, ThumbnailSize::Thumbnail)
-            .await
-        {
-            picture.set_paintable(Some(&texture));
-        }
+    if let Some(texture) = ctx
+        .thumbnail_cache
+        .get_cached(&asset_id, ThumbnailSize::Thumbnail)
+    {
+        picture.set_paintable(Some(&texture));
+        return;
+    }
+    glib::timeout_add_local_once(std::time::Duration::from_millis(120), move || {
+        glib::MainContext::default().spawn_local(async move {
+            if let Ok(texture) = ctx
+                .thumbnail_cache
+                .load_thumbnail(&asset_id, ThumbnailSize::Thumbnail)
+                .await
+            {
+                picture.set_paintable(Some(&texture));
+            }
+        });
     });
 }
 
 fn spawn_person_thumbnail(ctx: Arc<AppContext>, person_id: String, picture: gtk::Picture) {
-    glib::MainContext::default().spawn_local(async move {
-        let bytes = match ctx.api_client.fetch_person_thumbnail(&person_id).await {
-            Ok(b) => b,
-            Err(_) => return,
-        };
-        let texture = tokio::task::spawn_blocking(move || -> Option<Texture> {
-            Texture::from_bytes(&Bytes::from(&bytes[..])).ok()
-        })
-        .await
-        .ok()
-        .flatten();
-        if let Some(texture) = texture {
-            picture.set_paintable(Some(&texture));
-        }
+    glib::timeout_add_local_once(std::time::Duration::from_millis(120), move || {
+        glib::MainContext::default().spawn_local(async move {
+            let bytes = match ctx.api_client.fetch_person_thumbnail(&person_id).await {
+                Ok(b) => b,
+                Err(_) => return,
+            };
+            let texture = tokio::task::spawn_blocking(move || -> Option<Texture> {
+                Texture::from_bytes(&Bytes::from(&bytes[..])).ok()
+            })
+            .await
+            .ok()
+            .flatten();
+            if let Some(texture) = texture {
+                picture.set_paintable(Some(&texture));
+            }
+        });
     });
 }

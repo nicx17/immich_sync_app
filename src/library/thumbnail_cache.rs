@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -6,10 +8,47 @@ use gdk4::Texture;
 use gdk4::prelude::TextureExt;
 use glib::Bytes;
 use lru::LruCache;
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, watch};
 
 use crate::api_client::{ImmichApiClient, ThumbnailSize};
 const MAX_CONCURRENT_LOADS: usize = 8;
+
+type InflightSlot = Option<Result<Texture, String>>;
+type InflightRx = watch::Receiver<InflightSlot>;
+type InflightMap = Arc<Mutex<HashMap<String, InflightRx>>>;
+
+struct InflightGuard {
+    inflight: InflightMap,
+    key: String,
+    tx: watch::Sender<InflightSlot>,
+}
+
+impl InflightGuard {
+    fn publish(&self, result: Result<Texture, String>) {
+        let _ = self.tx.send(Some(result));
+    }
+}
+
+impl Drop for InflightGuard {
+    fn drop(&mut self) {
+        if let Ok(mut map) = self.inflight.lock() {
+            map.remove(&self.key);
+        }
+    }
+}
+
+async fn await_inflight(mut rx: InflightRx) -> Result<Texture, String> {
+    if let Some(result) = rx.borrow_and_update().clone() {
+        return result;
+    }
+    match rx.changed().await {
+        Ok(()) => rx
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| Err("Thumbnail load cancelled".to_string())),
+        Err(_) => Err("Thumbnail load cancelled".to_string()),
+    }
+}
 
 struct SizedLruCache {
     inner: LruCache<String, Texture>,
@@ -62,6 +101,7 @@ pub struct ThumbnailCache {
     memory: Mutex<SizedLruCache>,
     cache_dir: PathBuf,
     load_semaphore: Arc<Semaphore>,
+    inflight: InflightMap,
 }
 
 impl ThumbnailCache {
@@ -84,6 +124,7 @@ impl ThumbnailCache {
             memory: Mutex::new(SizedLruCache::new(max_bytes)),
             cache_dir,
             load_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_LOADS)),
+            inflight: Arc::new(Mutex::new(HashMap::new())),
         };
         let _ = cache.prune_disk_cache(500 * 1024 * 1024);
         cache
@@ -100,6 +141,7 @@ impl ThumbnailCache {
             memory: Mutex::new(SizedLruCache::new(max_bytes)),
             cache_dir,
             load_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_LOADS)),
+            inflight: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -117,6 +159,22 @@ impl ThumbnailCache {
             return Ok(texture);
         }
 
+        let key = cache_key(asset_id, size);
+        let guard = match self.enter_inflight(&key) {
+            Ok(guard) => guard,
+            Err(rx) => return await_inflight(rx).await,
+        };
+        let result = self.fetch_remote_thumbnail(asset_id, size, &key).await;
+        guard.publish(result.clone());
+        result
+    }
+
+    async fn fetch_remote_thumbnail(
+        &self,
+        asset_id: &str,
+        size: ThumbnailSize,
+        key: &str,
+    ) -> Result<Texture, String> {
         let _permit = self
             .load_semaphore
             .clone()
@@ -128,8 +186,6 @@ impl ThumbnailCache {
             return Ok(texture);
         }
 
-        // ---- Disk-cache fallback ----
-        let key = cache_key(asset_id, size);
         let cache_file = self.cache_file(asset_id, size);
         let cache_file_for_read = cache_file.clone();
         let from_disk = tokio::task::spawn_blocking(move || -> Option<Texture> {
@@ -140,13 +196,14 @@ impl ThumbnailCache {
         .map_err(|err| err.to_string())?;
 
         if let Some(texture) = from_disk {
-            self.memory.lock().unwrap().insert(key, texture.clone());
+            self.memory
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), texture.clone());
             return Ok(texture);
         }
 
-        // ---- Network fetch ----
         let bytes = self.api_client.fetch_thumbnail(asset_id, size).await?;
-
         let cache_dir = self.cache_dir.clone();
         let texture = tokio::task::spawn_blocking(move || -> Result<Texture, String> {
             let _ = std::fs::create_dir_all(&cache_dir);
@@ -156,7 +213,10 @@ impl ThumbnailCache {
         .await
         .map_err(|err| err.to_string())??;
 
-        self.memory.lock().unwrap().insert(key, texture.clone());
+        self.memory
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), texture.clone());
         Ok(texture)
     }
 
@@ -170,6 +230,21 @@ impl ThumbnailCache {
             return Ok(texture);
         }
 
+        let guard = match self.enter_inflight(&key) {
+            Ok(guard) => guard,
+            Err(rx) => return await_inflight(rx).await,
+        };
+        let result = self.fetch_local_thumbnail(asset_id, path, &key).await;
+        guard.publish(result.clone());
+        result
+    }
+
+    async fn fetch_local_thumbnail(
+        &self,
+        asset_id: &str,
+        path: &std::path::Path,
+        key: &str,
+    ) -> Result<Texture, String> {
         let _permit = self
             .load_semaphore
             .clone()
@@ -177,20 +252,45 @@ impl ThumbnailCache {
             .await
             .map_err(|err| err.to_string())?;
 
-        if let Some(texture) = self.memory.lock().unwrap().get(&key) {
+        if let Some(texture) = self.memory.lock().unwrap().get(key) {
+            return Ok(texture);
+        }
+
+        let cache_file = self.cache_file_local(asset_id);
+        let cache_file_for_read = cache_file.clone();
+        let from_disk = tokio::task::spawn_blocking(move || -> Option<Texture> {
+            if !cache_file_for_read.exists() {
+                return None;
+            }
+            Texture::from_filename(&cache_file_for_read).ok()
+        })
+        .await
+        .map_err(|err| err.to_string())?;
+
+        if let Some(texture) = from_disk {
+            self.memory
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), texture.clone());
             return Ok(texture);
         }
 
         let path = path.to_path_buf();
+        let cache_dir = self.cache_dir.clone();
         let texture = tokio::task::spawn_blocking(move || -> Result<Texture, String> {
             let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_file_at_scale(&path, 256, 256, true)
                 .map_err(|err| err.to_string())?;
+            let _ = std::fs::create_dir_all(&cache_dir);
+            let _ = pixbuf.savev(&cache_file, "png", &[]);
             #[allow(deprecated)]
             Ok(Texture::for_pixbuf(&pixbuf))
         })
         .await
         .map_err(|err| err.to_string())??;
-        self.memory.lock().unwrap().insert(key, texture.clone());
+        self.memory
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), texture.clone());
         Ok(texture)
     }
 
@@ -245,6 +345,24 @@ impl ThumbnailCache {
     fn cache_file(&self, asset_id: &str, size: ThumbnailSize) -> PathBuf {
         self.cache_dir.join(cache_key(asset_id, size))
     }
+
+    fn cache_file_local(&self, asset_id: &str) -> PathBuf {
+        self.cache_dir.join(local_cache_key(asset_id))
+    }
+
+    fn enter_inflight(&self, key: &str) -> Result<InflightGuard, InflightRx> {
+        let mut map = self.inflight.lock().unwrap();
+        if let Some(rx) = map.get(key) {
+            return Err(rx.clone());
+        }
+        let (tx, rx) = watch::channel::<InflightSlot>(None);
+        map.insert(key.to_string(), rx);
+        Ok(InflightGuard {
+            inflight: self.inflight.clone(),
+            key: key.to_string(),
+            tx,
+        })
+    }
 }
 
 fn cache_key(asset_id: &str, size: ThumbnailSize) -> String {
@@ -252,6 +370,12 @@ fn cache_key(asset_id: &str, size: ThumbnailSize) -> String {
         ThumbnailSize::Thumbnail => format!("thumbnail:{}", asset_id),
         ThumbnailSize::Preview => format!("preview:{}", asset_id),
     }
+}
+
+fn local_cache_key(asset_id: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    asset_id.hash(&mut hasher);
+    format!("local-thumbnail:{:x}", hasher.finish())
 }
 
 fn estimate_texture_bytes(texture: &Texture) -> usize {

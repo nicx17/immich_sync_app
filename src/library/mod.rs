@@ -39,6 +39,7 @@ struct LibraryWindowUi {
     ctx: Arc<AppContext>,
     app: libadwaita::Application,
     window: libadwaita::ApplicationWindow,
+    nav: libadwaita::NavigationView,
     sidebar: SidebarParts,
     grid: GridViewParts,
     explore: ExploreViewParts,
@@ -229,7 +230,15 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .bidirectional()
         .build();
     toolbar.set_content(Some(&split));
-    window.set_content(Some(&toolbar));
+
+    let nav = libadwaita::NavigationView::new();
+    let root_page = libadwaita::NavigationPage::builder()
+        .child(&toolbar)
+        .title("Library")
+        .can_pop(false)
+        .build();
+    nav.add(&root_page);
+    window.set_content(Some(&nav));
 
     let f9 = gtk::Shortcut::builder()
         .trigger(&gtk::ShortcutTrigger::parse_string("F9").unwrap())
@@ -250,6 +259,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         ctx,
         app: app.clone(),
         window: window.clone(),
+        nav: nav.clone(),
         sidebar,
         grid,
         explore,
@@ -1174,13 +1184,14 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
     };
     let initial_filename = item.property::<String>("filename");
 
-    let dialog = libadwaita::Dialog::builder()
+    let page = libadwaita::NavigationPage::builder()
         .title(&initial_filename)
-        .content_width(1100)
-        .content_height(820)
+        .can_pop(true)
         .build();
     let toolbar = libadwaita::ToolbarView::builder().build();
-    let header = libadwaita::HeaderBar::builder().build();
+    let header = libadwaita::HeaderBar::builder()
+        .show_back_button(true)
+        .build();
     let prev_btn = gtk::Button::builder()
         .icon_name("go-previous-symbolic")
         .tooltip_text("Previous (Left)")
@@ -1272,7 +1283,7 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
     body.append(&viewer);
     body.append(&details_pane);
     toolbar.set_content(Some(&body));
-    dialog.set_child(Some(&toolbar));
+    page.set_child(Some(&toolbar));
 
     details_btn
         .bind_property("active", &details_pane, "visible")
@@ -1327,7 +1338,7 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
 
     let render = Rc::new({
         let ui = ui.clone();
-        let dialog = dialog.clone();
+        let page = page.clone();
         let pos_cell = pos_cell.clone();
         let load_into_picture = load_into_picture.clone();
         let resolution_toggle = resolution_toggle.clone();
@@ -1351,7 +1362,7 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
             let created = item.property::<String>("created-at");
             let sync_state = item.property::<u32>("sync-state");
 
-            dialog.set_title(&filename);
+            page.set_title(&filename);
             details_filename.set_label(&filename);
             let sync_label = match sync_state {
                 2 => "On Immich and locally",
@@ -1480,6 +1491,8 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
     let key_controller = gtk::EventControllerKey::new();
     key_controller.connect_key_pressed(clone!(
         #[strong]
+        ui,
+        #[strong]
         pos_cell,
         #[strong]
         render,
@@ -1504,10 +1517,14 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
                 details_btn.set_active(!details_btn.is_active());
                 glib::Propagation::Stop
             }
+            gtk::gdk::Key::Escape => {
+                ui.nav.pop();
+                glib::Propagation::Stop
+            }
             _ => glib::Propagation::Proceed,
         }
     ));
-    dialog.add_controller(key_controller);
+    page.add_controller(key_controller);
 
     download.connect_clicked(clone!(
         #[strong]
@@ -1539,7 +1556,7 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
         }
     ));
 
-    dialog.present(Some(&ui.window));
+    ui.nav.push(&page);
 }
 
 /// Hand a local file off to the user's default app via `xdg-open`/equivalent.

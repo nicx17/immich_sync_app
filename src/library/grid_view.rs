@@ -88,7 +88,6 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
         }
 
         let cache = ctx.thumbnail_cache.clone();
-        let picture_clone = picture.clone();
 
         if let Some(texture) =
             cache.get_cached(&asset_id, crate::api_client::ThumbnailSize::Thumbnail)
@@ -98,58 +97,7 @@ pub fn build_grid_view(ctx: Arc<AppContext>) -> GridViewParts {
             return;
         }
 
-        if !local_path.is_empty() {
-            let path = std::path::PathBuf::from(&local_path);
-            let asset_id_clone = asset_id.clone();
-            glib::timeout_add_local_once(std::time::Duration::from_millis(80), move || {
-                if picture_clone.tooltip_text().as_deref() != Some(asset_id_clone.as_str()) {
-                    return;
-                }
-                let picture_async = picture_clone.clone();
-                let cache = cache.clone();
-                let asset_id_async = asset_id_clone.clone();
-                glib::MainContext::default().spawn_local(async move {
-                    let result = cache.load_local_thumbnail(&asset_id_async, &path).await;
-                    if picture_async.tooltip_text().as_deref() != Some(asset_id_async.as_str()) {
-                        return;
-                    }
-                    match result {
-                        Ok(texture) => {
-                            picture_async.set_paintable(Some(&texture));
-                            set_thumb_state(&picture_async, ThumbState::Loaded);
-                        }
-                        Err(_) => set_thumb_state(&picture_async, ThumbState::Error),
-                    }
-                });
-            });
-            return;
-        }
-
-        glib::timeout_add_local_once(std::time::Duration::from_millis(80), move || {
-            if picture_clone.tooltip_text().as_deref() != Some(asset_id.as_str()) {
-                return;
-            }
-            let picture_async = picture_clone.clone();
-            let cache = cache.clone();
-            let asset_id_async = asset_id.clone();
-            glib::MainContext::default().spawn_local(async move {
-                let result = cache
-                    .load_thumbnail(&asset_id_async, crate::api_client::ThumbnailSize::Thumbnail)
-                    .await;
-                if picture_async.tooltip_text().as_deref() != Some(asset_id_async.as_str()) {
-                    return;
-                }
-                match result {
-                    Ok(texture) => {
-                        picture_async.set_paintable(Some(&texture));
-                        set_thumb_state(&picture_async, ThumbState::Loaded);
-                    }
-                    Err(_) => {
-                        set_thumb_state(&picture_async, ThumbState::Error);
-                    }
-                }
-            });
-        });
+        schedule_thumbnail_load(ctx.clone(), picture.clone(), asset_id, local_path);
     });
 
     factory.connect_unbind(|_, list_item| {
@@ -245,4 +193,40 @@ fn set_thumb_state(picture: &gtk::Picture, state: ThumbState) {
     if matches!(state, ThumbState::Error) {
         picture.set_tooltip_text(Some("Thumbnail unavailable"));
     }
+}
+
+fn schedule_thumbnail_load(
+    ctx: Arc<AppContext>,
+    picture: gtk::Picture,
+    asset_id: String,
+    local_path: String,
+) {
+    let local_path = (!local_path.is_empty()).then(|| std::path::PathBuf::from(local_path));
+
+    glib::timeout_add_local_once(std::time::Duration::from_millis(80), move || {
+        if picture.tooltip_text().as_deref() != Some(asset_id.as_str()) {
+            return;
+        }
+        glib::MainContext::default().spawn_local(async move {
+            let cache = ctx.thumbnail_cache.clone();
+            let result = match local_path {
+                Some(path) => cache.load_local_thumbnail(&asset_id, &path).await,
+                None => {
+                    cache
+                        .load_thumbnail(&asset_id, crate::api_client::ThumbnailSize::Thumbnail)
+                        .await
+                }
+            };
+            if picture.tooltip_text().as_deref() != Some(asset_id.as_str()) {
+                return;
+            }
+            match result {
+                Ok(texture) => {
+                    picture.set_paintable(Some(&texture));
+                    set_thumb_state(&picture, ThumbState::Loaded);
+                }
+                Err(_) => set_thumb_state(&picture, ThumbState::Error),
+            }
+        });
+    });
 }
