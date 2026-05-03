@@ -120,7 +120,7 @@ The published Flatpak repository embeds this signing-key fingerprint:
 You can inspect the currently published key with:
 
 ```bash
-curl -fsSL https://mimick.nicx.dev/mimick/mimick.flatpakrepo \
+curl -fsSL https://mimick.nicx.dev/mimick.flatpakrepo \
   | sed -n 's/^GPGKey=//p' \
   | base64 -d > /tmp/mimick-repo-public.gpg
 
