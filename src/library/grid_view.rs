@@ -145,9 +145,8 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
         let asset_id = item.property::<String>("id");
         let local_path = item.property::<String>("local-path");
         let sync_state = item.property::<u32>("sync-state");
+        let thumbhash = item.property::<Option<String>>("thumbhash");
         picture.set_tooltip_text(Some(&asset_id));
-        picture.set_paintable(Option::<&Texture>::None);
-        set_thumb_state(&picture, ThumbState::Loading);
         status.set_icon_name(Some(sync_icon_name(sync_state)));
         status.set_tooltip_text(Some(sync_state_label(sync_state)));
 
@@ -155,14 +154,11 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
             .library_timeline_active
             .load(std::sync::atomic::Ordering::Relaxed);
         status.set_visible(!in_timeline);
-        if in_timeline {
-            picture.add_css_class("mimick-thumbnail-square");
-        } else {
-            picture.remove_css_class("mimick-thumbnail-square");
-        }
+        set_square_class(&picture, in_timeline);
+
+        let generation = bump_generation(&picture);
 
         let cache = ctx.thumbnail_cache.clone();
-
         if let Some(texture) =
             cache.get_cached(&asset_id, crate::api_client::ThumbnailSize::Thumbnail)
         {
@@ -171,7 +167,24 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
             return;
         }
 
-        schedule_thumbnail_load(ctx.clone(), picture.clone(), asset_id, local_path);
+        match thumbhash.as_deref().and_then(decode_thumbhash_texture) {
+            Some(placeholder) => {
+                picture.set_paintable(Some(&placeholder));
+                set_thumb_state(&picture, ThumbState::Loaded);
+            }
+            None => {
+                picture.set_paintable(Option::<&Texture>::None);
+                set_thumb_state(&picture, ThumbState::Loading);
+            }
+        }
+
+        schedule_thumbnail_load(
+            ctx.clone(),
+            picture.clone(),
+            asset_id,
+            local_path,
+            generation,
+        );
     });
 
     factory.connect_unbind(|_, list_item| {
@@ -181,6 +194,7 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
         if let Some(container) = list_item.child().and_downcast::<gtk::Overlay>()
             && let Some(picture) = container.child().and_downcast::<gtk::Picture>()
         {
+            bump_generation(&picture);
             picture.set_tooltip_text(None);
             picture.set_paintable(Option::<&Texture>::None);
             set_thumb_state(&picture, ThumbState::Loading);
@@ -332,21 +346,35 @@ enum ThumbState {
 }
 
 fn set_thumb_state(picture: &gtk::Picture, state: ThumbState) {
+    let want = match state {
+        ThumbState::Loading => "mimick-thumbnail-loading",
+        ThumbState::Loaded => "mimick-thumbnail-loaded",
+        ThumbState::Error => "mimick-thumbnail-error",
+    };
     for cls in [
         "mimick-thumbnail-loading",
         "mimick-thumbnail-loaded",
         "mimick-thumbnail-error",
     ] {
-        picture.remove_css_class(cls);
+        if cls == want {
+            if !picture.has_css_class(cls) {
+                picture.add_css_class(cls);
+            }
+        } else if picture.has_css_class(cls) {
+            picture.remove_css_class(cls);
+        }
     }
-    let cls = match state {
-        ThumbState::Loading => "mimick-thumbnail-loading",
-        ThumbState::Loaded => "mimick-thumbnail-loaded",
-        ThumbState::Error => "mimick-thumbnail-error",
-    };
-    picture.add_css_class(cls);
     if matches!(state, ThumbState::Error) {
         picture.set_tooltip_text(Some("Thumbnail unavailable"));
+    }
+}
+
+fn set_square_class(picture: &gtk::Picture, on: bool) {
+    let has = picture.has_css_class("mimick-thumbnail-square");
+    if on && !has {
+        picture.add_css_class("mimick-thumbnail-square");
+    } else if !on && has {
+        picture.remove_css_class("mimick-thumbnail-square");
     }
 }
 
@@ -355,33 +383,88 @@ fn schedule_thumbnail_load(
     picture: gtk::Picture,
     asset_id: String,
     local_path: String,
+    generation: u64,
 ) {
     let local_path = (!local_path.is_empty()).then(|| std::path::PathBuf::from(local_path));
+    let gen_cell = generation_cell(&picture);
 
-    glib::timeout_add_local_once(std::time::Duration::from_millis(80), move || {
-        if picture.tooltip_text().as_deref() != Some(asset_id.as_str()) {
+    glib::MainContext::default().spawn_local(async move {
+        if gen_cell.get() != generation {
             return;
         }
-        glib::MainContext::default().spawn_local(async move {
-            let cache = ctx.thumbnail_cache.clone();
-            let result = match local_path {
-                Some(path) => cache.load_local_thumbnail(&asset_id, &path).await,
-                None => {
-                    cache
-                        .load_thumbnail(&asset_id, crate::api_client::ThumbnailSize::Thumbnail)
-                        .await
-                }
-            };
-            if picture.tooltip_text().as_deref() != Some(asset_id.as_str()) {
-                return;
+        let cancel_cell = gen_cell.clone();
+        let is_cancelled = move || cancel_cell.get() != generation;
+        let cache = ctx.thumbnail_cache.clone();
+        let result = match local_path {
+            Some(path) => {
+                cache
+                    .load_local_thumbnail_cancellable(&asset_id, &path, is_cancelled.clone())
+                    .await
             }
-            match result {
-                Ok(texture) => {
-                    picture.set_paintable(Some(&texture));
-                    set_thumb_state(&picture, ThumbState::Loaded);
-                }
-                Err(_) => set_thumb_state(&picture, ThumbState::Error),
+            None => {
+                cache
+                    .load_thumbnail_cancellable(
+                        &asset_id,
+                        crate::api_client::ThumbnailSize::Thumbnail,
+                        is_cancelled.clone(),
+                    )
+                    .await
             }
-        });
+        };
+        if gen_cell.get() != generation {
+            return;
+        }
+        match result {
+            Ok(texture) => {
+                picture.set_paintable(Some(&texture));
+                set_thumb_state(&picture, ThumbState::Loaded);
+            }
+            Err(_) => set_thumb_state(&picture, ThumbState::Error),
+        }
     });
+}
+
+const GEN_DATA_KEY: &str = "mimick-cell-gen";
+
+fn generation_cell(picture: &gtk::Picture) -> Rc<Cell<u64>> {
+    let existing = unsafe {
+        picture
+            .data::<Rc<Cell<u64>>>(GEN_DATA_KEY)
+            .map(|p| p.as_ref().clone())
+    };
+    if let Some(cell) = existing {
+        return cell;
+    }
+    let cell = Rc::new(Cell::new(0u64));
+    unsafe {
+        picture.set_data::<Rc<Cell<u64>>>(GEN_DATA_KEY, cell.clone());
+    }
+    cell
+}
+
+fn bump_generation(picture: &gtk::Picture) -> u64 {
+    let cell = generation_cell(picture);
+    let next = cell.get().wrapping_add(1);
+    cell.set(next);
+    next
+}
+
+fn decode_thumbhash_texture(thumbhash_b64: &str) -> Option<Texture> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(thumbhash_b64)
+        .ok()?;
+    let (w, h, rgba) = thumbhash::thumb_hash_to_rgba(&bytes).ok()?;
+    let stride = w * 4;
+    let pixel_bytes = glib::Bytes::from_owned(rgba);
+    Some(
+        gdk4::MemoryTexture::new(
+            w as i32,
+            h as i32,
+            gdk4::MemoryFormat::R8g8b8a8,
+            &pixel_bytes,
+            stride,
+        )
+        .upcast(),
+    )
 }
