@@ -338,28 +338,44 @@ impl ImmichApiClient {
 
     /// Determine which base URL to use, preferring the internal address when reachable.
     pub async fn check_connection(&self) -> bool {
-        log::info!("Checking connectivity...");
+        log::debug!("Checking connectivity...");
         let settings = self.settings.read().unwrap().clone();
+        let was_active = self.active_url.lock().await.clone();
 
         if self.ping_url(&settings.internal_url).await {
             let mut active = self.active_url.lock().await;
+            let was_offline = was_active.is_none();
             *active = Some(settings.internal_url.clone());
             self.clear_issue().await;
-            log::info!("Connected via LAN: {}", settings.internal_url);
+            if was_offline {
+                log::info!("Connected via LAN: {}", settings.internal_url);
+            } else {
+                log::debug!("Connected via LAN: {}", settings.internal_url);
+            }
             return true;
         }
 
         if self.ping_url(&settings.external_url).await {
             let mut active = self.active_url.lock().await;
+            let was_offline = was_active.is_none();
             *active = Some(settings.external_url.clone());
             self.clear_issue().await;
-            log::info!("Connected via WAN: {}", settings.external_url);
+            if was_offline {
+                log::info!("Connected via WAN: {}", settings.external_url);
+            } else {
+                log::debug!("Connected via WAN: {}", settings.external_url);
+            }
             return true;
         }
 
-        log::error!("Could not connect to Immich server.");
         let mut active = self.active_url.lock().await;
+        let was_online = active.is_some();
         *active = None;
+        if was_online {
+            log::error!("Could not connect to Immich server.");
+        } else {
+            log::debug!("Server still unreachable.");
+        }
         self.set_issue(ApiIssue {
             summary: "Could not reach the Immich server".to_string(),
             guidance: "Check the LAN/WAN URLs, confirm the server is running, and verify your network connection."
