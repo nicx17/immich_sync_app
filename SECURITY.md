@@ -43,7 +43,7 @@ Current published Flatpak repo signing fingerprint:
 You can verify the key embedded in the live `.flatpakrepo` file with:
 
 ```bash
-curl -fsSL https://nicx17.github.io/mimick/mimick.flatpakrepo \
+curl -fsSL https://mimick.nicx.dev/mimick/mimick.flatpakrepo \
   | sed -n 's/^GPGKey=//p' \
   | base64 -d > /tmp/mimick-repo-public.gpg
 

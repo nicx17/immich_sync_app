@@ -12,20 +12,20 @@ The recommended install method is the official Flatpak repository.
 ### Graphical Install (One-Click)
 You can easily install Mimick by downloading and opening the `.flatpakref` file. Your system's software center (like GNOME Software or KDE Discover) should open it and handle adding the repository and installing the app automatically:
 
-[Download mimick.flatpakref](https://nicx17.github.io/mimick/mimick.flatpakref)
+[Download mimick.flatpakref](https://mimick.nicx.dev/mimick/mimick.flatpakref)
 
 ### Command Line Install
 Alternatively, install using the terminal. You can install directly via the `.flatpakref`:
 
 ```bash
-flatpak install --user https://nicx17.github.io/mimick/mimick.flatpakref
+flatpak install --user https://mimick.nicx.dev/mimick/mimick.flatpakref
 ```
 
 Or by adding the repository manually:
 
 ```bash
 # Add the official Mimick repository
-flatpak remote-add --user --if-not-exists mimick-repo https://nicx17.github.io/mimick/mimick.flatpakrepo
+flatpak remote-add --user --if-not-exists mimick-repo https://mimick.nicx.dev/mimick/mimick.flatpakrepo
 
 # Install the application
 flatpak install --user mimick-repo dev.nicx.mimick
@@ -42,7 +42,7 @@ The Mimick Flatpak repository currently publishes this signing-key fingerprint:
 To inspect the key embedded in the live `.flatpakrepo` file:
 
 ```bash
-curl -fsSL https://nicx17.github.io/mimick/mimick.flatpakrepo \
+curl -fsSL https://mimick.nicx.dev/mimick/mimick.flatpakrepo \
   | sed -n 's/^GPGKey=//p' \
   | base64 -d > /tmp/mimick-repo-public.gpg
 
