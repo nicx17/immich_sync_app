@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [9.5.0] - 2026-05-03
+
+### Added
+
+- New Library View feature for browsing assets in-app with dedicated library navigation and interactions.
+- Foundational library module components were introduced, including shared state wiring through `AppContext` and a dedicated library surface.
+- Library search expanded with metadata filters, timeline search, OCR-selectable search dimensions, and random asset search.
+- New Explore surface added for people, places, and things with integrated fetch flows.
+- Library sidebar now includes album-focused navigation and source-aware controls for browsing.
+- Local source enumeration was added for library integration and settings-driven source visibility.
+- Asset details now include EXIF model support and richer asset-detail fetching.
+- Albums view added with Recent, Owned, and Shared sections, plus in-app album creation.
+- Album synchronization support added for library workflows.
+- Thumbnail cache now supports ThumbHash + Base64 data paths for faster preview rendering.
+
+### Changed
+
+- Library source switching logic was refactored for readability and cleaner state transitions.
+- Explore view and sidebar composition were refactored to simplify state management and UI behavior.
+- Thumbnail loading/caching was reworked to reduce redundant fetches and improve cache initialization behavior.
+- Thumbnail decode/load paths now use cancellation-aware, bounded work to smooth scrolling under heavy grids.
+- Streaming downloads, disk-cache pruning, and sync-condition checks were optimized for runtime efficiency.
+- App identifier references were renamed from `io.github.nicx17.mimick` to `dev.nicx.mimick` across desktop and project configuration.
+- Documentation was updated to cover library view behavior and permissions in current builds.
+
+### Fixed
+
+- Grid view CSS states and layout behavior were polished for more consistent library interactions.
+- Asset download error handling in library-related fetch paths was improved.
+
 ## [9.4.2] - 2026-04-28
 
 ### Changed

@@ -74,6 +74,16 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+  <release version="9.5.0" date="2026-05-03">
+      <description>
+        <ul>
+          <li>Added a built-in Library View to browse, search, and manage Immich assets directly in the app.</li>
+          <li>Introduced bidirectional Album Synchronization between local folders and remote albums.</li>
+          <li>Expanded search with Smart Search (CLIP), OCR, timeline, and EXIF metadata filters.</li>
+          <li>Optimized thumbnail rendering with ThumbHash for faster loading and smoother grid scrolling.</li>
+        </ul>
+      </description>
+    </release>
     <release version="9.4.2" date="2026-04-28">
       <description>
         <ul>
