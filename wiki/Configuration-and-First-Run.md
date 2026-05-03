@@ -44,7 +44,7 @@ The window follows your desktop appearance preference, so it can render in eithe
     * Open your Immich Web Interface in a browser.
     * Go to **Account Settings** → **API Keys**.
     * Click **New API Key**, give it a name (like "Linux Desktop"), and click Create.
-    * Make sure the key includes **Asset Read/Create/Update** and **Album Read/Create/Update** permissions.
+    * Make sure the key includes **Asset Read/Create/Update/Download** and **Album Read/Create/Update** permissions.
     * Copy the key and paste it into the API Key field in Mimick.
     * *The key is stored securely using the `oo7` crate (encrypted portal file in Flatpak, or D-Bus Secret Service native).*
 
@@ -126,6 +126,23 @@ The export creates a timestamped `mimick-diagnostics-*` folder containing redact
 * `privacy-note.txt`
 
 API keys, raw logs, full local paths, and raw server URLs are intentionally omitted.
+
+---
+
+## Library View (Optional)
+
+Mimick includes an opt-in library browser for albums, Explore, and search.
+
+1. Enable **Settings → Behavior → Enable Library View**.
+2. Restart Mimick to switch the main window to the library view.
+3. Use the source selector for **Remote**, **Local**, or **Unified** browsing.
+4. Search modes:
+    * **Filename** (metadata/filename match)
+    * **Smart Search** (CLIP semantic search)
+    * **OCR** (text inside images)
+5. Use **Download** in the lightbox to save originals to a chosen folder.
+
+**Extra permissions:** Library browsing requires **Asset Read** and downloads require **Asset Download**.
 
 ---
 
@@ -218,6 +235,10 @@ The configuration is stored in a JSON file located at:
 | `run_on_startup` | Whether Mimick should register itself for automatic login startup. | `false` |
 | `pause_on_metered_network` | Whether uploads should pause while the active network connection appears metered. | `false` |
 | `pause_on_battery_power` | Whether uploads should pause while the system appears to be running on battery. | `false` |
+| `library_view_enabled` | Whether the in-app library view opens instead of the settings window. | `false` |
+| `download_target_path` | Target folder for library downloads (chosen on first download). | `"/home/user/Pictures/Downloads"` |
+| `library_preview_full_resolution` | Load full-resolution originals in the lightbox instead of previews. | `false` |
+| `library_thumbnail_cache_mb` | RAM cap for decoded thumbnails (0 = default 80 MB). | `80` |
 
 ### `watch_paths` Object Form
 
@@ -236,7 +257,7 @@ When a watch path is stored as an object, these fields can appear:
 
 When generating an API Key in the Immich Web UI (Account Settings > API Keys), you can restrict its permissions for better security. `mimick` requires the following minimum permissions:
 
-- **Asset**: `Read` (to check for duplicates), `Create` (to upload new media), `Update` (to reapply final asset timezone metadata after upload)
+- **Asset**: `Read` (to check for duplicates), `Create` (to upload new media), `Update` (to reapply final asset timezone metadata after upload), `Download` (for library view downloads)
 - **Album**: `Read` (to list existing albums), `Create` (to create new albums), `Update` (to add uploaded media to albums)
 
 ### Systemd Service Configuration (Native Only)
