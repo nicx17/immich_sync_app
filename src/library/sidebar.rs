@@ -42,6 +42,12 @@ pub fn build_sidebar() -> SidebarParts {
         "view-grid-symbolic",
         "explore",
     ));
+    fixed_list.append(&action_row(
+        "Albums",
+        "Recent, owned, and shared",
+        "folder-pictures-symbolic",
+        "albums",
+    ));
 
     let albums_header = gtk::Label::builder()
         .label("Albums")

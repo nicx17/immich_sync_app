@@ -2979,6 +2979,19 @@
     {
         "type": "archive",
         "archive-type": "tar-gzip",
+        "url": "https://static.crates.io/crates/thumbhash/thumbhash-0.1.0.crate",
+        "sha256": "8b7726e0245a7331bd0c9a1fb4fd99fd695bcd478ca569f0eda2ff2cb14e7a00",
+        "dest": "cargo/vendor/thumbhash-0.1.0"
+    },
+    {
+        "type": "inline",
+        "contents": "{\"package\": \"8b7726e0245a7331bd0c9a1fb4fd99fd695bcd478ca569f0eda2ff2cb14e7a00\", \"files\": {}}",
+        "dest": "cargo/vendor/thumbhash-0.1.0",
+        "dest-filename": ".cargo-checksum.json"
+    },
+    {
+        "type": "archive",
+        "archive-type": "tar-gzip",
         "url": "https://static.crates.io/crates/tinystr/tinystr-0.8.3.crate",
         "sha256": "c8323304221c2a851516f22236c5722a72eaa19749016521d6dff0824447d96d",
         "dest": "cargo/vendor/tinystr-0.8.3"

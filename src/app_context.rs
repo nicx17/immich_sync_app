@@ -29,4 +29,5 @@ pub struct AppContext {
     pub thumbnail_cache: Arc<ThumbnailCache>,
     pub library_state: Arc<Mutex<LibraryState>>,
     pub library_timeline_active: AtomicBool,
+    pub current_user_id: Arc<Mutex<Option<String>>>,
 }

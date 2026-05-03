@@ -155,6 +155,19 @@ impl ThumbnailCache {
         asset_id: &str,
         size: ThumbnailSize,
     ) -> Result<Texture, String> {
+        self.load_thumbnail_cancellable(asset_id, size, || false)
+            .await
+    }
+
+    pub async fn load_thumbnail_cancellable<F>(
+        &self,
+        asset_id: &str,
+        size: ThumbnailSize,
+        is_cancelled: F,
+    ) -> Result<Texture, String>
+    where
+        F: Fn() -> bool,
+    {
         if let Some(texture) = self.get_cached(asset_id, size) {
             return Ok(texture);
         }
@@ -164,7 +177,9 @@ impl ThumbnailCache {
             Ok(guard) => guard,
             Err(rx) => return await_inflight(rx).await,
         };
-        let result = self.fetch_remote_thumbnail(asset_id, size, &key).await;
+        let result = self
+            .fetch_remote_thumbnail(asset_id, size, &key, &is_cancelled)
+            .await;
         guard.publish(result.clone());
         result
     }
@@ -174,7 +189,11 @@ impl ThumbnailCache {
         asset_id: &str,
         size: ThumbnailSize,
         key: &str,
+        is_cancelled: &dyn Fn() -> bool,
     ) -> Result<Texture, String> {
+        if is_cancelled() {
+            return Err("cancelled".to_string());
+        }
         let _permit = self
             .load_semaphore
             .clone()
@@ -182,20 +201,25 @@ impl ThumbnailCache {
             .await
             .map_err(|err| err.to_string())?;
 
+        if is_cancelled() {
+            return Err("cancelled".to_string());
+        }
         if let Some(texture) = self.get_cached(asset_id, size) {
             return Ok(texture);
         }
 
         let cache_file = self.cache_file(asset_id, size);
         let cache_file_for_read = cache_file.clone();
-        let from_disk = tokio::task::spawn_blocking(move || -> Option<Texture> {
-            let bytes = std::fs::read(&cache_file_for_read).ok()?;
-            Texture::from_bytes(&Bytes::from(&bytes[..])).ok()
+        let from_disk = tokio::task::spawn_blocking(move || -> Option<Vec<u8>> {
+            std::fs::read(&cache_file_for_read).ok()
         })
         .await
         .map_err(|err| err.to_string())?;
 
-        if let Some(texture) = from_disk {
+        if let Some(bytes) = from_disk {
+            let texture = decode_to_scaled_texture(bytes)
+                .await
+                .map_err(|err| err.to_string())?;
             self.memory
                 .lock()
                 .unwrap()
@@ -203,15 +227,21 @@ impl ThumbnailCache {
             return Ok(texture);
         }
 
+        if is_cancelled() {
+            return Err("cancelled".to_string());
+        }
         let bytes = self.api_client.fetch_thumbnail(asset_id, size).await?;
         let cache_dir = self.cache_dir.clone();
-        let texture = tokio::task::spawn_blocking(move || -> Result<Texture, String> {
+        let cache_file_for_write = cache_file.clone();
+        let bytes_for_write = bytes.clone();
+        let _ = tokio::task::spawn_blocking(move || {
             let _ = std::fs::create_dir_all(&cache_dir);
-            let _ = std::fs::write(&cache_file, &bytes);
-            Texture::from_bytes(&Bytes::from(&bytes[..])).map_err(|e| e.to_string())
+            let _ = std::fs::write(&cache_file_for_write, &bytes_for_write);
         })
-        .await
-        .map_err(|err| err.to_string())??;
+        .await;
+        let texture = decode_to_scaled_texture(bytes)
+            .await
+            .map_err(|err| err.to_string())?;
 
         self.memory
             .lock()
@@ -220,11 +250,25 @@ impl ThumbnailCache {
         Ok(texture)
     }
 
+    #[allow(dead_code)]
     pub async fn load_local_thumbnail(
         &self,
         asset_id: &str,
         path: &std::path::Path,
     ) -> Result<Texture, String> {
+        self.load_local_thumbnail_cancellable(asset_id, path, || false)
+            .await
+    }
+
+    pub async fn load_local_thumbnail_cancellable<F>(
+        &self,
+        asset_id: &str,
+        path: &std::path::Path,
+        is_cancelled: F,
+    ) -> Result<Texture, String>
+    where
+        F: Fn() -> bool,
+    {
         let key = cache_key(asset_id, ThumbnailSize::Thumbnail);
         if let Some(texture) = self.memory.lock().unwrap().get(&key) {
             return Ok(texture);
@@ -234,7 +278,9 @@ impl ThumbnailCache {
             Ok(guard) => guard,
             Err(rx) => return await_inflight(rx).await,
         };
-        let result = self.fetch_local_thumbnail(asset_id, path, &key).await;
+        let result = self
+            .fetch_local_thumbnail(asset_id, path, &key, &is_cancelled)
+            .await;
         guard.publish(result.clone());
         result
     }
@@ -244,7 +290,11 @@ impl ThumbnailCache {
         asset_id: &str,
         path: &std::path::Path,
         key: &str,
+        is_cancelled: &dyn Fn() -> bool,
     ) -> Result<Texture, String> {
+        if is_cancelled() {
+            return Err("cancelled".to_string());
+        }
         let _permit = self
             .load_semaphore
             .clone()
@@ -252,6 +302,9 @@ impl ThumbnailCache {
             .await
             .map_err(|err| err.to_string())?;
 
+        if is_cancelled() {
+            return Err("cancelled".to_string());
+        }
         if let Some(texture) = self.memory.lock().unwrap().get(key) {
             return Ok(texture);
         }
@@ -380,6 +433,24 @@ fn local_cache_key(asset_id: &str) -> String {
 
 fn estimate_texture_bytes(texture: &Texture) -> usize {
     texture.width().max(1) as usize * texture.height().max(1) as usize * 4
+}
+
+async fn decode_to_scaled_texture(bytes: Vec<u8>) -> Result<Texture, String> {
+    tokio::task::spawn_blocking(move || -> Result<Texture, String> {
+        let stream = gtk::gio::MemoryInputStream::from_bytes(&Bytes::from_owned(bytes));
+        let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_stream_at_scale(
+            &stream,
+            256,
+            256,
+            true,
+            gtk::gio::Cancellable::NONE,
+        )
+        .map_err(|err| err.to_string())?;
+        #[allow(deprecated)]
+        Ok(Texture::for_pixbuf(&pixbuf))
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 #[cfg(test)]

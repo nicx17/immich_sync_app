@@ -298,6 +298,7 @@ async fn main() {
             thumbnail_cache,
             library_state,
             library_timeline_active: std::sync::atomic::AtomicBool::new(false),
+            current_user_id: Arc::new(Mutex::new(None)),
         });
         let _ = APP_CONTEXT.set(ctx.clone());
 

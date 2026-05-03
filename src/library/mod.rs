@@ -12,6 +12,9 @@ use libadwaita::prelude::*;
 use crate::api_client::{LibraryAsset, MetadataSearchFilters, ThumbnailSize};
 use crate::app_context::AppContext;
 use crate::config::Config;
+use crate::library::albums_view::{
+    AlbumClick, AlbumsViewParts, build_albums_view, populate_albums,
+};
 use crate::library::asset_object::AssetObject;
 use crate::library::explore_view::{ExploreViewParts, build_explore_view};
 use crate::library::grid_view::{GridViewParts, build_grid_view, extend_model, replace_model};
@@ -24,6 +27,7 @@ use crate::settings_window::build_settings_window_with_parent;
 
 const LOCAL_ID_PREFIX: &str = "local::";
 
+pub mod albums_view;
 pub mod asset_object;
 pub mod explore_view;
 pub mod grid_view;
@@ -43,6 +47,7 @@ struct LibraryWindowUi {
     sidebar: SidebarParts,
     grid: GridViewParts,
     explore: ExploreViewParts,
+    albums: AlbumsViewParts,
     content_stack: gtk::Stack,
     error_label: gtk::Label,
     footer_label: gtk::Label,
@@ -56,6 +61,9 @@ struct LibraryWindowUi {
     timeline_toggle: gtk::ToggleButton,
     timeline_banner: gtk::Label,
     source_mode_suppressed: Cell<bool>,
+    select_toggle: gtk::ToggleButton,
+    bulk_bar: gtk::Revealer,
+    bulk_count_label: gtk::Label,
 }
 
 pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>) {
@@ -88,13 +96,19 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     header.pack_start(&sidebar_toggle);
     header.pack_end(&prefs_button);
     header.pack_end(&refresh_button);
+    let select_toggle = gtk::ToggleButton::builder()
+        .icon_name("checkbox-symbolic")
+        .tooltip_text("Select assets (Esc to exit)")
+        .build();
+    header.pack_end(&select_toggle);
 
     let toolbar = libadwaita::ToolbarView::builder().build();
     toolbar.add_top_bar(&header);
 
     let sidebar = build_sidebar();
-    let grid = build_grid_view(ctx.clone());
+    let grid = build_grid_view(ctx.clone(), select_toggle.clone());
     let explore = build_explore_view();
+    let albums = build_albums_view();
 
     let source_mode_model = gtk::StringList::new(&["Remote", "Local", "Unified"]);
     let source_mode = gtk::DropDown::builder()
@@ -186,6 +200,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     content_stack.add_named(&error_view, Some("error"));
     content_stack.add_named(&grid.scrolled, Some("grid"));
     content_stack.add_named(&explore.root, Some("explore"));
+    content_stack.add_named(&albums.root, Some("albums"));
 
     let footer = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -210,12 +225,42 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     footer.append(&route_label);
     footer.append(&footer_label);
 
+    let bulk_count_label = gtk::Label::builder().xalign(0.0).hexpand(true).build();
+    let bulk_delete = gtk::Button::builder()
+        .label("Delete")
+        .css_classes(vec!["destructive-action".to_string()])
+        .build();
+    let bulk_download = gtk::Button::builder().label("Download").build();
+    let bulk_clear = gtk::Button::builder()
+        .label("Clear")
+        .css_classes(vec!["flat".to_string()])
+        .build();
+    let bulk_inner = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .margin_start(12)
+        .margin_end(12)
+        .css_classes(vec!["toolbar".to_string()])
+        .build();
+    bulk_inner.append(&bulk_count_label);
+    bulk_inner.append(&bulk_clear);
+    bulk_inner.append(&bulk_download);
+    bulk_inner.append(&bulk_delete);
+    let bulk_bar = gtk::Revealer::builder()
+        .transition_type(gtk::RevealerTransitionType::SlideUp)
+        .reveal_child(false)
+        .child(&bulk_inner)
+        .build();
+
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .build();
     content.append(&controls);
     content.append(&timeline_banner);
     content.append(&content_stack);
+    content.append(&bulk_bar);
     content.append(&footer);
 
     let split = libadwaita::OverlaySplitView::builder()
@@ -263,6 +308,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         sidebar,
         grid,
         explore,
+        albums,
         content_stack,
         error_label,
         footer_label,
@@ -276,7 +322,13 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         timeline_toggle,
         timeline_banner,
         source_mode_suppressed: Cell::new(false),
+        select_toggle: select_toggle.clone(),
+        bulk_bar: bulk_bar.clone(),
+        bulk_count_label: bulk_count_label.clone(),
     });
+
+    connect_select_mode(ui.clone(), select_toggle.clone());
+    connect_bulk_actions(ui.clone(), bulk_delete, bulk_download, bulk_clear);
 
     connect_sidebar_handlers(ui.clone());
     connect_controls(ui.clone(), prefs_button, refresh_button);
@@ -296,7 +348,96 @@ fn bootstrap_window(ui: Rc<LibraryWindowUi>) {
     apply_timeline_ui_state(&ui, &initial_request.1);
     load_albums(ui.clone());
     load_status(ui.clone());
+    fetch_current_user(ui.clone());
+    connect_albums_create(ui.clone());
     load_source_page(ui, initial_request, false);
+}
+
+fn fetch_current_user(ui: Rc<LibraryWindowUi>) {
+    if ui.ctx.current_user_id.lock().unwrap().is_some() {
+        return;
+    }
+    glib::MainContext::default().spawn_local(async move {
+        match ui.ctx.api_client.fetch_current_user_id().await {
+            Ok(id) => {
+                *ui.ctx.current_user_id.lock().unwrap() = Some(id);
+            }
+            Err(err) => log::warn!("Could not fetch current user id: {}", err),
+        }
+    });
+}
+
+fn connect_albums_create(ui: Rc<LibraryWindowUi>) {
+    ui.albums.create_button.connect_clicked(clone!(
+        #[strong]
+        ui,
+        move |_| prompt_create_album(ui.clone())
+    ));
+}
+
+fn prompt_create_album(ui: Rc<LibraryWindowUi>) {
+    let dialog = libadwaita::AlertDialog::builder()
+        .heading("Create album")
+        .body("Choose a name for the new album.")
+        .build();
+    let entry = gtk::Entry::builder()
+        .placeholder_text("Album name")
+        .activates_default(true)
+        .build();
+    dialog.set_extra_child(Some(&entry));
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("create", "Create");
+    dialog.set_response_appearance("create", libadwaita::ResponseAppearance::Suggested);
+    dialog.set_default_response(Some("create"));
+    dialog.set_close_response("cancel");
+
+    let ui_for_choice = ui.clone();
+    let entry_for_choice = entry.clone();
+    dialog.connect_response(None, move |dlg, response| {
+        if response != "create" {
+            return;
+        }
+        let name = entry_for_choice.text().to_string();
+        if name.trim().is_empty() {
+            return;
+        }
+        let ui = ui_for_choice.clone();
+        glib::MainContext::default().spawn_local(async move {
+            match ui.ctx.api_client.create_album(name.trim()).await {
+                Ok(_) => {
+                    refresh_albums_view(ui.clone());
+                    reload_sidebar(&ui);
+                }
+                Err(err) => log::error!("Create album failed: {}", err),
+            }
+        });
+        dlg.close();
+    });
+    dialog.present(Some(&ui.window));
+}
+
+fn refresh_albums_view(ui: Rc<LibraryWindowUi>) {
+    glib::MainContext::default().spawn_local(async move {
+        match ui.ctx.api_client.fetch_library_albums().await {
+            Ok(albums) => {
+                let on_click = album_click_handler(ui.clone());
+                populate_albums(&ui.albums, ui.ctx.clone(), albums, on_click);
+            }
+            Err(err) => log::warn!("Albums fetch failed: {}", err),
+        }
+    });
+}
+
+fn album_click_handler(ui: Rc<LibraryWindowUi>) -> AlbumClick {
+    Rc::new(move |id: &str, name: String| {
+        sidebar_dispatch(
+            ui.clone(),
+            LibrarySource::Album {
+                id: id.to_string(),
+                name,
+            },
+        );
+    })
 }
 
 fn connect_controls(
@@ -475,6 +616,144 @@ fn connect_controls(
     ));
 }
 
+fn connect_select_mode(ui: Rc<LibraryWindowUi>, select_toggle: gtk::ToggleButton) {
+    let selection = ui.grid.selection.clone();
+    let bulk_bar = ui.bulk_bar.clone();
+    let count_label = ui.bulk_count_label.clone();
+
+    let refresh = {
+        let selection = selection.clone();
+        let bulk_bar = bulk_bar.clone();
+        let count_label = count_label.clone();
+        let select_toggle = select_toggle.clone();
+        Rc::new(move || {
+            let n = selection_count(&selection);
+            bulk_bar.set_reveal_child(select_toggle.is_active() && n > 0);
+            count_label.set_label(&format!("{} selected", n));
+        })
+    };
+
+    selection.connect_selection_changed({
+        let refresh = refresh.clone();
+        move |_, _, _| (*refresh)()
+    });
+
+    select_toggle.connect_toggled({
+        let selection = selection.clone();
+        let refresh = refresh.clone();
+        move |toggle| {
+            if !toggle.is_active() {
+                selection.unselect_all();
+            }
+            (*refresh)();
+        }
+    });
+}
+
+fn connect_bulk_actions(
+    ui: Rc<LibraryWindowUi>,
+    delete_btn: gtk::Button,
+    download_btn: gtk::Button,
+    clear_btn: gtk::Button,
+) {
+    clear_btn.connect_clicked(clone!(
+        #[strong]
+        ui,
+        move |_| {
+            ui.grid.selection.unselect_all();
+        }
+    ));
+
+    download_btn.connect_clicked(clone!(
+        #[strong]
+        ui,
+        move |_| {
+            for (asset_id, filename) in collect_selected_assets(&ui) {
+                if !asset_id.starts_with(LOCAL_ID_PREFIX) {
+                    start_download(ui.clone(), asset_id, filename);
+                }
+            }
+        }
+    ));
+
+    delete_btn.connect_clicked(clone!(
+        #[strong]
+        ui,
+        move |_| {
+            confirm_and_bulk_delete(ui.clone());
+        }
+    ));
+}
+
+fn selection_count(selection: &gtk::MultiSelection) -> u32 {
+    let bitset = selection.selection();
+    bitset.size() as u32
+}
+
+fn collect_selected_assets(ui: &Rc<LibraryWindowUi>) -> Vec<(String, String)> {
+    let bitset = ui.grid.selection.selection();
+    let mut out = Vec::new();
+    let Some((mut iter, first)) = gtk::BitsetIter::init_first(&bitset) else {
+        return out;
+    };
+    let mut pos = Some(first);
+    while let Some(p) = pos {
+        if let Some(item) = ui.grid.model.item(p).and_downcast::<AssetObject>() {
+            out.push((
+                item.property::<String>("id"),
+                item.property::<String>("filename"),
+            ));
+        }
+        pos = iter.next();
+    }
+    out
+}
+
+fn confirm_and_bulk_delete(ui: Rc<LibraryWindowUi>) {
+    let assets = collect_selected_assets(&ui);
+    let remote_ids: Vec<String> = assets
+        .iter()
+        .filter(|(id, _)| !id.starts_with(LOCAL_ID_PREFIX))
+        .map(|(id, _)| id.clone())
+        .collect();
+    if remote_ids.is_empty() {
+        return;
+    }
+
+    let dialog = libadwaita::AlertDialog::builder()
+        .heading(format!("Move {} item(s) to trash?", remote_ids.len()))
+        .body("Items can be restored from the Immich trash.")
+        .build();
+    dialog.add_response("cancel", "Cancel");
+    dialog.add_response("delete", "Move to trash");
+    dialog.set_response_appearance("delete", libadwaita::ResponseAppearance::Destructive);
+    dialog.set_default_response(Some("cancel"));
+    dialog.set_close_response("cancel");
+
+    let ui_for_choice = ui.clone();
+    dialog.connect_response(None, move |dlg, response| {
+        if response != "delete" {
+            return;
+        }
+        let ui = ui_for_choice.clone();
+        let ids = remote_ids.clone();
+        glib::MainContext::default().spawn_local(async move {
+            match ui.ctx.api_client.delete_assets(&ids).await {
+                Ok(()) => {
+                    ui.grid.selection.unselect_all();
+                    ui.select_toggle.set_active(false);
+                    reload_sidebar(&ui);
+                }
+                Err(err) => {
+                    log::error!("Bulk delete failed: {}", err);
+                }
+            }
+        });
+        dlg.close();
+    });
+    dialog.present(Some(&ui.window));
+}
+
 fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
     // Photos / Explore (fixed destinations).
     ui.sidebar.fixed_list.connect_row_selected(clone!(
@@ -485,13 +764,16 @@ fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
                 return;
             };
             let key = row.tooltip_text().unwrap_or_default();
-            let source = match key.as_str() {
-                "photos" => LibrarySource::Timeline,
-                "explore" => LibrarySource::Explore,
-                _ => return,
-            };
             ui.sidebar.albums_list.unselect_all();
-            sidebar_dispatch(ui.clone(), source);
+            match key.as_str() {
+                "photos" => sidebar_dispatch(ui.clone(), LibrarySource::Timeline),
+                "explore" => sidebar_dispatch(ui.clone(), LibrarySource::Explore),
+                "albums" => {
+                    ui.content_stack.set_visible_child_name("albums");
+                    refresh_albums_view(ui.clone());
+                }
+                _ => {}
+            }
         }
     ));
 
