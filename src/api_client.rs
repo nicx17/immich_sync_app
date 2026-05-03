@@ -43,6 +43,10 @@ pub struct LibraryAlbum {
     pub updated_at: String,
     #[serde(default)]
     pub description: String,
+    #[serde(rename = "ownerId", default)]
+    pub owner_id: String,
+    #[serde(default)]
+    pub shared: bool,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, PartialEq)]
@@ -1137,6 +1141,68 @@ impl ImmichApiClient {
                     .await;
                 Err(err.to_string())
             }
+        }
+    }
+
+    pub async fn fetch_current_user_id(&self) -> Result<String, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/users/me", base_url);
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let json: serde_json::Value = resp.json().await.map_err(|err| err.to_string())?;
+                json.get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| "Missing id in /users/me response".to_string())
+            }
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
+    pub async fn delete_assets(&self, asset_ids: &[String]) -> Result<(), String> {
+        if asset_ids.is_empty() {
+            return Ok(());
+        }
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/assets", base_url);
+        let body = serde_json::json!({
+            "ids": asset_ids,
+            "force": false,
+        });
+        match self
+            .client
+            .delete(&url)
+            .header("x-api-key", &settings.api_key)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(15))
+            .body(body.to_string())
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                self.clear_issue().await;
+                Ok(())
+            }
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(err) => Err(err.to_string()),
         }
     }
 
