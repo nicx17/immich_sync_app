@@ -365,6 +365,8 @@ async fn main() {
         // Arc<Mutex<bool>> is Send + Sync, so it can cross the tokio::spawn boundary.
         let settings_flag = Arc::new(std::sync::Mutex::new(false));
         let settings_flag_writer = settings_flag.clone(); // moves into tokio::spawn (Send ✓)
+        let library_flag = Arc::new(std::sync::Mutex::new(false));
+        let library_flag_writer = library_flag.clone();
         let quit_flag = Arc::new(std::sync::Mutex::new(false));
         let quit_flag_writer = quit_flag.clone(); // moves into tokio::spawn (Send ✓)
         let pause_flag = Arc::new(std::sync::Mutex::new(false));
@@ -389,7 +391,24 @@ async fn main() {
                     .get()
                     .cloned()
                     .expect("App context should be initialized before opening settings");
-                open_settings_if_needed(&app_clone2, ctx);
+                open_settings_window_now(&app_clone2, ctx);
+            }
+
+            let library_triggered = {
+                let mut f = library_flag.lock().unwrap();
+                if *f {
+                    *f = false;
+                    true
+                } else {
+                    false
+                }
+            };
+            if library_triggered {
+                let ctx = APP_CONTEXT
+                    .get()
+                    .cloned()
+                    .expect("App context should be initialized before opening library");
+                open_library_window_now(&app_clone2, ctx);
             }
 
             let quit_triggered = {
@@ -454,7 +473,15 @@ async fn main() {
         tokio::spawn(async move {
             log::info!("Starting system tray");
             match build_tray().await {
-                Ok((_handle, mut settings_rx, mut quit_rx, mut pause_rx, mut sync_now_rx)) => {
+                Ok(handles) => {
+                    let crate::tray_icon::TrayHandles {
+                        handle: _handle,
+                        mut settings_rx,
+                        mut library_rx,
+                        mut quit_rx,
+                        mut pause_rx,
+                        mut sync_now_rx,
+                    } = handles;
                     loop {
                         tokio::select! {
                             res = settings_rx.changed() => {
@@ -463,6 +490,14 @@ async fn main() {
                                 }
                                 if *settings_rx.borrow() {
                                     *settings_flag_writer.lock().unwrap() = true;
+                                }
+                            }
+                            res = library_rx.changed() => {
+                                if res.is_err() {
+                                    break;
+                                }
+                                if *library_rx.borrow() {
+                                    *library_flag_writer.lock().unwrap() = true;
                                 }
                             }
                             res = quit_rx.changed() => {
@@ -512,19 +547,25 @@ async fn main() {
         }
 
         let runtime_config = Config::new();
-        let open_settings = argv.contains(&"--settings".to_string())
-            // Also open settings when activated by a secondary instance (e.g. clicking
-            // the app icon in the launcher while the daemon is already running).
-            || cmdline.is_remote()
-            || runtime_config.get_api_key().unwrap_or_default().is_empty()
+        let want_settings = argv.contains(&"--settings".to_string());
+        let want_library = argv.contains(&"--library".to_string());
+        let setup_required = runtime_config.get_api_key().unwrap_or_default().is_empty()
             || !runtime_config.data.background_sync_enabled;
+        let secondary_activation = cmdline.is_remote();
 
-        if open_settings {
-            let ctx = APP_CONTEXT
+        let ctx_lookup = || {
+            APP_CONTEXT
                 .get()
                 .cloned()
-                .expect("App context should be initialized before command-line activation");
-            open_settings_if_needed(app, ctx);
+                .expect("App context should be initialized before command-line activation")
+        };
+
+        if want_settings || setup_required {
+            open_settings_window_now(app, ctx_lookup());
+        } else if want_library {
+            open_library_window_now(app, ctx_lookup());
+        } else if secondary_activation {
+            open_default_window(app, ctx_lookup());
         }
 
         app.activate();
@@ -552,17 +593,47 @@ async fn main() {
     }
 }
 
-/// Open the settings window only if one is not already visible.
-fn open_settings_if_needed(app: &adw::Application, ctx: Arc<AppContext>) {
-    if let Some(win) = app.windows().first() {
+/// Default activation: open whichever window the user prefers, presenting an
+/// existing instance if one is already open.
+fn open_default_window(app: &adw::Application, ctx: Arc<AppContext>) {
+    if let Some(win) = find_window(app, "mimick-library-window")
+        .or_else(|| find_window(app, "mimick-settings-window"))
+    {
         win.present();
-    } else if Config::new().data.library_view_enabled {
-        log::debug!("Opening library window");
-        library::build_library_window(app, ctx);
-    } else {
-        log::debug!("Opening settings window");
-        build_settings_window(app, ctx);
+        return;
     }
+    if Config::new().data.library_view_enabled {
+        open_library_window_now(app, ctx);
+    } else {
+        open_settings_window_now(app, ctx);
+    }
+}
+
+fn open_settings_window_now(app: &adw::Application, ctx: Arc<AppContext>) {
+    if let Some(win) = find_window(app, "mimick-settings-window") {
+        win.present();
+        return;
+    }
+    log::debug!("Opening settings window");
+    build_settings_window(app, ctx);
+}
+
+fn open_library_window_now(app: &adw::Application, ctx: Arc<AppContext>) {
+    if let Some(win) = find_window(app, "mimick-library-window") {
+        win.present();
+        return;
+    }
+    if !Config::new().data.library_view_enabled {
+        log::info!("Library view is disabled in settings; opening Settings instead");
+        open_settings_window_now(app, ctx);
+        return;
+    }
+    log::debug!("Opening library window");
+    library::build_library_window(app, ctx);
+}
+
+fn find_window(app: &adw::Application, name: &str) -> Option<gtk::Window> {
+    app.windows().into_iter().find(|w| w.widget_name() == name)
 }
 
 #[cfg(test)]

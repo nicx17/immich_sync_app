@@ -9,6 +9,8 @@ pub struct MimickTray {
     /// Sender used to signal the GTK main loop to open the settings window.
     /// Sending `true` triggers the open; the receiver is polled via glib::timeout_add.
     pub settings_tx: watch::Sender<bool>,
+    /// Sender used to signal the GTK main loop to open the library window.
+    pub library_tx: watch::Sender<bool>,
     /// Sender used to request a graceful application quit from the GTK main loop.
     pub quit_tx: watch::Sender<bool>,
     /// Sender used to toggle the paused state from the tray.
@@ -32,7 +34,21 @@ impl ksni::Tray for MimickTray {
 
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         use ksni::menu::*;
-        vec![
+        let library_enabled = crate::config::Config::new().data.library_view_enabled;
+        let mut items: Vec<ksni::MenuItem<Self>> = Vec::new();
+        if library_enabled {
+            items.push(
+                StandardItem {
+                    label: "Library".into(),
+                    activate: Box::new(|tray: &mut Self| {
+                        let _ = tray.library_tx.send(true);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+            );
+        }
+        items.extend(vec![
             StandardItem {
                 label: "Settings".into(),
                 activate: Box::new(|tray: &mut Self| {
@@ -67,27 +83,30 @@ impl ksni::Tray for MimickTray {
                 ..Default::default()
             }
             .into(),
-        ]
+        ]);
+        items
     }
 }
 
 /// Launch the tray and return receivers for settings-open and quit requests.
-pub async fn build_tray() -> Result<
-    (
-        ksni::Handle<MimickTray>,
-        watch::Receiver<bool>,
-        watch::Receiver<bool>,
-        watch::Receiver<bool>,
-        watch::Receiver<bool>,
-    ),
-    ksni::Error,
-> {
+pub struct TrayHandles {
+    pub handle: ksni::Handle<MimickTray>,
+    pub settings_rx: watch::Receiver<bool>,
+    pub library_rx: watch::Receiver<bool>,
+    pub quit_rx: watch::Receiver<bool>,
+    pub pause_rx: watch::Receiver<bool>,
+    pub sync_now_rx: watch::Receiver<bool>,
+}
+
+pub async fn build_tray() -> Result<TrayHandles, ksni::Error> {
     let (settings_tx, settings_rx) = watch::channel(false);
+    let (library_tx, library_rx) = watch::channel(false);
     let (quit_tx, quit_rx) = watch::channel(false);
     let (pause_tx, pause_rx) = watch::channel(false);
     let (sync_now_tx, sync_now_rx) = watch::channel(false);
     let tray = MimickTray {
         settings_tx,
+        library_tx,
         quit_tx,
         pause_tx,
         sync_now_tx,
@@ -99,5 +118,12 @@ pub async fn build_tray() -> Result<
     } else {
         tray.spawn().await?
     };
-    Ok((handle, settings_rx, quit_rx, pause_rx, sync_now_rx))
+    Ok(TrayHandles {
+        handle,
+        settings_rx,
+        library_rx,
+        quit_rx,
+        pause_rx,
+        sync_now_rx,
+    })
 }

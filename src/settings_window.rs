@@ -86,6 +86,7 @@ pub fn build_settings_window_with_parent(
     let mut window_builder = adw::ApplicationWindow::builder()
         .application(app)
         .title("Mimick")
+        .name("mimick-settings-window")
         .default_width(520)
         .default_height(780);
     if let Some(parent) = parent {

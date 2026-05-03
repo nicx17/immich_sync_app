@@ -118,6 +118,15 @@ pub fn best_matching_watch_entry<'a>(
         .max_by_key(|entry| entry.path().len())
 }
 
+pub fn watch_entry_for_album<'a>(
+    album_name: &str,
+    entries: &'a [WatchPathEntry],
+) -> Option<&'a WatchPathEntry> {
+    entries
+        .iter()
+        .find(|entry| entry.album_name() == Some(album_name))
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub enum StartupCatchupMode {
     #[default]
