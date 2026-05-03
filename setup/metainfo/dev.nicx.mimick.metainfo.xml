@@ -14,6 +14,7 @@
       Designed as an interactive agent with a modern dashboard and system tray indicator, it provides transparent, 
       user-led control over your backups.
     </p>
+    <p>Mimick is a community-developed client and is not affiliated with or endorsed by the Immich project.</p>
     <ul>
       <li>Intelligent Monitoring: Uses native filesystem events with a polling fallback for sandboxed directories.</li>
       <li>Efficient Deduplication: Tracks local assets using SHA-1 checksums to prevent redundant uploads.</li>
@@ -74,7 +75,7 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
-  <release version="9.5.0" date="2026-05-03">
+    <release version="9.5.0" date="2026-05-03">
       <description>
         <ul>
           <li>Added a built-in Library View to browse, search, and manage Immich assets directly in the app.</li>
