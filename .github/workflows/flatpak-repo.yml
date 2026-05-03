@@ -115,11 +115,11 @@ jobs:
             printf 'Title=Mimick Repository\n'
             printf 'DefaultBranch=stable\n'
             printf 'RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo\n'
-            printf 'Url=https://mimick.nicx.dev/mimick/\n'
+            printf 'Url=https://mimick.nicx.dev/\n'
             printf 'Homepage=https://github.com/nicx17/mimick\n'
             printf 'Comment=Official repository for the Mimick Immich sync daemon\n'
             printf 'Description=A daemon-based synchronization tool for uploading media files from a Linux desktop to an Immich server.\n'
-            printf 'Icon=https://mimick.nicx.dev/mimick/icon.png\n'
+            printf 'Icon=https://mimick.nicx.dev/icon.png\n'
             printf 'GPGKey=%s\n' "$REPO_GPG_KEY"
           } > repo/mimick.flatpakrepo
 
@@ -132,10 +132,10 @@ jobs:
             printf 'Title=Mimick\n'
             printf 'Name=dev.nicx.mimick\n'
             printf 'Branch=stable\n'
-            printf 'Url=https://mimick.nicx.dev/mimick/\n'
+            printf 'Url=https://mimick.nicx.dev/\n'
             printf 'SuggestRemoteName=mimick\n'
             printf 'Homepage=https://github.com/nicx17/mimick\n'
-            printf 'Icon=https://mimick.nicx.dev/mimick/icon.png\n'
+            printf 'Icon=https://mimick.nicx.dev/icon.png\n'
             printf 'RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo\n'
             printf 'IsRuntime=false\n'
             printf 'GPGKey=%s\n' "$REPO_GPG_KEY"
