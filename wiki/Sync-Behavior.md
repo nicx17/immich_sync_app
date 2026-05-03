@@ -37,3 +37,12 @@ If the old album was deleted or the stored album ID is stale, Mimick refreshes a
 - Duplicate detection uses SHA-1 checksums and Immich's upload-check behavior.
 - Existing assets can be looked up and reused instead of uploading the file bytes again.
 - The Status page can pause/resume syncing, trigger `Sync Now`, and expose queue recovery actions while Mimick is already running.
+
+## Album Synchronization (Bidirectional)
+
+With the introduction of the built-in Library View, an on-demand bidirectional sync between local folders and remote albums is supported. When a local folder is linked to a remote album:
+
+1. **Difference Calculation:** Mimick compares existing local files to assets in the remote album using their SHA-1 checksums.
+2. **Uploading:** Files inside the local folder that are missing remotely are queued for upload to the target album.
+3. **Downloading:** Assets in the target album missing locally are downloaded to the linked watch folder. 
+4. **Collision Handling:** If a file with an identical name already exists but hasn't fully matched via SHA-1 or needs renaming, Mimick automatically appends a numeric suffix (e.g. `file (1).jpg`) to prevent clobbering existing local data.
