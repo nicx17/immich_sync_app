@@ -1,0 +1,10 @@
+Mimick bundles or links against the third-party Rust crates listed below.
+Full license texts are shipped alongside the application binary.
+
+== Summary ==
+{{#each overview}}  {{count}} crates: {{{name}}} ({{{id}}})
+{{/each}}
+
+== Crate listing ==
+{{#each licenses}}{{#each used_by}}  {{this.crate.name}} {{this.crate.version}} — {{../id}}
+{{/each}}{{/each}}

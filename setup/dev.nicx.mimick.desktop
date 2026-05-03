@@ -8,8 +8,7 @@ Type=Application
 Categories=Utility;
 Actions=Library;Settings;Quit;
 Keywords=Photo;Sync;Backup;Immich;
-StartupNotify=false
-X-GNOME-Autostart-enabled=true
+StartupNotify=true
 StartupWMClass=dev.nicx.mimick
 SingleMainWindow=true
 

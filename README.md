@@ -96,14 +96,14 @@ You can easily install Mimick by downloading and opening the `.flatpakref` file.
 Alternatively, install using the terminal. You can install directly via the `.flatpakref`:
 
 ```bash
-flatpak install --user https://mimick.nicx.dev/mimick/mimick.flatpakref
+flatpak install --user https://mimick.nicx.dev/mimick.flatpakref
 ```
 
 Or by adding the repository manually:
 
 ```bash
 # Add the official Mimick repository
-flatpak remote-add --user --if-not-exists mimick-repo https://mimick.nicx.dev/mimick/mimick.flatpakrepo
+flatpak remote-add --user --if-not-exists mimick-repo https://mimick.nicx.dev/mimick.flatpakrepo
 
 # Install the application
 flatpak install --user mimick-repo dev.nicx.mimick

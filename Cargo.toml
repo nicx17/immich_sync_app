@@ -2,6 +2,7 @@
 name = "mimick"
 version = "9.5.0"
 edition = "2024"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 ashpd = { version = "0.13.10", features = ["background", "gtk4"] }

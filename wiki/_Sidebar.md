@@ -4,7 +4,9 @@
 
 - [Installation](Installation)
 - [Configuration and First Run](Configuration-and-First-Run)
+- [Library View](Library-View-User-Guide)
 - [Sync Behavior](Sync-Behavior)
+- [Performance Tuning](Performance-Tuning)
 - [Flatpak and Permissions](Flatpak-and-Permissions)
 - [Troubleshooting](Troubleshooting)
 

@@ -1,0 +1,18 @@
+Mimick bundles or links against the following third-party Rust crates.
+Their license terms apply in addition to Mimick's own GPL-3.0-or-later license.
+
+================================================================================
+
+{{#each licenses}}
+--------------------------------------------------------------------------------
+{{{name}}} ({{{id}}})
+Used by:
+{{#each used_by}}  - {{this.crate.name}} {{this.crate.version}}
+{{/each}}
+--------------------------------------------------------------------------------
+
+{{{text}}}
+
+================================================================================
+
+{{/each}}

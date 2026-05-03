@@ -21,6 +21,8 @@ Clicking on the tray icon reveals a menu:
 
 You can also use the launcher action for **Quit Mimick** to stop the already-running app without opening the settings window.
 
+The tray icon uses a single static icon regardless of sync state. To check current status, open the Settings window and look at the Status page. Dynamic tray icon states (idle / syncing / paused / error) are not yet implemented.
+
 ---
 
 ## 2. Configuring the Application
@@ -65,6 +67,14 @@ Flatpak builds only have access to folders that you add through this picker. If 
 
 Portal-backed folders may appear by folder name in the UI and logs instead of showing the raw `/run/user/.../doc/...` sandbox path.
 
+### Nested Watch Folders
+
+You can add both a parent folder and a subfolder as separate watch entries. Mimick uses the most specific matching path when deciding which album and rules to apply to a file.
+
+For example, if you watch `~/Pictures` (album: **All Photos**) and also `~/Pictures/iPhone` (album: **iPhone**), files inside `~/Pictures/iPhone` use the **iPhone** album and its rules. Files elsewhere under `~/Pictures` use the **All Photos** album.
+
+There is no limit on nesting depth. If a file matches multiple watch paths, the longest matching prefix wins.
+
 ### Startup Behavior
 
 Use the **Run on Startup** switch in the **Behavior** section if you want Mimick to launch automatically when you log in.
@@ -76,6 +86,39 @@ You can also enable:
 
 * **Pause on Metered Network**: Mimick defers uploads when the active connection appears metered.
 * **Pause on Battery Power**: Mimick defers uploads while the system appears to be running on battery.
+
+### Background Sync
+
+The **Background Sync** switch controls whether Mimick continues running when the settings window is closed.
+
+* **Enabled**: closing the window hides it. Mimick keeps syncing in the background and remains accessible from the tray.
+* **Disabled (default)**: closing the window quits the application entirely if no upload is in progress. Mimick only runs while the window is open.
+
+If you disable Background Sync and also enable Run on Startup, Mimick will launch on login but quit as soon as you close the window. Re-opening it from the launcher starts it again.
+
+### Quiet Hours
+
+The **Quiet Hours** switch in the Behavior section pauses uploads during a nightly window. When enabled, two spinners let you set a start hour and an end hour (0–23, using your local clock).
+
+* Uploads in progress when the quiet window begins are paused at the next worker cycle, not interrupted mid-file.
+* Uploads resume automatically when the local clock passes the end hour.
+* Wrapping windows are supported: setting start to `22` and end to `6` pauses from 22:00 until 06:00 the next morning.
+* Setting start and end to the same hour disables the window even if the switch is on.
+* Quiet hours interact with other pause conditions — if the app is also manually paused or paused by a metered-network policy, it stays paused for the other reason after the quiet window ends.
+
+The quiet hours check runs on the local system clock. Timezone changes while the app is running take effect on the next worker cycle.
+
+### Startup Catch-Up Mode
+
+The **Startup Catch-Up** dropdown in the Behavior section controls how thoroughly Mimick rescans watch folders when it launches.
+
+| Mode | Behaviour |
+| :--- | :--- |
+| **Full** | Scans every file in every watch folder regardless of when it was last modified. Suitable if you want a complete audit on each launch. Slowest on large folders. |
+| **Recent Only** | Scans files modified in approximately the last 7 days. Faster than Full but may miss older files added while the app was not running. |
+| **New Files Only** | Only processes files not already present in the local sync index. Fastest; does not re-check files that were previously seen even if their content changed. |
+
+The default is **Full**. If startup is slow on a large library you can switch to **New Files Only** once the initial sync is complete.
 
 ### Saving Changes
 
@@ -133,14 +176,7 @@ API keys, raw logs, full local paths, and raw server URLs are intentionally omit
 
 Mimick includes an opt-in library browser for albums, Explore, and search.
 
-1. Enable **Settings → Behavior → Enable Library View**.
-2. Restart Mimick to switch the main window to the library view.
-3. Use the source selector for **Remote**, **Local**, or **Unified** browsing.
-4. Search modes:
-    * **Filename** (metadata/filename match)
-    * **Smart Search** (CLIP semantic search)
-    * **OCR** (text inside images)
-5. Use **Download** in the lightbox to save originals to a chosen folder.
+Enable it in **Settings → Behavior → Enable Library View**, then restart. See the [Library View user guide](Library-View-User-Guide) for full usage documentation.
 
 **Extra permissions:** Library browsing requires **Asset Read** and downloads require **Asset Download**.
 
@@ -291,3 +327,15 @@ It reruns the watched-folder scan immediately so you do not need to restart Mimi
 
 **Q: The tray icon does not appear on GNOME.**
 GNOME requires the "AppIndicator and KStatusNotifierItem Support" extension. Install it from the GNOME Extensions website. Without it, the warning `Watcher(ServiceUnknown)` is expected and harmless — the app still runs fully in the background.
+
+**Q: Mimick quits when I close the window.**
+Background Sync is disabled. Enable it in **Settings → Behavior → Background Sync** and save. After that, closing the window hides it instead of exiting.
+
+**Q: Uploads are paused but I did not set quiet hours or enable any pause policy.**
+Open the Status page and check the status text — it shows the pause reason. Common causes: the quiet-hours window is active, a metered-network or battery-power policy triggered, or the app was paused manually from the tray.
+
+**Q: The startup scan is slow.**
+Switch **Startup Catch-Up Mode** to **New Files Only** in Settings → Behavior once your initial sync is complete. This skips files already in the sync index and only processes genuinely new additions.
+
+**Q: I have two watch folders pointing at the same parent and subfolder. Which album does a file use?**
+The most specific (longest) matching path wins. A file at `~/Pictures/iPhone/img.jpg` uses the album configured for `~/Pictures/iPhone`, not the one for `~/Pictures`.

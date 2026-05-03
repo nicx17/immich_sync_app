@@ -1897,6 +1897,14 @@ fn show_about_dialog(parent: &impl gtk::prelude::IsA<gtk::Widget>) {
         &["Round Icons https://unsplash.com/illustrations/a-white-and-orange-flower-on-a-white-background-IkQ_WrJzZOM"],
     );
 
+    let third_party = glib::markup_escape_text(include_str!("../THIRD_PARTY_LICENSES_SUMMARY.txt"));
+    about.add_legal_section(
+        "Third-party Licenses",
+        None,
+        gtk::License::Custom,
+        Some(&third_party),
+    );
+
     about.present(Some(parent));
 }
 
