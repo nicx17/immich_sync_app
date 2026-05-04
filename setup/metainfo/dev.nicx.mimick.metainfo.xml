@@ -75,6 +75,18 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="9.5.1" date="2026-05-04">
+      <description>
+        <ul>
+          <li>Fixed startup view being forced to Settings when background sync is disabled; the correct default window now opens.</li>
+          <li>Fixed direct navigation between Album and Explore views, which previously required routing through Photos.</li>
+          <li>Fixed default folder name albums not auto-linking to the remote album and creating duplicate config entries on re-save.</li>
+          <li>Fixed folder-linking UI appearing on Explore and Album views when entered from an album context.</li>
+          <li>Fixed local asset count double-counting files reached via symlinks or duplicate paths in album sync.</li>
+          <li>Removed <code>MESA_LOG_LEVEL=error</code> from Flatpak manifests.</li>
+        </ul>
+      </description>
+    </release>
     <release version="9.5.0" date="2026-05-03">
       <description>
         <ul>

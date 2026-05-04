@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [9.5.1] - 2026-05-04
+
+### Fixed
+
+- Startup view no longer forced to Settings when background sync is disabled; the default window (Library if enabled) now opens correctly.
+- Direct navigation between Album and Explore views now works without routing through Photos first.
+- Default folder name albums now auto-link to the correct remote album and no longer create duplicate config entries on re-save.
+- Folder-linking UI is now hidden when navigating to Explore or Albums from within an album view so it only appears in relevant contexts.
+- Local asset count in album sync no longer double-counts files reached via symlinks or duplicate paths.
+
+### Changed
+
+- Removed `--env=MESA_LOG_LEVEL=error` from Flatpak manifests
+
+---
+
 ## [9.5.0] - 2026-05-03
 
 ### Added
