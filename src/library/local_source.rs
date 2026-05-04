@@ -10,6 +10,7 @@
 //! looking up `SyncIndex.stored_checksum(path)` for paths the engine has
 //! already hashed; assets the user hasn't synced yet show as "Local only".
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -70,6 +71,7 @@ pub async fn enumerate_local(ctx: Arc<AppContext>) -> Vec<LocalAsset> {
 
 fn enumerate_blocking(watch_paths: &[WatchPathEntry]) -> Vec<LocalAsset> {
     let mut out = Vec::new();
+    let mut seen: HashSet<PathBuf> = HashSet::new();
     for entry in watch_paths {
         let root = PathBuf::from(entry.path());
         if !root.is_dir() {
@@ -92,6 +94,10 @@ fn enumerate_blocking(watch_paths: &[WatchPathEntry]) -> Vec<LocalAsset> {
                     continue;
                 }
                 if !rules.matches(&path) {
+                    continue;
+                }
+                let key = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+                if !seen.insert(key) {
                     continue;
                 }
                 if let Some(asset) = build_asset(&path) {

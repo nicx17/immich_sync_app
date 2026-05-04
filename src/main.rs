@@ -549,8 +549,7 @@ async fn main() {
         let runtime_config = Config::new();
         let want_settings = argv.contains(&"--settings".to_string());
         let want_library = argv.contains(&"--library".to_string());
-        let setup_required = runtime_config.get_api_key().unwrap_or_default().is_empty()
-            || !runtime_config.data.background_sync_enabled;
+        let setup_required = runtime_config.get_api_key().unwrap_or_default().is_empty();
         let secondary_activation = cmdline.is_remote();
 
         let ctx_lookup = || {
@@ -564,7 +563,7 @@ async fn main() {
             open_settings_window_now(app, ctx_lookup());
         } else if want_library {
             open_library_window_now(app, ctx_lookup());
-        } else if secondary_activation {
+        } else if secondary_activation || !runtime_config.data.background_sync_enabled {
             open_default_window(app, ctx_lookup());
         }
 

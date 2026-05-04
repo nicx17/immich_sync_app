@@ -820,6 +820,10 @@ fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
                 "photos" => sidebar_dispatch(ui.clone(), LibrarySource::Timeline),
                 "explore" => sidebar_dispatch(ui.clone(), LibrarySource::Explore),
                 "albums" => {
+                    ui.album_link_row.set_visible(false);
+                    if let Some(parent) = ui.album_link_row.parent() {
+                        parent.set_visible(false);
+                    }
                     ui.content_stack.set_visible_child_name("albums");
                     refresh_albums_view(ui.clone());
                 }
@@ -849,9 +853,11 @@ fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
 
 /// Common path for sidebar selections. Skips redundant dispatches so the
 /// `reload_sidebar` programmatic re-selection doesn't loop into another
-/// fetch.
+/// fetch — but only when the content stack is already showing the current
+/// source, since the Albums grid moves the stack without changing source.
 fn sidebar_dispatch(ui: Rc<LibraryWindowUi>, source: LibrarySource) {
-    if ui.ctx.library_state.lock().unwrap().source == source {
+    let on_albums_grid = ui.content_stack.visible_child_name().as_deref() == Some("albums");
+    if !on_albums_grid && ui.ctx.library_state.lock().unwrap().source == source {
         return;
     }
     let request = ui.ctx.library_state.lock().unwrap().switch_source(source);
