@@ -15,7 +15,6 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  - --env=MESA_LOG_LEVEL=error
   - --share=ipc
   - --talk-name=org.kde.StatusNotifierWatcher
   - --share=network

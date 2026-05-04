@@ -648,18 +648,26 @@ pub fn build_settings_window_with_parent(
                 let has_rules = rules != FolderRules::default();
                 let album_name = row_data.album_name.borrow().clone();
 
-                if (album_name.is_empty() || album_name == DEFAULT_ALBUM_LABEL) && !has_rules {
+                let is_default = album_name.is_empty() || album_name == DEFAULT_ALBUM_LABEL;
+                let resolved_album_name = if is_default {
+                    Path::new(&folder)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s.to_string())
+                } else {
+                    Some(album_name)
+                };
+
+                if is_default && !has_rules && resolved_album_name.is_none() {
                     watch_paths.push(WatchPathEntry::Simple(folder));
                 } else {
-                    let album_id = albums_map.get(&album_name).cloned();
+                    let album_id = resolved_album_name
+                        .as_ref()
+                        .and_then(|n| albums_map.get(n).cloned());
                     watch_paths.push(WatchPathEntry::WithConfig {
                         path: folder,
                         album_id,
-                        album_name: if album_name.is_empty() || album_name == DEFAULT_ALBUM_LABEL {
-                            None
-                        } else {
-                            Some(album_name)
-                        },
+                        album_name: resolved_album_name,
                         rules,
                     });
                 }
