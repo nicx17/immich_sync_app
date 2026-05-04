@@ -1,5 +1,5 @@
 
-# Mimick - Immich Desktop Client for Linux
+# Mimick - Unofficial Immich Desktop Client for Linux
 
 <div align="center">
 
@@ -15,9 +15,9 @@
 </div>
 
 
-Mimick is an Immich desktop client for Linux. It provides a GTK4/libadwaita GUI for syncing local photo and video folders to a self-hosted Immich server, with background folder watching, tray controls, retries, diagnostics, and per-folder album rules.
+Mimick is an unofficial Immich desktop client for Linux. It provides a GTK4/libadwaita interface for automatic background sync of local photo and video folders to a self-hosted Immich server, and an optional library browser for viewing, searching, and managing assets directly from the desktop.
 
-Use Mimick as a native Linux GUI for Immich when you want your desktop folders to upload automatically without running a manual script or keeping a browser open.
+> This is a community-developed project and is not affiliated with or endorsed by the Immich project.
 
 <div align="center">
 
