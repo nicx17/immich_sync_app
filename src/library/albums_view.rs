@@ -156,19 +156,24 @@ fn build_section(title: &str) -> (gtk::Box, gtk::FlowBox) {
 fn album_tile(ctx: Arc<AppContext>, album: &LibraryAlbum, on_click: AlbumClick) -> gtk::Button {
     let tile_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
-        .spacing(6)
+        .spacing(4)
         .build();
     let picture = gtk::Picture::builder()
-        .height_request(140)
-        .width_request(180)
+        .width_request(300)
+        .height_request(220)
         .content_fit(gtk::ContentFit::Cover)
-        .css_classes(vec!["mimick-thumbnail-loading".to_string()])
+        .css_classes(vec!["mimick-explore-tile".to_string()])
+        .build();
+    let meta_row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
         .build();
     let title_label = gtk::Label::builder()
         .label(&album.album_name)
-        .xalign(0.5)
+        .xalign(0.0)
+        .hexpand(true)
         .ellipsize(gtk::pango::EllipsizeMode::End)
-        .css_classes(vec!["heading".to_string()])
+        .css_classes(vec!["caption-heading".to_string()])
         .build();
     let count_label = gtk::Label::builder()
         .label(format!(
@@ -176,17 +181,18 @@ fn album_tile(ctx: Arc<AppContext>, album: &LibraryAlbum, on_click: AlbumClick) 
             album.asset_count,
             if album.asset_count == 1 { "" } else { "s" }
         ))
-        .xalign(0.5)
+        .xalign(1.0)
         .css_classes(vec!["caption".to_string(), "dim-label".to_string()])
         .build();
+    meta_row.append(&title_label);
+    meta_row.append(&count_label);
     tile_box.append(&picture);
-    tile_box.append(&title_label);
-    tile_box.append(&count_label);
+    tile_box.append(&meta_row);
 
     let button = gtk::Button::builder()
         .child(&tile_box)
         .css_classes(vec!["flat".to_string()])
-        .width_request(180)
+        .width_request(300)
         .hexpand(false)
         .halign(gtk::Align::Start)
         .build();

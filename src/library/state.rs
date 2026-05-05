@@ -42,6 +42,17 @@ pub enum LibrarySource {
     UnifiedSearch {
         query: String,
     },
+    /// Local enumeration scoped to the folder linked to a specific album.
+    /// Empty if the album has no linked folder.
+    AlbumLocal {
+        id: String,
+        name: String,
+    },
+    /// Remote album assets overlayed with sync state from the linked folder.
+    AlbumUnified {
+        id: String,
+        name: String,
+    },
 }
 
 impl LibrarySource {

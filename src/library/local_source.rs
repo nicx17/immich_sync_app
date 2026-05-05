@@ -69,6 +69,29 @@ pub async fn enumerate_local(ctx: Arc<AppContext>) -> Vec<LocalAsset> {
         .unwrap_or_default()
 }
 
+/// Enumerate only the watch entries matching `entry_path`. Used by the
+/// album-scoped Local/Unified views so a linked album's view stays bounded
+/// to its own folder instead of spilling assets from sibling albums.
+pub async fn enumerate_local_for_entry(
+    ctx: Arc<AppContext>,
+    entry_path: String,
+) -> Vec<LocalAsset> {
+    let watch_paths = ctx
+        .live_watch_paths
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_default();
+
+    let scoped: Vec<WatchPathEntry> = watch_paths
+        .into_iter()
+        .filter(|e| e.path() == entry_path)
+        .collect();
+
+    tokio::task::spawn_blocking(move || enumerate_blocking(&scoped))
+        .await
+        .unwrap_or_default()
+}
+
 fn enumerate_blocking(watch_paths: &[WatchPathEntry]) -> Vec<LocalAsset> {
     let mut out = Vec::new();
     let mut seen: HashSet<PathBuf> = HashSet::new();

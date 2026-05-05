@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Sync index is now stored in the persistent data directory instead of the cache directory. Clearing the app cache no longer wipes sync state or triggers a full re-upload. Existing index files are migrated automatically on first run.
+- Ctrl+click selection no longer skips the first asset. Holding Ctrl now reveals checkboxes transiently; clicking an asset commits the selection. Releasing Ctrl without clicking dismisses selection mode.
+- Local and unified views for linked albums are now scoped to the selected album's linked folder only, instead of showing assets from all linked albums.
+- EXIF orientation is now applied to thumbnails and lightbox images via `apply_embedded_orientation()`. Stale thumbnail cache entries are invalidated with a new cache key version.
+- Details pane is now fixed at 320px width with `max_width_chars` constraints on labels so it no longer resizes dynamically with image dimensions.
+- Grid view thumbnails now use a fixed 356px width (16:9 at 200px height) instead of expanding to fill available space.
+- Explore page places grid and album tab tiles are now sized at 300x220px with a horizontal meta row layout (name left, count right) matching the explore page grid style.
+- Consolidated duplicate refresh buttons by removing the sidebar refresh button and keeping the status bar one. Added F5 keyboard shortcut for refresh.
+
+---
+
 ## [9.5.1] - 2026-05-04
 
 ### Fixed

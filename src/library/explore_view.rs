@@ -97,9 +97,10 @@ fn build_tile_section(title: &str) -> (gtk::Box, gtk::FlowBox) {
         .selection_mode(gtk::SelectionMode::None)
         .row_spacing(8)
         .column_spacing(8)
-        .min_children_per_line(3)
-        .max_children_per_line(16)
-        .homogeneous(true)
+        .min_children_per_line(1)
+        .max_children_per_line(6)
+        .homogeneous(false)
+        .halign(gtk::Align::Start)
         .build();
     section.append(&grid);
     (section, grid)
@@ -236,8 +237,8 @@ fn explore_tile(
     on_click: ExploreClick,
 ) -> gtk::Button {
     let picture = gtk::Picture::builder()
-        .width_request(128)
-        .height_request(128)
+        .width_request(300)
+        .height_request(220)
         .can_shrink(true)
         .content_fit(gtk::ContentFit::Cover)
         .css_classes(vec!["mimick-explore-tile".to_string()])

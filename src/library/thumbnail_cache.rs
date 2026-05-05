@@ -331,8 +331,9 @@ impl ThumbnailCache {
         let path = path.to_path_buf();
         let cache_dir = self.cache_dir.clone();
         let texture = tokio::task::spawn_blocking(move || -> Result<Texture, String> {
-            let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_file_at_scale(&path, 256, 256, true)
+            let raw = gtk::gdk_pixbuf::Pixbuf::from_file_at_scale(&path, 256, 256, true)
                 .map_err(|err| err.to_string())?;
+            let pixbuf = raw.apply_embedded_orientation().unwrap_or(raw);
             let _ = std::fs::create_dir_all(&cache_dir);
             let _ = pixbuf.savev(&cache_file, "png", &[]);
             #[allow(deprecated)]
@@ -428,7 +429,7 @@ fn cache_key(asset_id: &str, size: ThumbnailSize) -> String {
 fn local_cache_key(asset_id: &str) -> String {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     asset_id.hash(&mut hasher);
-    format!("local-thumbnail:{:x}", hasher.finish())
+    format!("local-thumbnail-v2:{:x}", hasher.finish())
 }
 
 fn estimate_texture_bytes(texture: &Texture) -> usize {

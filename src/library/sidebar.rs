@@ -3,7 +3,6 @@ use libadwaita::prelude::*;
 
 pub struct SidebarParts {
     pub root: gtk::Box,
-    pub refresh_button: gtk::Button,
     pub fixed_list: gtk::ListBox,
     pub albums_list: gtk::ListBox,
 }
@@ -17,12 +16,6 @@ pub fn build_sidebar() -> SidebarParts {
         .margin_start(12)
         .margin_end(12)
         .width_request(260)
-        .build();
-
-    let refresh_button = gtk::Button::builder()
-        .label("Refresh")
-        .icon_name("view-refresh-symbolic")
-        .hexpand(true)
         .build();
 
     let fixed_list = gtk::ListBox::builder()
@@ -67,14 +60,12 @@ pub fn build_sidebar() -> SidebarParts {
         .child(&albums_list)
         .build();
 
-    root.append(&refresh_button);
     root.append(&fixed_list);
     root.append(&albums_header);
     root.append(&albums_scroll);
 
     SidebarParts {
         root,
-        refresh_button,
         fixed_list,
         albums_list,
     }

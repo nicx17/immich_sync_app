@@ -19,7 +19,7 @@ use crate::library::asset_object::AssetObject;
 use crate::library::explore_view::{ExploreViewParts, build_explore_view};
 use crate::library::grid_view::{GridViewParts, build_grid_view, extend_model, replace_model};
 use crate::library::local_source::{
-    LocalAsset, enumerate_local, filter_by_filename, local_sync_state,
+    LocalAsset, enumerate_local, enumerate_local_for_entry, filter_by_filename, local_sync_state,
 };
 use crate::library::sidebar::{SidebarParts, build_sidebar};
 use crate::library::state::{LibraryLoadState, LibrarySortMode, LibrarySource};
@@ -39,6 +39,13 @@ pub mod style;
 pub mod thumbnail_cache;
 
 const PAGE_SIZE: u32 = 50;
+
+fn load_texture_oriented(path: &std::path::Path) -> Option<gdk4::Texture> {
+    let raw = gtk::gdk_pixbuf::Pixbuf::from_file(path).ok()?;
+    let pixbuf = raw.apply_embedded_orientation().unwrap_or(raw);
+    #[allow(deprecated)]
+    Some(gdk4::Texture::for_pixbuf(&pixbuf))
+}
 
 struct LibraryWindowUi {
     ctx: Arc<AppContext>,
@@ -519,6 +526,20 @@ fn connect_controls(
         }
     ));
 
+    let f5_controller = gtk::EventControllerKey::new();
+    f5_controller.connect_key_pressed({
+        let refresh_button = refresh_button.clone();
+        move |_, keyval, _, _| {
+            if keyval == gtk::gdk::Key::F5 {
+                refresh_button.emit_clicked();
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        }
+    });
+    ui.window.add_controller(f5_controller);
+
     ui.source_mode.connect_selected_notify(clone!(
         #[strong]
         ui,
@@ -526,10 +547,19 @@ fn connect_controls(
             if ui.source_mode_suppressed.get() {
                 return;
             }
-            let source = match dropdown.selected() {
-                1 => LibrarySource::LocalAll,
-                2 => LibrarySource::Unified,
-                _ => {
+            let album_ctx = match ui.ctx.library_state.lock().unwrap().source.clone() {
+                LibrarySource::Album { id, name }
+                | LibrarySource::AlbumLocal { id, name }
+                | LibrarySource::AlbumUnified { id, name } => Some((id, name)),
+                _ => None,
+            };
+            let source = match (dropdown.selected(), album_ctx) {
+                (1, Some((id, name))) => LibrarySource::AlbumLocal { id, name },
+                (1, None) => LibrarySource::LocalAll,
+                (2, Some((id, name))) => LibrarySource::AlbumUnified { id, name },
+                (2, None) => LibrarySource::Unified,
+                (_, Some((id, name))) => LibrarySource::Album { id, name },
+                (_, None) => {
                     if ui.timeline_toggle.is_active() {
                         LibrarySource::Timeline
                     } else {
@@ -652,19 +682,6 @@ fn connect_controls(
             replace_model(&ui.grid.model, &objects);
         }
     ));
-
-    ui.sidebar.refresh_button.connect_clicked(clone!(
-        #[strong]
-        ui,
-        move |_| {
-            load_albums(ui.clone());
-            let request = {
-                let source = ui.ctx.library_state.lock().unwrap().source.clone();
-                ui.ctx.library_state.lock().unwrap().switch_source(source)
-            };
-            load_source_page(ui.clone(), request, false);
-        }
-    ));
 }
 
 fn connect_select_mode(ui: Rc<LibraryWindowUi>, select_toggle: gtk::ToggleButton) {
@@ -699,6 +716,43 @@ fn connect_select_mode(ui: Rc<LibraryWindowUi>, select_toggle: gtk::ToggleButton
             (*refresh)();
         }
     });
+
+    // Ctrl-hold transient checkboxes: pressing Ctrl reveals the selection UI;
+    // releasing Ctrl without having selected anything dismisses it again.
+    // Ctrl+click then commits a selection (handled separately in grid_view)
+    // and the release no longer collapses select mode.
+    let transient = Rc::new(Cell::new(false));
+    let key_controller = gtk::EventControllerKey::new();
+    key_controller.connect_key_pressed({
+        let select_toggle = select_toggle.clone();
+        let transient = transient.clone();
+        move |_, keyval, _, _| {
+            if matches!(keyval, gtk::gdk::Key::Control_L | gtk::gdk::Key::Control_R)
+                && !select_toggle.is_active()
+            {
+                select_toggle.set_active(true);
+                transient.set(true);
+            }
+            glib::Propagation::Proceed
+        }
+    });
+    key_controller.connect_key_released({
+        let select_toggle = select_toggle.clone();
+        let selection = selection.clone();
+        let transient = transient.clone();
+        move |_, keyval, _, _| {
+            if !matches!(keyval, gtk::gdk::Key::Control_L | gtk::gdk::Key::Control_R)
+                || !transient.get()
+            {
+                return;
+            }
+            if selection.selection().size() == 0 {
+                select_toggle.set_active(false);
+            }
+            transient.set(false);
+        }
+    });
+    ui.window.add_controller(key_controller);
 }
 
 fn connect_bulk_actions(
@@ -946,11 +1000,15 @@ fn apply_timeline_ui_state(ui: &LibraryWindowUi, source: &LibrarySource) {
 
     let is_local = matches!(
         source,
-        LibrarySource::LocalAll | LibrarySource::LocalSearch { .. }
+        LibrarySource::LocalAll
+            | LibrarySource::LocalSearch { .. }
+            | LibrarySource::AlbumLocal { .. }
     );
     let is_unified = matches!(
         source,
-        LibrarySource::Unified | LibrarySource::UnifiedSearch { .. }
+        LibrarySource::Unified
+            | LibrarySource::UnifiedSearch { .. }
+            | LibrarySource::AlbumUnified { .. }
     );
     let remote_search_allowed = !is_local && !is_unified;
     ui.search_mode.set_visible(remote_search_allowed);
@@ -978,12 +1036,17 @@ fn apply_timeline_ui_state(ui: &LibraryWindowUi, source: &LibrarySource) {
 }
 
 fn refresh_album_link_row(ui: &LibraryWindowUi, source: &LibrarySource) {
-    let LibrarySource::Album { id: _, name } = source else {
-        ui.album_link_row.set_visible(false);
-        if let Some(parent) = ui.album_link_row.parent() {
-            parent.set_visible(false);
+    let name = match source {
+        LibrarySource::Album { name, .. }
+        | LibrarySource::AlbumLocal { name, .. }
+        | LibrarySource::AlbumUnified { name, .. } => name,
+        _ => {
+            ui.album_link_row.set_visible(false);
+            if let Some(parent) = ui.album_link_row.parent() {
+                parent.set_visible(false);
+            }
+            return;
         }
-        return;
     };
 
     ui.album_link_row.set_visible(true);
@@ -1484,6 +1547,27 @@ fn load_source_page(ui: Rc<LibraryWindowUi>, request: (u64, LibrarySource, u32),
                         .await;
                     merge_unified_page(remote, page, &ui, Some(&query)).await
                 }
+                LibrarySource::AlbumLocal { name, .. } => {
+                    if page > 1 {
+                        Ok(Vec::new())
+                    } else {
+                        match linked_entry_path_for_album(&ui, &name) {
+                            Some(path) => {
+                                let locals = enumerate_local_for_entry(ui.ctx.clone(), path).await;
+                                Ok(locals.into_iter().map(local_to_library_asset).collect())
+                            }
+                            None => Ok(Vec::new()),
+                        }
+                    }
+                }
+                LibrarySource::AlbumUnified { id, name } => {
+                    let remote = ui
+                        .ctx
+                        .api_client
+                        .fetch_album_assets(&id, page, PAGE_SIZE)
+                        .await;
+                    merge_album_unified_page(remote, page, &ui, &name).await
+                }
             };
 
             match result {
@@ -1553,7 +1637,9 @@ fn reload_sidebar(ui: &Rc<LibraryWindowUi>) {
             select_fixed_row(&ui.sidebar.fixed_list, "explore");
             ui.sidebar.albums_list.unselect_all();
         }
-        LibrarySource::Album { id, .. } => {
+        LibrarySource::Album { id, .. }
+        | LibrarySource::AlbumLocal { id, .. }
+        | LibrarySource::AlbumUnified { id, .. } => {
             ui.sidebar.fixed_list.unselect_all();
             let mut child = ui.sidebar.albums_list.first_child();
             while let Some(widget) = child {
@@ -1786,6 +1872,7 @@ fn fill_exif_box(container: &gtk::Box, exif: &crate::api_client::ExifInfo) {
             .label(&value)
             .xalign(0.0)
             .wrap(true)
+            .max_width_chars(36)
             .selectable(true)
             .build();
         row.append(&k);
@@ -1886,15 +1973,23 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
         .child(&details_inner)
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
+        .hexpand(false)
         .width_request(320)
         .visible(false)
         .build();
+    details_pane.set_size_request(320, -1);
+    details_pane.set_propagate_natural_width(false);
     let details_filename = gtk::Label::builder()
         .xalign(0.0)
         .wrap(true)
+        .max_width_chars(36)
         .css_classes(vec!["title-3".to_string()])
         .build();
-    let details_summary = gtk::Label::builder().xalign(0.0).wrap(true).build();
+    let details_summary = gtk::Label::builder()
+        .xalign(0.0)
+        .wrap(true)
+        .max_width_chars(36)
+        .build();
     let details_loading = gtk::Label::builder()
         .xalign(0.0)
         .label("Loading details…")
@@ -1929,7 +2024,8 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
             let picture = picture.clone();
             glib::MainContext::default().spawn_local(async move {
                 if !local_path.is_empty() {
-                    if let Ok(texture) = gdk4::Texture::from_filename(&local_path) {
+                    if let Some(texture) = load_texture_oriented(std::path::Path::new(&local_path))
+                    {
                         picture.set_paintable(Some(&texture));
                     }
                     return;
@@ -1950,7 +2046,7 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
                             log::warn!("Lightbox original fetch failed: {}", err);
                             return;
                         }
-                        if let Ok(texture) = gdk4::Texture::from_filename(&temp) {
+                        if let Some(texture) = load_texture_oriented(&temp) {
                             picture.set_paintable(Some(&texture));
                         }
                     }
@@ -2358,6 +2454,50 @@ async fn merge_unified_page(
     if let Some(q) = query {
         locals = filter_by_filename(locals, q);
     }
+
+    let synced_paths: std::collections::HashSet<String> = match ui.ctx.sync_index.lock() {
+        Ok(idx) => remote
+            .iter()
+            .filter_map(|a| a.checksum.as_deref())
+            .filter_map(|cs| idx.local_path_for_checksum(cs))
+            .collect(),
+        Err(_) => std::collections::HashSet::new(),
+    };
+
+    let mut local_rows: Vec<LibraryAsset> = locals
+        .into_iter()
+        .filter(|l| !synced_paths.contains(&l.path.display().to_string()))
+        .map(local_to_library_asset)
+        .collect();
+
+    local_rows.append(&mut remote);
+    Ok(local_rows)
+}
+
+/// Return the path of the watch entry linked to `album_name`, if any.
+fn linked_entry_path_for_album(ui: &Rc<LibraryWindowUi>, album_name: &str) -> Option<String> {
+    let entries = ui.ctx.live_watch_paths.lock().ok()?.clone();
+    crate::config::watch_entry_for_album(album_name, &entries).map(|e| e.path().to_string())
+}
+
+/// Album-scoped variant of `merge_unified_page`: takes the album's asset
+/// page from the remote API and overlays sync state from the album's
+/// linked local folder only — never from siblings.
+async fn merge_album_unified_page(
+    remote: Result<Vec<LibraryAsset>, String>,
+    page: u32,
+    ui: &Rc<LibraryWindowUi>,
+    album_name: &str,
+) -> Result<Vec<LibraryAsset>, String> {
+    let mut remote = remote?;
+    if page > 1 {
+        return Ok(remote);
+    }
+
+    let locals = match linked_entry_path_for_album(ui, album_name) {
+        Some(path) => enumerate_local_for_entry(ui.ctx.clone(), path).await,
+        None => Vec::new(),
+    };
 
     let synced_paths: std::collections::HashSet<String> = match ui.ctx.sync_index.lock() {
         Ok(idx) => remote
