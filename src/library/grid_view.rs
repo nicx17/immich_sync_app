@@ -35,9 +35,9 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
             .build();
 
         let picture = gtk::Picture::builder()
+            .width_request(356)
             .height_request(200)
             .can_shrink(true)
-            .hexpand(true)
             .content_fit(gtk::ContentFit::Cover)
             .css_classes(vec!["mimick-thumbnail-loading".to_string()])
             .build();

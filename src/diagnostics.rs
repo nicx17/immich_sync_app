@@ -14,7 +14,10 @@ pub fn export_bundle(destination_root: &Path, state: &AppState) -> io::Result<Pa
     let cache_root = dirs::cache_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
         .join("mimick");
-    export_bundle_with_paths(destination_root, state, &config, &cache_root)
+    let data_root = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("mimick");
+    export_bundle_with_paths(destination_root, state, &config, &cache_root, &data_root)
 }
 
 fn export_bundle_with_paths(
@@ -22,6 +25,7 @@ fn export_bundle_with_paths(
     state: &AppState,
     config: &Config,
     cache_root: &Path,
+    data_root: &Path,
 ) -> io::Result<PathBuf> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -51,7 +55,7 @@ fn export_bundle_with_paths(
     )?;
     write_json_pretty(
         &bundle_dir.join("synced_index.redacted.json"),
-        &build_sync_index_export(&cache_path(cache_root, "synced_index.json"))?,
+        &build_sync_index_export(&cache_path(data_root, "synced_index.json"))?,
     )?;
 
     Ok(bundle_dir)
@@ -426,15 +430,17 @@ mod tests {
         let dir = tempdir().unwrap();
         let dest_root = dir.path().join("exports");
         let cache_root = dir.path().join("cache");
+        let data_root = dir.path().join("data");
         let config_root = dir.path().join("config");
         fs::create_dir_all(&cache_root).unwrap();
+        fs::create_dir_all(&data_root).unwrap();
         fs::create_dir_all(&config_root).unwrap();
 
         let config_path = config_root.join("config.json");
         fs::write(&config_path, "{\"internal_url\":\"http://localhost\"}").unwrap();
         fs::write(cache_root.join("status.json"), "{\"status\":\"idle\"}").unwrap();
         fs::write(cache_root.join("retries.json"), "[]").unwrap();
-        fs::write(cache_root.join("synced_index.json"), "{\"files\":{}}").unwrap();
+        fs::write(data_root.join("synced_index.json"), "{\"files\":{}}").unwrap();
         fs::write(cache_root.join("mimick.log"), "hello log").unwrap();
 
         let config = Config {
@@ -444,7 +450,7 @@ mod tests {
         let state = AppState::default();
 
         let bundle_dir =
-            export_bundle_with_paths(&dest_root, &state, &config, &cache_root).unwrap();
+            export_bundle_with_paths(&dest_root, &state, &config, &cache_root, &data_root).unwrap();
         assert!(bundle_dir.join("summary.txt").exists());
         assert!(bundle_dir.join("privacy-note.txt").exists());
         assert!(bundle_dir.join("config.redacted.json").exists());

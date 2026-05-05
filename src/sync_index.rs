@@ -52,12 +52,16 @@ pub struct SyncIndex {
 }
 
 impl SyncIndex {
-    /// Loads the sync index from the default Mimick cache path.
+    /// Loads the sync index from the persistent data directory, migrating
+    /// from the old cache location on first run so users who clear the
+    /// system cache don't lose sync state and trigger a full re-upload.
     pub fn new() -> Self {
-        let index_file = dirs::cache_dir()
+        let index_file = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
             .join("mimick")
             .join("synced_index.json");
+
+        migrate_from_cache_dir(&index_file);
 
         let entries = load_entries(&index_file);
 
@@ -183,6 +187,56 @@ impl SyncIndex {
         fs::write(&tmp_file, content)?;
         fs::rename(&tmp_file, &self.index_file)?;
         Ok(())
+    }
+}
+
+/// One-time migration of the sync index from the legacy cache_dir location
+/// to the persistent data_dir. Only runs when the new file is absent and the
+/// old one exists. Best-effort: failures are logged and the app continues
+/// with whatever is at the new path.
+fn migrate_from_cache_dir(new_path: &Path) {
+    if new_path.exists() {
+        return;
+    }
+    let Some(old_path) = dirs::cache_dir().map(|d| d.join("mimick").join("synced_index.json"))
+    else {
+        return;
+    };
+    if !old_path.exists() {
+        return;
+    }
+    if let Some(parent) = new_path.parent()
+        && let Err(err) = fs::create_dir_all(parent)
+    {
+        log::warn!(
+            "Could not create sync index data dir '{}': {}",
+            parent.display(),
+            err
+        );
+        return;
+    }
+    match fs::rename(&old_path, new_path) {
+        Ok(()) => log::info!(
+            "Migrated sync index '{}' -> '{}'",
+            old_path.display(),
+            new_path.display()
+        ),
+        Err(rename_err) => match fs::copy(&old_path, new_path) {
+            Ok(_) => {
+                let _ = fs::remove_file(&old_path);
+                log::info!(
+                    "Copied sync index '{}' -> '{}' (rename failed: {})",
+                    old_path.display(),
+                    new_path.display(),
+                    rename_err
+                );
+            }
+            Err(copy_err) => log::warn!(
+                "Sync index migration failed (rename: {}, copy: {})",
+                rename_err,
+                copy_err
+            ),
+        },
     }
 }
 
