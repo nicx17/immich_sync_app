@@ -34,13 +34,45 @@ Mimick is an unofficial Immich desktop client for Linux. It provides a GTK4/liba
 
 ## Screenshots
 
-| Settings Window | Status page |
+### Library View
+
+| Photos (Light) | Photos (Dark) |
 | :---: | :---: |
-| ![Setup window](docs/screenshots/setup_window.png) | ![Control window](docs/screenshots/control_window.png) |
-| **Queue Inspector** | **About Dialog** |
-| ![Queue Inspector](docs/screenshots/queue_inspector_window.png) | ![About Dialog](docs/screenshots/about_dialog.png) |
-| **Ping Test Dialog** | **Tray Icon** |
-| ![Ping Test Dialog](docs/screenshots/ping_test_screenshot.png) | ![Tray Icon](docs/screenshots/tray_icon_screenshot.png) |
+| ![Photos page light](docs/screenshots/photos_page_view_sidebar_on.png) | ![Photos page dark](docs/screenshots/photos_page_view_dark_sidebar_on.png) |
+| **Explore Page** | **Album Page** |
+| ![Explore page](docs/screenshots/explore_page_view_showing_people_places_sidebar_on.png) | ![Album page](docs/screenshots/album_page_view_showing_albums_recent_youralbums.png) |
+| **Selected Album (Dark)** | **Album View (Dark, Sidebar Off)** |
+| ![Selected album dark](docs/screenshots/selected_album_view_dark.png) | ![Album sidebar off](docs/screenshots/name_dark_album_selected_view_sidebar_off.png) |
+| **Lightbox (Details On)** | **Lightbox (Details Off)** |
+| ![Lightbox details on](docs/screenshots/lightbox_view_details_pane_on.png) | ![Lightbox details off](docs/screenshots/lightbox_view_details_pane_off.png) |
+| **Multi-Select with Checkboxes** | **OCR Search** |
+| ![Multi-select](docs/screenshots/library_view_photos_page_showing_selected_assets_with_checkboxes.png) | ![OCR search](docs/screenshots/search_view_with_thequickbrownfox_searched_ocr_mode.png) |
+| **Search Options** | **View Options (Remote / Local / Unified)** |
+| ![Search options](docs/screenshots/search_options_menu_library_view.png) | ![View options](docs/screenshots/library_view_showing_view_options_for_albums_remote_local_unified.png) |
+| **Advanced Filters** | **Advanced Filters (More Options)** |
+| ![Advanced filters](docs/screenshots/advanced_filters_menu_library_view.png) | ![Advanced filters more](docs/screenshots/advanced_filters_menu_library_view_more_options.png) |
+| **Sync Album Dialog** | **Queue Inspector** |
+| ![Sync album](docs/screenshots/library_view_showing_sync_album_dialog_upload_download_apply_cancel.png) | ![Queue inspector](docs/screenshots/queue_inspector_dialog.png) |
+
+### Settings
+
+| Connectivity | Connection Successful |
+| :---: | :---: |
+| ![Connectivity](docs/screenshots/settings_pane_showing_connnectivity_config_details.png) | ![Connection test](docs/screenshots/settings_pane_connection_successful_dialog.png) |
+| **Behaviour Settings** | **Library and Watch Folders** |
+| ![Behaviour](docs/screenshots/settings_pane_showing_behaviour_settings.png) | ![Library settings](docs/screenshots/settings_pane_showing_library_settings_and_watch_folders.png) |
+| **Watch Folder Details** | **Album Selection for Watch Folder** |
+| ![Watch folders](docs/screenshots/watching_folders_list_in_settings_showing_folder_details.png) | ![Album selection](docs/screenshots/album_selection_menu_for_watching_folder.png) |
+| **Album Selection with Search** | **Folder Rules Dialog** |
+| ![Album search](docs/screenshots/watching_folder_album_selection_menu_with_search_feat.png) | ![Folder rules](docs/screenshots/album_specific_rule_dialog.png) |
+| **Status and Health Dashboard** | **About Mimick** |
+| ![Status dashboard](docs/screenshots/status_pane_sync_status_health_dashboard_actions.png) | ![About dialog](docs/screenshots/about_mimick_dialog.png) |
+
+### Desktop Integration
+
+| Tray Icon Menu | Desktop Notification |
+| :---: | :---: |
+| ![Tray icon](docs/screenshots/tray_icon_menu.png) | ![Notification](docs/screenshots/mimick_notification_popup_on_desktop.png) |
 
 
 ## Core Architecture & Features

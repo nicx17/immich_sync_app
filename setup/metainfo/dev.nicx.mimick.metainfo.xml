@@ -25,28 +25,116 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/setup_window.png</image>
-      <caption>Setup Window</caption>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/photos_page_view_sidebar_on.png</image>
+      <caption>Library View - Photos page with sidebar</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/control_window.png</image>
-      <caption>Control Window</caption>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/photos_page_view_dark_sidebar_on.png</image>
+      <caption>Library View - Photos page in dark mode</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/queue_inspector_window.png</image>
-      <caption>Queue Inspector</caption>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/explore_page_view_showing_people_places_sidebar_on.png</image>
+      <caption>Explore page showing People, Places, and Things</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/about_dialog.png</image>
-      <caption>About Dialog</caption>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/album_page_view_showing_albums_recent_youralbums.png</image>
+      <caption>Album page showing Recent and Your Albums</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/ping_test_screenshot.png</image>
-      <caption>Ping Test Dialog</caption>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/selected_album_view_dark.png</image>
+      <caption>Selected album view in dark mode</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/tray_icon_screenshot.png</image>
-      <caption>Tray Icon</caption>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/name_dark_album_selected_view_sidebar_off.png</image>
+      <caption>Album view in dark mode with sidebar hidden</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/lightbox_view_details_pane_on.png</image>
+      <caption>Lightbox viewer with details pane</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/lightbox_view_details_pane_off.png</image>
+      <caption>Lightbox viewer without details pane</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/library_view_photos_page_showing_selected_assets_with_checkboxes.png</image>
+      <caption>Multi-select mode with checkboxes</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/search_view_with_thequickbrownfox_searched_ocr_mode.png</image>
+      <caption>OCR search for text inside images</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/search_options_menu_library_view.png</image>
+      <caption>Search options menu</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/library_view_showing_view_options_for_albums_remote_local_unified.png</image>
+      <caption>View options - Remote, Local, and Unified</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/advanced_filters_menu_library_view.png</image>
+      <caption>Advanced search filters</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/advanced_filters_menu_library_view_more_options.png</image>
+      <caption>Advanced search filters with additional options</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/library_view_showing_sync_album_dialog_upload_download_apply_cancel.png</image>
+      <caption>Album sync dialog with upload and download actions</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/queue_inspector_dialog.png</image>
+      <caption>Queue inspector dialog</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_pane_showing_connnectivity_config_details.png</image>
+      <caption>Settings - Connectivity configuration</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_pane_connection_successful_dialog.png</image>
+      <caption>Connection test successful</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_pane_showing_behaviour_settings.png</image>
+      <caption>Settings - Behaviour configuration</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_pane_showing_library_settings_and_watch_folders.png</image>
+      <caption>Settings - Library and watch folders</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/watching_folders_list_in_settings_showing_folder_details.png</image>
+      <caption>Watch folders list with folder details</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/album_selection_menu_for_watching_folder.png</image>
+      <caption>Album selection menu for a watch folder</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/watching_folder_album_selection_menu_with_search_feat.png</image>
+      <caption>Album selection with search</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/album_specific_rule_dialog.png</image>
+      <caption>Folder rules dialog for a watch folder</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/status_pane_sync_status_health_dashboard_actions.png</image>
+      <caption>Status page with sync health dashboard</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/about_mimick_dialog.png</image>
+      <caption>About Mimick dialog</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/tray_icon_menu.png</image>
+      <caption>System tray icon menu</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/mimick_notification_popup_on_desktop.png</image>
+      <caption>Desktop notification popup</caption>
     </screenshot>
   </screenshots>
 
