@@ -1,9 +1,9 @@
 //! Manages upload queue orchestration, retry persistence, and sync-index updates.
 
-use crate::api_client::ImmichApiClient;
+use crate::api_client::{ImmichApiClient, TransferProgressCallback};
 use crate::notifications;
 use crate::runtime_env;
-use crate::state_manager::AppState;
+use crate::state_manager::{AppState, TransferDirection};
 use crate::sync_index::{SyncIndex, SyncTarget};
 use chrono::Timelike;
 use std::collections::HashSet;
@@ -13,6 +13,31 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, mpsc};
+
+fn upload_progress_callback(
+    shared_state: &Arc<std::sync::Mutex<AppState>>,
+    item_id: String,
+) -> TransferProgressCallback {
+    let state_ref = shared_state.clone();
+    Arc::new(move |bytes_done, total_bytes| {
+        let mut state = state_ref.lock().unwrap();
+        let route = state.active_server_route.clone();
+        if let Some(total_bytes) = total_bytes {
+            let current = state
+                .transfer
+                .active_item_totals
+                .get(&item_id)
+                .copied()
+                .unwrap_or(0);
+            if current == 0 {
+                state.transfer.update_item_total(&item_id, total_bytes);
+            }
+        }
+        state
+            .transfer
+            .update_item_bytes(TransferDirection::Upload, &item_id, bytes_done, route);
+    })
+}
 
 /// Represents a unit of work for the upload queue.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -171,6 +196,20 @@ impl QueueManager {
                                 };
                                 let attempts = current_attempt_count(&s, &file_task.path);
                                 s.record_event(file_task.path.clone(), "uploading", None, attempts);
+                                let item_label = std::path::Path::new(&file_task.path)
+                                    .file_name()
+                                    .map(|name| name.to_string_lossy().to_string())
+                                    .or_else(|| Some(file_task.path.clone()));
+                                let route = s.active_server_route.clone();
+                                s.transfer.register_item(
+                                    TransferDirection::Upload,
+                                    file_task.path.clone(),
+                                    std::fs::metadata(&file_task.path)
+                                        .ok()
+                                        .map(|meta| meta.len()),
+                                    item_label,
+                                    route,
+                                );
                                 (s.processed_count, s.total_queued)
                             };
 
@@ -183,7 +222,12 @@ impl QueueManager {
                             );
 
                             let t_start = std::time::Instant::now();
-                            let sync_target = handle_upload(&api, &file_task).await;
+                            let sync_target = handle_upload(
+                                &api,
+                                &file_task,
+                                upload_progress_callback(&state_ref, file_task.path.clone()),
+                            )
+                            .await;
                             let success = sync_target.is_some();
                             let elapsed = t_start.elapsed().as_secs_f32();
                             let active_route = api.active_route_label().await;
@@ -322,6 +366,16 @@ impl QueueManager {
                                 }
                                 s.active_workers -= 1;
                                 s.current_file = None;
+                                let route = s.active_server_route.clone();
+                                let completed_batch = s.transfer.finish_item(
+                                    TransferDirection::Upload,
+                                    &file_task.path,
+                                    route,
+                                );
+                                if completed_batch {
+                                    s.completed_upload_batches =
+                                        s.completed_upload_batches.saturating_add(1);
+                                }
 
                                 let total_handled = s.processed_count + s.failed_count;
 
@@ -456,7 +510,6 @@ impl QueueManager {
             activate_batch_if_needed(&mut batch_state, &s);
             s.total_queued += 1;
             s.queue_size = s.total_queued.saturating_sub(s.processed_count);
-
             let status = s
                 .folder_statuses
                 .entry(task.watch_path.clone())
@@ -482,6 +535,13 @@ impl QueueManager {
             let mut s = self.shared_state.lock().unwrap();
             s.total_queued = s.total_queued.saturating_sub(1);
             s.queue_size = s.total_queued.saturating_sub(s.processed_count);
+            let route = s.active_server_route.clone();
+            let completed_batch =
+                s.transfer
+                    .finish_item(TransferDirection::Upload, &e.0.path, route);
+            if completed_batch {
+                s.completed_upload_batches = s.completed_upload_batches.saturating_add(1);
+            }
             let status = s.folder_statuses.entry(e.0.watch_path.clone()).or_default();
             status.pending_count = status.pending_count.saturating_sub(1);
             return false;
@@ -715,14 +775,22 @@ async fn wait_until_allowed(
 }
 
 /// Upload or reassociate a file, then ensure the resulting asset is present in the target album.
-async fn handle_upload(api: &ImmichApiClient, task: &FileTask) -> Option<SyncTarget> {
+async fn handle_upload(
+    api: &ImmichApiClient,
+    task: &FileTask,
+    progress: TransferProgressCallback,
+) -> Option<SyncTarget> {
     let asset_id = if task.reassociate_only {
         match api.find_existing_asset_id(&task.checksum).await {
             Some(existing) => Some(existing),
-            None => api.upload_asset(&task.path, &task.checksum).await,
+            None => {
+                api.upload_asset(&task.path, &task.checksum, Some(progress.clone()))
+                    .await
+            }
         }
     } else {
-        api.upload_asset(&task.path, &task.checksum).await
+        api.upload_asset(&task.path, &task.checksum, Some(progress.clone()))
+            .await
     };
 
     let asset_id = match asset_id {

@@ -1,5 +1,5 @@
 //! Library view CSS: subtle pulsing placeholder for loading thumbnails,
-//! a muted error tile, and a colored connection dot for the status footer.
+//! a muted error tile, and a rounded transfer progress treatment.
 //!
 //! Registered exactly once per process via `std::sync::OnceLock`.
 
@@ -31,14 +31,6 @@ picture.mimick-thumbnail-error {
 overlay.mimick-cell {
 }
 
-label.mimick-status-dot {
-    font-size: 1em;
-    margin-right: 4px;
-}
-
-label.mimick-status-dot.connected { color: @success_color; }
-label.mimick-status-dot.offline   { color: @error_color; }
-
 box.mimick-empty {
     padding: 32px;
 }
@@ -61,7 +53,15 @@ label.mimick-timeline-banner {
 }
 
 image.mimick-status-badge {
-    opacity: 0.85;
+    opacity: 0.90;
+    color: white;
+    -gtk-icon-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+image.mimick-video-badge {
+    opacity: 0.92;
+    color: white;
+    -gtk-icon-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
 }
 
 picture.mimick-person-avatar {
@@ -79,6 +79,33 @@ picture.mimick-thumbnail-square.mimick-thumbnail-loading,
 picture.mimick-thumbnail-square.mimick-thumbnail-loaded,
 picture.mimick-thumbnail-square.mimick-thumbnail-error {
     border-radius: 0;
+}
+
+box.mimick-transfer-shell {
+    min-height: 36px;
+    border-top: 1px solid alpha(@window_fg_color, 0.08);
+    background: alpha(@window_fg_color, 0.03);
+}
+
+box.mimick-transfer-shell.active {
+    background: alpha(@accent_bg_color, 0.04);
+}
+
+progressbar.mimick-transfer-progress {
+    min-width: 180px;
+    min-height: 18px;
+}
+
+progressbar.mimick-transfer-progress trough {
+    min-height: 18px;
+    border-radius: 999px;
+    background: alpha(@window_fg_color, 0.12);
+}
+
+progressbar.mimick-transfer-progress progress {
+    min-height: 18px;
+    border-radius: 999px;
+    background: mix(@accent_bg_color, #d16c96, 0.45);
 }
 "#;
 

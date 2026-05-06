@@ -3,6 +3,8 @@ use libadwaita::prelude::*;
 
 pub struct SidebarParts {
     pub root: gtk::Box,
+    pub connection_row: libadwaita::ActionRow,
+    pub server_row: libadwaita::ActionRow,
     pub fixed_list: gtk::ListBox,
     pub albums_list: gtk::ListBox,
 }
@@ -22,6 +24,21 @@ pub fn build_sidebar() -> SidebarParts {
         .selection_mode(gtk::SelectionMode::Single)
         .css_classes(vec!["boxed-list".to_string()])
         .build();
+
+    let connection_row = libadwaita::ActionRow::builder()
+        .title("Connection")
+        .subtitle("Offline")
+        .build();
+    let server_row = libadwaita::ActionRow::builder()
+        .title("Server")
+        .subtitle("Statistics unavailable")
+        .build();
+    let connection_list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .css_classes(vec!["boxed-list".to_string()])
+        .build();
+    connection_list.append(&gtk::ListBoxRow::builder().child(&connection_row).build());
+    connection_list.append(&gtk::ListBoxRow::builder().child(&server_row).build());
 
     fixed_list.append(&action_row(
         "Photos",
@@ -60,12 +77,15 @@ pub fn build_sidebar() -> SidebarParts {
         .child(&albums_list)
         .build();
 
+    root.append(&connection_list);
     root.append(&fixed_list);
     root.append(&albums_header);
     root.append(&albums_scroll);
 
     SidebarParts {
         root,
+        connection_row,
+        server_row,
         fixed_list,
         albums_list,
     }

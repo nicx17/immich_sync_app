@@ -133,6 +133,7 @@ async fn main() {
         for status in saved.folder_statuses.values_mut() {
             status.pending_count = 0;
         }
+        saved.reset_runtime_state();
 
         // Reset volatile fields that shouldn't survive a restart
         AppState {

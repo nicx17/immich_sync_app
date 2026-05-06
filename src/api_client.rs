@@ -1,12 +1,15 @@
 //! Integrates with the Immich API, handles connectivity failover, and provides album/cache helpers.
 
 use chrono::{SecondsFormat, TimeZone, Utc};
+use futures_util::TryStreamExt;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, Semaphore};
+
+pub type TransferProgressCallback = Arc<dyn Fn(u64, Option<u64>) + Send + Sync>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiIssue {
@@ -445,7 +448,12 @@ impl ImmichApiClient {
     ///
     /// Returns the created asset ID on success, `None` on failure, or `"DUPLICATE"`
     /// when the server reports that the content already exists.
-    pub async fn upload_asset(&self, file_path: &str, checksum: &str) -> Option<String> {
+    pub async fn upload_asset(
+        &self,
+        file_path: &str,
+        checksum: &str,
+        progress: Option<TransferProgressCallback>,
+    ) -> Option<String> {
         let base_url = match self.get_active_url().await {
             Some(u) => u,
             None => {
@@ -504,6 +512,7 @@ impl ImmichApiClient {
             device_asset_id,
             created_at
         );
+        let file_len = meta.len();
 
         // Stream the file body so large videos do not get buffered into memory.
         let file = match tokio::fs::File::open(path).await {
@@ -520,10 +529,18 @@ impl ImmichApiClient {
             }
         };
 
-        let stream = tokio_util::codec::FramedRead::new(file, tokio_util::codec::BytesCodec::new());
+        let progress_for_stream = progress.clone();
+        let mut uploaded_bytes = 0_u64;
+        let stream = tokio_util::codec::FramedRead::new(file, tokio_util::codec::BytesCodec::new())
+            .inspect_ok(move |chunk| {
+                uploaded_bytes = uploaded_bytes.saturating_add(chunk.len() as u64);
+                if let Some(callback) = &progress_for_stream {
+                    callback(uploaded_bytes, Some(file_len));
+                }
+            });
         let file_body = reqwest::Body::wrap_stream(stream);
 
-        let file_part = reqwest::multipart::Part::stream_with_length(file_body, meta.len())
+        let file_part = reqwest::multipart::Part::stream_with_length(file_body, file_len)
             .file_name(filename.clone())
             .mime_str(mime)
             .ok()?;
@@ -554,6 +571,9 @@ impl ImmichApiClient {
                     200 | 201 => {
                         if let Ok(json) = resp.json::<serde_json::Value>().await {
                             let asset_id = json["id"].as_str().map(String::from);
+                            if let Some(callback) = &progress {
+                                callback(file_len, Some(file_len));
+                            }
                             if let Some(asset_id) = asset_id.as_deref() {
                                 self.schedule_asset_timezone_fixup(
                                     base_url.clone(),
@@ -576,6 +596,9 @@ impl ImmichApiClient {
                     409 => {
                         log::info!("Duplicate (already in Immich): {}", filename);
                         self.clear_issue().await;
+                        if let Some(callback) = &progress {
+                            callback(file_len, Some(file_len));
+                        }
                         // Some versions return the ID even on 409
                         if let Ok(json) = resp.json::<serde_json::Value>().await
                             && let Some(id) = json["id"].as_str()
@@ -1114,6 +1137,7 @@ impl ImmichApiClient {
         &self,
         asset_id: &str,
         output_path: &std::path::Path,
+        progress: Option<TransferProgressCallback>,
     ) -> Result<(), String> {
         let base_url = self
             .get_active_url()
@@ -1133,11 +1157,17 @@ impl ImmichApiClient {
         {
             Ok(mut resp) if resp.status().is_success() => {
                 use tokio::io::AsyncWriteExt;
+                let total_bytes = resp.content_length();
+                let mut written = 0_u64;
                 let mut file = tokio::fs::File::create(output_path)
                     .await
                     .map_err(|e| e.to_string())?;
                 while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
                     file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+                    written = written.saturating_add(chunk.len() as u64);
+                    if let Some(callback) = &progress {
+                        callback(written, total_bytes);
+                    }
                 }
                 self.clear_issue().await;
                 Ok(())

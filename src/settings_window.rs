@@ -603,7 +603,7 @@ pub fn build_settings_window_with_parent(
         background_sync_state,
         #[strong]
         apply_in_flight,
-        move |include_connectivity: bool| {
+        move |include_connectivity: bool, show_success_ack: bool| {
             if apply_in_flight.get() {
                 return;
             }
@@ -853,6 +853,13 @@ pub fn build_settings_window_with_parent(
                     }
 
                     apply_in_flight.set(false);
+                    if show_success_ack {
+                        show_alert(
+                            &window,
+                            "Settings Saved",
+                            "Mimick saved the updated settings successfully.",
+                        );
+                    }
                 }
             ));
         }
@@ -862,7 +869,7 @@ pub fn build_settings_window_with_parent(
         #[strong]
         apply_settings,
         move || {
-            (apply_settings)(false);
+            (apply_settings)(false, false);
         }
     ));
 
@@ -1139,7 +1146,7 @@ pub fn build_settings_window_with_parent(
         #[strong]
         apply_settings,
         move |_| {
-            (apply_settings)(true);
+            (apply_settings)(true, true);
         }
     ));
 
@@ -1737,7 +1744,7 @@ fn show_folder_rules_dialog(
     dialog.present();
 }
 
-fn show_queue_inspector(
+pub fn show_queue_inspector(
     parent: &impl gtk::prelude::IsA<gtk::Window>,
     queue_manager: Arc<QueueManager>,
 ) {
@@ -1745,8 +1752,8 @@ fn show_queue_inspector(
         .transient_for(parent)
         .modal(true)
         .title("Queue Inspector")
-        .default_width(760)
-        .default_height(560)
+        .default_width(900)
+        .default_height(680)
         .build();
     let content = Box::builder()
         .orientation(Orientation::Vertical)
@@ -1793,6 +1800,7 @@ fn show_queue_inspector(
                         .unwrap_or(task.path.as_str()),
                 )
                 .subtitle(&task.path)
+                .subtitle_lines(3)
                 .build();
             let retry_btn = Button::builder().label("Retry").build();
             let task_path = task.path.clone();
@@ -1816,7 +1824,7 @@ fn show_queue_inspector(
     content.append(&events_group);
 
     let events_scroll = ScrolledWindow::builder()
-        .min_content_height(280)
+        .min_content_height(340)
         .vexpand(true)
         .build();
     let events_list = ListBox::builder()
@@ -1844,6 +1852,7 @@ fn show_queue_inspector(
                     .map(|detail| format!(" | {}", detail))
                     .unwrap_or_default()
             ))
+            .subtitle_lines(4)
             .build();
         row.add_prefix(
             &gtk::Label::builder()

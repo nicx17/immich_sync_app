@@ -1,6 +1,7 @@
 //! GridView-based asset browser with async thumbnail loading and pagination.
 
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -11,18 +12,21 @@ use crate::app_context::AppContext;
 use crate::library::asset_object::AssetObject;
 
 const POS_DATA_KEY: &str = "mimick-cell-pos";
+pub type AssetContextMenuHandler = Rc<RefCell<Option<Box<dyn Fn(u32, f64, f64)>>>>;
 
 pub struct GridViewParts {
     pub model: gtk::gio::ListStore,
     pub scrolled: gtk::ScrolledWindow,
     pub view: gtk::GridView,
     pub selection: gtk::MultiSelection,
+    pub context_menu_handler: AssetContextMenuHandler,
 }
 
 pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -> GridViewParts {
     let model = gtk::gio::ListStore::new::<AssetObject>();
     let selection = gtk::MultiSelection::new(Some(model.clone()));
     let factory = gtk::SignalListItemFactory::new();
+    let context_menu_handler: AssetContextMenuHandler = Rc::new(RefCell::new(None));
 
     let select_toggle_for_setup = select_toggle.clone();
     let selection_for_setup = selection.clone();
@@ -99,7 +103,7 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
         });
 
         let status = gtk::Image::builder()
-            .icon_name("network-server-symbolic")
+            .icon_name("checkbox-symbolic")
             .halign(gtk::Align::End)
             .valign(gtk::Align::Start)
             .margin_top(6)
@@ -107,10 +111,19 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
             .pixel_size(14)
             .css_classes(vec!["mimick-status-badge".to_string()])
             .build();
+        let video_badge = gtk::Image::builder()
+            .icon_name("media-playback-start-symbolic")
+            .halign(gtk::Align::Center)
+            .valign(gtk::Align::Center)
+            .pixel_size(28)
+            .visible(false)
+            .css_classes(vec!["mimick-video-badge".to_string()])
+            .build();
 
         container.set_child(Some(&picture));
         container.add_overlay(&checkbox);
         container.add_overlay(&status);
+        container.add_overlay(&video_badge);
         unsafe {
             container.set_data::<Rc<Cell<u32>>>(POS_DATA_KEY, pos_cell);
         }
@@ -132,7 +145,10 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
         let Some(picture) = container.child().and_downcast::<gtk::Picture>() else {
             return;
         };
-        let Some(status) = container.last_child().and_downcast::<gtk::Image>() else {
+        let Some(status) = find_overlay_image(&container, "mimick-status-badge") else {
+            return;
+        };
+        let Some(video_badge) = find_overlay_image(&container, "mimick-video-badge") else {
             return;
         };
         let checkbox = find_select_checkbox(&container);
@@ -146,6 +162,7 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
         let local_path = item.property::<String>("local-path");
         let sync_state = item.property::<u32>("sync-state");
         let thumbhash = item.property::<Option<String>>("thumbhash");
+        let asset_type = item.property::<String>("asset-type");
         picture.set_tooltip_text(Some(&asset_id));
         status.set_icon_name(Some(sync_icon_name(sync_state)));
         status.set_tooltip_text(Some(sync_state_label(sync_state)));
@@ -154,6 +171,7 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
             .library_timeline_active
             .load(std::sync::atomic::Ordering::Relaxed);
         status.set_visible(!in_timeline);
+        video_badge.set_visible(!in_timeline && asset_type.eq_ignore_ascii_case("VIDEO"));
         set_square_class(&picture, in_timeline);
 
         let generation = bump_generation(&picture);
@@ -253,6 +271,39 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
         }
     });
     view.add_controller(ctrl_gesture);
+    let secondary = gtk::GestureClick::builder()
+        .button(gtk::gdk::BUTTON_SECONDARY)
+        .propagation_phase(gtk::PropagationPhase::Capture)
+        .build();
+    let context_handler = context_menu_handler.clone();
+    secondary.connect_pressed(move |gesture, _, x, y| {
+        let Some(view) = gesture.widget().and_downcast::<gtk::GridView>() else {
+            return;
+        };
+        let Some(picked) = view.pick(x, y, gtk::PickFlags::DEFAULT) else {
+            return;
+        };
+        let mut node = Some(picked);
+        while let Some(widget) = node {
+            if widget.has_css_class("mimick-cell") {
+                let pos = unsafe {
+                    widget
+                        .data::<Rc<Cell<u32>>>(POS_DATA_KEY)
+                        .map(|p| p.as_ref().get())
+                };
+                if let Some(pos) = pos
+                    && pos != u32::MAX
+                    && let Some(handler) = context_handler.borrow().as_ref()
+                {
+                    handler(pos, x, y);
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                }
+                return;
+            }
+            node = widget.parent();
+        }
+    });
+    view.add_controller(secondary);
     if let Some(layout) = view.layout_manager().and_downcast::<gtk::GridLayout>() {
         layout.set_column_spacing(0);
         layout.set_row_spacing(0);
@@ -270,6 +321,7 @@ pub fn build_grid_view(ctx: Arc<AppContext>, select_toggle: gtk::ToggleButton) -
         scrolled,
         view,
         selection,
+        context_menu_handler,
     }
 }
 
@@ -332,10 +384,24 @@ fn sync_state_label(sync_state: u32) -> &'static str {
 
 fn sync_icon_name(sync_state: u32) -> &'static str {
     match sync_state {
-        2 => "emblem-default-symbolic",  // Both: solid check ✓
-        1 => "folder-pictures-symbolic", // Local only
-        _ => "network-server-symbolic",  // Remote only
+        2 => "emblem-default-symbolic",
+        1 => "folder-symbolic",
+        _ => "network-server-symbolic",
     }
+}
+
+fn find_overlay_image(container: &gtk::Overlay, class_name: &str) -> Option<gtk::Image> {
+    let mut child = container.first_child();
+    while let Some(c) = child {
+        let next = c.next_sibling();
+        if c.has_css_class(class_name)
+            && let Ok(image) = c.downcast::<gtk::Image>()
+        {
+            return Some(image);
+        }
+        child = next;
+    }
+    None
 }
 
 #[derive(Clone, Copy)]
