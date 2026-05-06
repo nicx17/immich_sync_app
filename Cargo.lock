@@ -1525,6 +1525,7 @@ dependencies = [
  "chrono",
  "dirs",
  "flexi_logger",
+ "futures-util",
  "gdk4",
  "glib",
  "gtk4",

@@ -4,11 +4,12 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::api_client::LibraryAsset;
+use crate::api_client::{LibraryAsset, TransferProgressCallback};
 use crate::app_context::AppContext;
 use crate::library::local_source::{LocalAsset, enumerate_local};
 use crate::monitor::compute_sha1_chunked;
 use crate::queue_manager::FileTask;
+use crate::state_manager::TransferDirection;
 
 #[derive(Debug, Default, Clone)]
 pub struct AlbumDiff {
@@ -147,15 +148,29 @@ pub async fn execute_downloads(
 ) -> (usize, usize) {
     let mut ok = 0;
     let mut failed = 0;
+    {
+        let mut state = ctx.state.lock().unwrap();
+        let route = state.active_server_route.clone();
+        state.transfer.begin_group(
+            TransferDirection::Download,
+            Some(format!("{} album item(s)", assets.len())),
+            route,
+        );
+    }
     for asset in assets {
         let dest = unique_destination(&watch_path, &asset.filename);
+        let progress = album_download_progress(&ctx, asset.id.clone(), asset.filename.clone());
         match ctx
             .api_client
-            .download_original_to_file(&asset.id, &dest)
+            .download_original_to_file(&asset.id, &dest, Some(progress))
             .await
         {
-            Ok(_) => ok += 1,
+            Ok(_) => {
+                finish_album_download(&ctx, &asset.id);
+                ok += 1
+            }
             Err(err) => {
+                finish_album_download(&ctx, &asset.id);
                 log::warn!("Download {} ({}) failed: {}", asset.filename, asset.id, err);
                 failed += 1;
             }
@@ -189,4 +204,50 @@ fn unique_destination(folder: &Path, filename: &str) -> PathBuf {
         }
     }
     candidate
+}
+
+fn album_download_progress(
+    ctx: &Arc<AppContext>,
+    item_id: String,
+    item_label: String,
+) -> TransferProgressCallback {
+    let state_ref = ctx.state.clone();
+    {
+        let mut state = state_ref.lock().unwrap();
+        let route = state.active_server_route.clone();
+        state.transfer.register_item(
+            TransferDirection::Download,
+            item_id.clone(),
+            None,
+            Some(item_label),
+            route,
+        );
+    }
+
+    Arc::new(move |bytes_done, total_bytes| {
+        let mut state = state_ref.lock().unwrap();
+        if let Some(total_bytes) = total_bytes {
+            let current = state
+                .transfer
+                .active_item_totals
+                .get(&item_id)
+                .copied()
+                .unwrap_or(0);
+            if current == 0 {
+                state.transfer.update_item_total(&item_id, total_bytes);
+            }
+        }
+        let route = state.active_server_route.clone();
+        state
+            .transfer
+            .update_item_bytes(TransferDirection::Download, &item_id, bytes_done, route);
+    })
+}
+
+fn finish_album_download(ctx: &Arc<AppContext>, item_id: &str) {
+    let mut state = ctx.state.lock().unwrap();
+    let route = state.active_server_route.clone();
+    state
+        .transfer
+        .finish_item(TransferDirection::Download, item_id, route);
 }

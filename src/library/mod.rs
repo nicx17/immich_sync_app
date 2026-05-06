@@ -9,7 +9,9 @@ use glib::clone;
 use gtk::prelude::*;
 use libadwaita::prelude::*;
 
-use crate::api_client::{LibraryAsset, MetadataSearchFilters, ThumbnailSize};
+use crate::api_client::{
+    LibraryAsset, MetadataSearchFilters, ThumbnailSize, TransferProgressCallback,
+};
 use crate::app_context::AppContext;
 use crate::config::Config;
 use crate::library::albums_view::{
@@ -23,7 +25,8 @@ use crate::library::local_source::{
 };
 use crate::library::sidebar::{SidebarParts, build_sidebar};
 use crate::library::state::{LibraryLoadState, LibrarySortMode, LibrarySource};
-use crate::settings_window::build_settings_window_with_parent;
+use crate::settings_window::{build_settings_window_with_parent, show_queue_inspector};
+use crate::state_manager::TransferDirection;
 
 const LOCAL_ID_PREFIX: &str = "local::";
 
@@ -39,6 +42,61 @@ pub mod style;
 pub mod thumbnail_cache;
 
 const PAGE_SIZE: u32 = 50;
+
+fn begin_download_session(ctx: &Arc<AppContext>, item_label: String) {
+    let state_ref = ctx.state.clone();
+    let mut state = state_ref.lock().unwrap();
+    let route = state.active_server_route.clone();
+    state
+        .transfer
+        .begin_group(TransferDirection::Download, Some(item_label), route);
+}
+
+fn track_download_item(
+    ctx: &Arc<AppContext>,
+    item_id: String,
+    item_label: Option<String>,
+    total_bytes: Option<u64>,
+) -> TransferProgressCallback {
+    let state_ref = ctx.state.clone();
+    {
+        let mut state = state_ref.lock().unwrap();
+        let route = state.active_server_route.clone();
+        state.transfer.register_item(
+            TransferDirection::Download,
+            item_id.clone(),
+            total_bytes,
+            item_label,
+            route,
+        );
+    }
+    Arc::new(move |bytes_done, total_bytes| {
+        let mut state = state_ref.lock().unwrap();
+        if let Some(total_bytes) = total_bytes {
+            let current = state
+                .transfer
+                .active_item_totals
+                .get(&item_id)
+                .copied()
+                .unwrap_or(0);
+            if current == 0 {
+                state.transfer.update_item_total(&item_id, total_bytes);
+            }
+        }
+        let route = state.active_server_route.clone();
+        state
+            .transfer
+            .update_item_bytes(TransferDirection::Download, &item_id, bytes_done, route);
+    })
+}
+
+fn finish_download_item(ctx: &Arc<AppContext>, item_id: &str) {
+    let mut state = ctx.state.lock().unwrap();
+    let route = state.active_server_route.clone();
+    state
+        .transfer
+        .finish_item(TransferDirection::Download, item_id, route);
+}
 
 fn load_texture_oriented(path: &std::path::Path) -> Option<gdk4::Texture> {
     let raw = gtk::gdk_pixbuf::Pixbuf::from_file(path).ok()?;
@@ -58,9 +116,9 @@ struct LibraryWindowUi {
     albums: AlbumsViewParts,
     content_stack: gtk::Stack,
     error_label: gtk::Label,
-    footer_label: gtk::Label,
-    route_label: gtk::Label,
-    status_dot: gtk::Label,
+    transfer_bar: gtk::Box,
+    transfer_progress: gtk::ProgressBar,
+    transfer_label: gtk::Label,
     search_entry: gtk::SearchEntry,
     search_mode: gtk::DropDown,
     sort_mode: gtk::DropDown,
@@ -76,6 +134,7 @@ struct LibraryWindowUi {
     album_link_row: libadwaita::ActionRow,
     album_link_button: gtk::Button,
     album_sync_button: gtk::Button,
+    last_seen_upload_batch: Cell<u64>,
 }
 
 pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>) {
@@ -102,12 +161,17 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .icon_name("emblem-system-symbolic")
         .tooltip_text("Open Settings")
         .build();
+    let queue_button = gtk::Button::builder()
+        .icon_name("view-list-symbolic")
+        .tooltip_text("Open Queue Inspector")
+        .build();
     let refresh_button = gtk::Button::builder()
         .icon_name("view-refresh-symbolic")
         .tooltip_text("Refresh")
         .build();
     header.pack_start(&sidebar_toggle);
     header.pack_end(&prefs_button);
+    header.pack_end(&queue_button);
     header.pack_end(&refresh_button);
     let select_toggle = gtk::ToggleButton::builder()
         .icon_name("checkbox-symbolic")
@@ -215,28 +279,29 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     content_stack.add_named(&explore.root, Some("explore"));
     content_stack.add_named(&albums.root, Some("albums"));
 
-    let footer = gtk::Box::builder()
+    let transfer_progress = gtk::ProgressBar::builder()
+        .hexpand(true)
+        .valign(gtk::Align::Center)
+        .css_classes(vec!["mimick-transfer-progress".to_string()])
+        .build();
+    let transfer_label = gtk::Label::builder()
+        .xalign(0.0)
+        .hexpand(true)
+        .wrap(true)
+        .max_width_chars(48)
+        .css_classes(vec!["caption".to_string(), "dim-label".to_string()])
+        .build();
+    let transfer_bar = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(12)
         .margin_top(8)
-        .margin_bottom(12)
+        .margin_bottom(8)
         .margin_start(12)
         .margin_end(12)
+        .css_classes(vec!["mimick-transfer-shell".to_string()])
         .build();
-    let status_dot = gtk::Label::builder()
-        .label("\u{25CF}")
-        .css_classes(vec!["mimick-status-dot".to_string(), "offline".to_string()])
-        .build();
-    let route_label = gtk::Label::builder().xalign(0.0).build();
-
-    let footer_label = gtk::Label::builder()
-        .xalign(1.0)
-        .hexpand(true)
-        .wrap(true)
-        .build();
-    footer.append(&status_dot);
-    footer.append(&route_label);
-    footer.append(&footer_label);
+    transfer_bar.append(&transfer_progress);
+    transfer_bar.append(&transfer_label);
 
     let album_link_row = libadwaita::ActionRow::builder()
         .title("No local folder linked")
@@ -302,7 +367,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     content.append(&timeline_banner);
     content.append(&content_stack);
     content.append(&bulk_bar);
-    content.append(&footer);
+    content.append(&transfer_bar);
 
     let split = libadwaita::OverlaySplitView::builder()
         .sidebar(&sidebar.root)
@@ -352,9 +417,9 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         albums,
         content_stack,
         error_label,
-        footer_label,
-        route_label,
-        status_dot,
+        transfer_bar,
+        transfer_progress,
+        transfer_label,
         search_entry,
         search_mode,
         sort_mode,
@@ -370,7 +435,15 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         album_link_row: album_link_row.clone(),
         album_link_button: album_link_button.clone(),
         album_sync_button: album_sync_button.clone(),
+        last_seen_upload_batch: Cell::new(0),
     });
+    *ui.grid.context_menu_handler.borrow_mut() = Some(Box::new(clone!(
+        #[strong]
+        ui,
+        move |position, x, y| {
+            show_asset_context_menu(ui.clone(), position, x, y);
+        }
+    )));
 
     connect_album_link_row(ui.clone(), album_link_listbox);
 
@@ -378,7 +451,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     connect_bulk_actions(ui.clone(), bulk_delete, bulk_download, bulk_clear);
 
     connect_sidebar_handlers(ui.clone());
-    connect_controls(ui.clone(), prefs_button, refresh_button);
+    connect_controls(ui.clone(), prefs_button, queue_button, refresh_button);
     connect_grid_handlers(ui.clone());
     connect_filters_button(ui.clone(), filters_button);
 
@@ -398,6 +471,7 @@ fn bootstrap_window(ui: Rc<LibraryWindowUi>) {
     fetch_current_user(ui.clone());
     connect_albums_create(ui.clone());
     spawn_server_ping_loop(ui.clone());
+    spawn_transfer_poll_loop(ui.clone());
     load_source_page(ui, initial_request, false);
 }
 
@@ -409,6 +483,18 @@ fn spawn_server_ping_loop(ui: Rc<LibraryWindowUi>) {
             let route = ui_for_tick.ctx.api_client.active_route_label().await;
             update_footer(&ui_for_tick, route);
         });
+        glib::ControlFlow::Continue
+    });
+}
+
+fn spawn_transfer_poll_loop(ui: Rc<LibraryWindowUi>) {
+    glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
+        let completed_batches = ui.ctx.state.lock().unwrap().completed_upload_batches;
+        if completed_batches != ui.last_seen_upload_batch.get() {
+            ui.last_seen_upload_batch.set(completed_batches);
+            refresh_library_after_mutation(ui.clone(), true);
+        }
+        update_transfer_ui(&ui);
         glib::ControlFlow::Continue
     });
 }
@@ -465,8 +551,7 @@ fn prompt_create_album(ui: Rc<LibraryWindowUi>) {
         glib::MainContext::default().spawn_local(async move {
             match ui.ctx.api_client.create_album(name.trim()).await {
                 Ok(_) => {
-                    refresh_albums_view(ui.clone());
-                    reload_sidebar(&ui);
+                    refresh_library_after_mutation(ui.clone(), false);
                 }
                 Err(err) => log::error!("Create album failed: {}", err),
             }
@@ -503,6 +588,7 @@ fn album_click_handler(ui: Rc<LibraryWindowUi>) -> AlbumClick {
 fn connect_controls(
     ui: Rc<LibraryWindowUi>,
     prefs_button: gtk::Button,
+    queue_button: gtk::Button,
     refresh_button: gtk::Button,
 ) {
     prefs_button.connect_clicked(clone!(
@@ -513,18 +599,19 @@ fn connect_controls(
         }
     ));
 
+    queue_button.connect_clicked(clone!(
+        #[strong]
+        ui,
+        move |_| {
+            show_queue_inspector(&ui.window, ui.ctx.queue_manager.clone());
+        }
+    ));
+
     refresh_button.connect_clicked(clone!(
         #[strong]
         ui,
         move |_| {
-            load_albums(ui.clone());
-            load_status(ui.clone());
-            ui.explore.populated.set(false);
-            let request = {
-                let source = ui.ctx.library_state.lock().unwrap().source.clone();
-                ui.ctx.library_state.lock().unwrap().switch_source(source)
-            };
-            load_source_page(ui.clone(), request, false);
+            refresh_library_surfaces(ui.clone(), true);
         }
     ));
 
@@ -686,6 +773,23 @@ fn connect_controls(
     ));
 }
 
+fn refresh_library_surfaces(ui: Rc<LibraryWindowUi>, include_current_source: bool) {
+    load_albums(ui.clone());
+    load_status(ui.clone());
+    ui.explore.populated.set(false);
+    if include_current_source {
+        let request = {
+            let source = ui.ctx.library_state.lock().unwrap().source.clone();
+            ui.ctx.library_state.lock().unwrap().switch_source(source)
+        };
+        load_source_page(ui, request, false);
+    }
+}
+
+fn refresh_library_after_mutation(ui: Rc<LibraryWindowUi>, prefer_current_source: bool) {
+    refresh_library_surfaces(ui, prefer_current_source);
+}
+
 fn connect_select_mode(ui: Rc<LibraryWindowUi>, select_toggle: gtk::ToggleButton) {
     let selection = ui.grid.selection.clone();
     let bulk_bar = ui.bulk_bar.clone();
@@ -729,6 +833,11 @@ fn connect_select_mode(ui: Rc<LibraryWindowUi>, select_toggle: gtk::ToggleButton
         let select_toggle = select_toggle.clone();
         let transient = transient.clone();
         move |_, keyval, _, _| {
+            if keyval == gtk::gdk::Key::Escape && select_toggle.is_active() {
+                select_toggle.set_active(false);
+                transient.set(false);
+                return glib::Propagation::Stop;
+            }
             if matches!(keyval, gtk::gdk::Key::Control_L | gtk::gdk::Key::Control_R)
                 && !select_toggle.is_active()
             {
@@ -775,10 +884,12 @@ fn connect_bulk_actions(
         #[strong]
         ui,
         move |_| {
-            for (asset_id, filename) in collect_selected_assets(&ui) {
-                if !asset_id.starts_with(LOCAL_ID_PREFIX) {
-                    start_download(ui.clone(), asset_id, filename);
-                }
+            let downloads: Vec<(String, String)> = collect_selected_assets(&ui)
+                .into_iter()
+                .filter(|(asset_id, _)| !asset_id.starts_with(LOCAL_ID_PREFIX))
+                .collect();
+            if !downloads.is_empty() {
+                start_download_group(ui.clone(), downloads);
             }
         }
     ));
@@ -816,6 +927,18 @@ fn collect_selected_assets(ui: &Rc<LibraryWindowUi>) -> Vec<(String, String)> {
     out
 }
 
+fn should_refresh_after_download(ui: &LibraryWindowUi) -> bool {
+    matches!(
+        ui.ctx.library_state.lock().unwrap().source,
+        LibrarySource::LocalAll
+            | LibrarySource::LocalSearch { .. }
+            | LibrarySource::Unified
+            | LibrarySource::UnifiedSearch { .. }
+            | LibrarySource::AlbumLocal { .. }
+            | LibrarySource::AlbumUnified { .. }
+    )
+}
+
 fn confirm_and_bulk_delete(ui: Rc<LibraryWindowUi>) {
     let assets = collect_selected_assets(&ui);
     let remote_ids: Vec<String> = assets
@@ -849,7 +972,7 @@ fn confirm_and_bulk_delete(ui: Rc<LibraryWindowUi>) {
                 Ok(()) => {
                     ui.grid.selection.unselect_all();
                     ui.select_toggle.set_active(false);
-                    reload_sidebar(&ui);
+                    refresh_library_after_mutation(ui.clone(), true);
                 }
                 Err(err) => {
                     log::error!("Bulk delete failed: {}", err);
@@ -986,6 +1109,224 @@ fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
             });
         }
     ));
+}
+
+fn show_asset_context_menu(ui: Rc<LibraryWindowUi>, position: u32, x: f64, y: f64) {
+    let Some(item) = ui.grid.model.item(position).and_downcast::<AssetObject>() else {
+        return;
+    };
+    let asset_id = item.property::<String>("id");
+    let remote_id = item.property::<String>("remote-id");
+    let local_path = item.property::<String>("local-path");
+    let filename = item.property::<String>("filename");
+    let asset_type = item.property::<String>("asset-type");
+    let is_image = asset_type.eq_ignore_ascii_case("IMAGE");
+    let can_download = !remote_id.is_empty() && !asset_id.starts_with(LOCAL_ID_PREFIX);
+    let can_open = can_download || !local_path.is_empty();
+
+    let popover = gtk::Popover::builder()
+        .has_arrow(true)
+        .autohide(true)
+        .build();
+    popover.set_parent(&ui.grid.view);
+    popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+
+    let content = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(4)
+        .margin_top(6)
+        .margin_bottom(6)
+        .margin_start(6)
+        .margin_end(6)
+        .build();
+
+    if is_image {
+        let copy_btn = gtk::Button::builder()
+            .label("Copy")
+            .halign(gtk::Align::Fill)
+            .build();
+        copy_btn.connect_clicked(clone!(
+            #[strong]
+            ui,
+            #[strong]
+            popover,
+            #[strong]
+            asset_id,
+            #[strong]
+            remote_id,
+            #[strong]
+            local_path,
+            #[strong]
+            filename,
+            move |_| {
+                popover.popdown();
+                copy_asset_to_clipboard(
+                    ui.clone(),
+                    asset_id.clone(),
+                    remote_id.clone(),
+                    local_path.clone(),
+                    filename.clone(),
+                );
+            }
+        ));
+        content.append(&copy_btn);
+    }
+
+    if can_download {
+        let download_btn = gtk::Button::builder()
+            .label("Download")
+            .halign(gtk::Align::Fill)
+            .build();
+        download_btn.connect_clicked(clone!(
+            #[strong]
+            ui,
+            #[strong]
+            popover,
+            #[strong]
+            remote_id,
+            #[strong]
+            filename,
+            move |_| {
+                popover.popdown();
+                start_download(ui.clone(), remote_id.clone(), filename.clone());
+            }
+        ));
+        content.append(&download_btn);
+    }
+
+    if can_open {
+        let open_btn = gtk::Button::builder()
+            .label("Open In")
+            .halign(gtk::Align::Fill)
+            .build();
+        open_btn.connect_clicked(clone!(
+            #[strong]
+            ui,
+            #[strong]
+            popover,
+            #[strong]
+            asset_id,
+            #[strong]
+            remote_id,
+            #[strong]
+            local_path,
+            #[strong]
+            filename,
+            move |_| {
+                popover.popdown();
+                open_asset_in_default_app(
+                    ui.clone(),
+                    asset_id.clone(),
+                    remote_id.clone(),
+                    local_path.clone(),
+                    filename.clone(),
+                );
+            }
+        ));
+        content.append(&open_btn);
+    }
+
+    popover.set_child(Some(&content));
+    popover.popup();
+}
+
+fn copy_asset_to_clipboard(
+    ui: Rc<LibraryWindowUi>,
+    asset_id: String,
+    remote_id: String,
+    local_path: String,
+    filename: String,
+) {
+    glib::MainContext::default().spawn_local(async move {
+        let path =
+            match ensure_original_asset_path(&ui, &asset_id, &remote_id, &local_path, &filename)
+                .await
+            {
+                Ok(path) => path,
+                Err(err) => {
+                    show_alert_dialog(&ui, "Copy Failed", &err);
+                    return;
+                }
+            };
+        let Some(texture) = load_texture_oriented(&path) else {
+            show_alert_dialog(&ui, "Copy Failed", "Could not decode the original image.");
+            return;
+        };
+        if let Some(display) = gdk4::Display::default() {
+            display.clipboard().set_texture(&texture);
+        }
+    });
+}
+
+fn open_asset_in_default_app(
+    ui: Rc<LibraryWindowUi>,
+    asset_id: String,
+    remote_id: String,
+    local_path: String,
+    filename: String,
+) {
+    glib::MainContext::default().spawn_local(async move {
+        let path =
+            match ensure_original_asset_path(&ui, &asset_id, &remote_id, &local_path, &filename)
+                .await
+            {
+                Ok(path) => path,
+                Err(err) => {
+                    show_alert_dialog(&ui, "Open Failed", &err);
+                    return;
+                }
+            };
+        open_local_with_default_app(&path.display().to_string());
+    });
+}
+
+async fn ensure_original_asset_path(
+    ui: &LibraryWindowUi,
+    asset_id: &str,
+    remote_id: &str,
+    local_path: &str,
+    filename: &str,
+) -> Result<PathBuf, String> {
+    if !local_path.is_empty() {
+        return Ok(PathBuf::from(local_path));
+    }
+    let remote_asset_id = if !remote_id.is_empty() {
+        remote_id
+    } else {
+        asset_id
+    };
+    let cache_dir = dirs::cache_dir()
+        .ok_or_else(|| "Could not locate a cache directory.".to_string())?
+        .join("mimick")
+        .join("open-in");
+    let _ = std::fs::create_dir_all(&cache_dir);
+    let path = cache_dir.join(filename);
+    if path.exists() {
+        return Ok(path);
+    }
+    begin_download_session(&ui.ctx, filename.to_string());
+    let progress = track_download_item(
+        &ui.ctx,
+        remote_asset_id.to_string(),
+        Some(filename.to_string()),
+        None,
+    );
+    let result = ui
+        .ctx
+        .api_client
+        .download_original_to_file(remote_asset_id, &path, Some(progress))
+        .await;
+    finish_download_item(&ui.ctx, remote_asset_id);
+    result.map(|_| path).map_err(|err| err.to_string())
+}
+
+fn show_alert_dialog(ui: &LibraryWindowUi, heading: &str, body: &str) {
+    let alert = libadwaita::AlertDialog::builder()
+        .heading(heading)
+        .body(body)
+        .build();
+    alert.add_response("ok", "OK");
+    alert.present(Some(&ui.window));
 }
 
 fn apply_timeline_ui_state(ui: &LibraryWindowUi, source: &LibrarySource) {
@@ -1247,6 +1588,9 @@ fn present_sync_dialog(
                 downloaded,
                 failed
             );
+            if queued > 0 || downloaded > 0 {
+                refresh_library_after_mutation(ui.clone(), true);
+            }
         });
         dlg.close();
     });
@@ -1704,15 +2048,15 @@ fn sync_content_state(ui: &LibraryWindowUi) {
 
 fn update_footer(ui: &LibraryWindowUi, route: Option<String>) {
     let state = ui.ctx.library_state.lock().unwrap();
-    if let Some(route) = route {
-        ui.route_label.set_label(&format!("Connected ({})", route));
-        ui.status_dot.remove_css_class("offline");
-        ui.status_dot.add_css_class("connected");
-    } else {
-        ui.route_label.set_label("Offline");
-        ui.status_dot.remove_css_class("connected");
-        ui.status_dot.add_css_class("offline");
-    }
+    let route_subtitle = route
+        .as_deref()
+        .map(|route| match route {
+            "LAN" => "Connected through LAN",
+            "WAN" => "Connected through WAN",
+            _ => "Connected through configured server",
+        })
+        .unwrap_or("Offline");
+    ui.sidebar.connection_row.set_subtitle(route_subtitle);
 
     let stats = state
         .status
@@ -1726,7 +2070,78 @@ fn update_footer(ui: &LibraryWindowUi, route: Option<String>) {
         .as_ref()
         .map(|about| format!("Immich {}", about.version))
         .unwrap_or_else(|| "Version unavailable".to_string());
-    ui.footer_label.set_label(&format!("{} | {}", stats, about));
+    ui.sidebar
+        .server_row
+        .set_subtitle(&format!("{stats} | {about}"));
+}
+
+fn update_transfer_ui(ui: &LibraryWindowUi) {
+    let transfer = {
+        let mut state = ui.ctx.state.lock().unwrap();
+        if state.transfer.active
+            && state.transfer.active_uploads == 0
+            && state.transfer.active_downloads == 0
+        {
+            // Guard against sessions that were opened but never queued.
+            state.transfer.reset_runtime();
+        }
+        state.transfer.clone()
+    };
+    if !transfer.active {
+        ui.transfer_bar.remove_css_class("active");
+        ui.transfer_progress.set_fraction(0.0);
+        let idle_summary =
+            if transfer.last_upload_avg_bps > 0.0 || transfer.last_download_avg_bps > 0.0 {
+                format!(
+                    "Idle  Last upload avg {}  Last download avg {}",
+                    format_rate(transfer.last_upload_avg_bps),
+                    format_rate(transfer.last_download_avg_bps)
+                )
+            } else {
+                "Idle  No recent transfer session".to_string()
+            };
+        ui.transfer_label.set_label(&idle_summary);
+        return;
+    }
+    ui.transfer_bar.add_css_class("active");
+
+    let direction = match transfer.direction {
+        TransferDirection::Upload => "Uploading",
+        TransferDirection::Download => "Downloading",
+    };
+    let detail = transfer
+        .active_item_label
+        .as_deref()
+        .unwrap_or(match transfer.direction {
+            TransferDirection::Upload => "queued asset",
+            TransferDirection::Download => "selected asset",
+        });
+    let live_speed = format_rate(transfer.instant_bps);
+    let avg_speed = format_rate(transfer.session_avg_bps);
+    ui.transfer_label.set_label(&format!(
+        "{direction} {detail}  {live_speed}  avg {avg_speed}"
+    ));
+
+    match transfer.total_bytes {
+        Some(total) if total > 0 => {
+            ui.transfer_progress.set_show_text(false);
+            ui.transfer_progress
+                .set_fraction((transfer.current_bytes as f64 / total as f64).clamp(0.0, 1.0));
+        }
+        _ => {
+            ui.transfer_progress.pulse();
+        }
+    }
+}
+
+fn format_rate(bytes_per_sec: f64) -> String {
+    if bytes_per_sec >= 1024.0 * 1024.0 {
+        format!("{:.1} MB/s", bytes_per_sec / (1024.0 * 1024.0))
+    } else if bytes_per_sec >= 1024.0 {
+        format!("{:.1} KB/s", bytes_per_sec / 1024.0)
+    } else {
+        format!("{:.0} B/s", bytes_per_sec.max(0.0))
+    }
 }
 
 fn build_status_view(icon_name: &str, title: &str, subtitle: &str) -> gtk::Box {
@@ -2045,11 +2460,22 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
                         let _ = std::fs::create_dir_all(&cache_dir);
                         let temp = cache_dir.join(format!("{}.bin", asset_id));
                         if !temp.exists()
-                            && let Err(err) = ui
-                                .ctx
-                                .api_client
-                                .download_original_to_file(&asset_id, &temp)
-                                .await
+                            && let Err(err) = {
+                                begin_download_session(&ui.ctx, format!("preview {asset_id}"));
+                                let progress = track_download_item(
+                                    &ui.ctx,
+                                    asset_id.clone(),
+                                    Some(format!("preview {asset_id}")),
+                                    None,
+                                );
+                                let result = ui
+                                    .ctx
+                                    .api_client
+                                    .download_original_to_file(&asset_id, &temp, Some(progress))
+                                    .await;
+                                finish_download_item(&ui.ctx, &asset_id);
+                                result
+                            }
                         {
                             log::warn!("Lightbox original fetch failed: {}", err);
                             return;
@@ -2312,11 +2738,18 @@ fn spawn_video_handoff(ui: Rc<LibraryWindowUi>, asset_id: String, filename: Stri
         let _ = std::fs::create_dir_all(&cache_dir);
         let path = cache_dir.join(&filename);
         if !path.exists()
-            && let Err(err) = ui
-                .ctx
-                .api_client
-                .download_original_to_file(&asset_id, &path)
-                .await
+            && let Err(err) = {
+                begin_download_session(&ui.ctx, filename.clone());
+                let progress =
+                    track_download_item(&ui.ctx, asset_id.clone(), Some(filename.clone()), None);
+                let result = ui
+                    .ctx
+                    .api_client
+                    .download_original_to_file(&asset_id, &path, Some(progress))
+                    .await;
+                finish_download_item(&ui.ctx, &asset_id);
+                result
+            }
         {
             log::warn!("Video handoff failed for {}: {}", asset_id, err);
             return;
@@ -2326,6 +2759,23 @@ fn spawn_video_handoff(ui: Rc<LibraryWindowUi>, asset_id: String, filename: Stri
 }
 
 fn start_download(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
+    begin_download_session(&ui.ctx, filename.clone());
+    start_download_with_session(ui, asset_id, filename, true);
+}
+
+fn start_download_group(ui: Rc<LibraryWindowUi>, downloads: Vec<(String, String)>) {
+    begin_download_session(&ui.ctx, format!("{} items", downloads.len()));
+    for (asset_id, filename) in downloads {
+        start_download_with_session(ui.clone(), asset_id, filename, false);
+    }
+}
+
+fn start_download_with_session(
+    ui: Rc<LibraryWindowUi>,
+    asset_id: String,
+    filename: String,
+    show_result_dialog: bool,
+) {
     glib::MainContext::default().spawn_local(clone!(
         #[strong]
         ui,
@@ -2354,6 +2804,8 @@ fn start_download(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
                         asset_id,
                         #[strong]
                         filename,
+                        #[strong]
+                        show_result_dialog,
                         move |dialog, response| {
                             dialog.close();
                             if response == "overwrite" {
@@ -2361,6 +2813,7 @@ fn start_download(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
                                     ui.clone(),
                                     asset_id.clone(),
                                     target_dir.join(&filename),
+                                    show_result_dialog,
                                 );
                             }
                         }
@@ -2369,39 +2822,62 @@ fn start_download(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
                 dialog.present(Some(&ui.window));
                 return;
             }
-            spawn_download(ui, asset_id, output_path);
+            spawn_download(ui, asset_id, output_path, show_result_dialog);
         }
     ));
 }
 
-fn spawn_download(ui: Rc<LibraryWindowUi>, asset_id: String, output_path: PathBuf) {
+fn spawn_download(
+    ui: Rc<LibraryWindowUi>,
+    asset_id: String,
+    output_path: PathBuf,
+    show_result_dialog: bool,
+) {
     glib::MainContext::default().spawn_local(clone!(
         #[strong]
         ui,
         async move {
+            let item_label = output_path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| output_path.display().to_string());
+            let progress =
+                track_download_item(&ui.ctx, asset_id.clone(), Some(item_label.clone()), None);
             match ui
                 .ctx
                 .api_client
-                .download_original_to_file(&asset_id, &output_path)
+                .download_original_to_file(&asset_id, &output_path, Some(progress))
                 .await
             {
                 Ok(()) => {
-                    let heading = "Download Complete";
-                    let body = format!("Saved {}", output_path.display());
-                    let alert = libadwaita::AlertDialog::builder()
-                        .heading(heading)
-                        .body(&body)
-                        .build();
-                    alert.add_response("ok", "OK");
-                    alert.present(Some(&ui.window));
+                    let session_finished = {
+                        finish_download_item(&ui.ctx, &asset_id);
+                        !ui.ctx.state.lock().unwrap().transfer.active
+                    };
+                    if should_refresh_after_download(&ui) && session_finished {
+                        refresh_library_after_mutation(ui.clone(), true);
+                    }
+                    if show_result_dialog {
+                        let heading = "Download Complete";
+                        let body = format!("Saved {}", output_path.display());
+                        let alert = libadwaita::AlertDialog::builder()
+                            .heading(heading)
+                            .body(&body)
+                            .build();
+                        alert.add_response("ok", "OK");
+                        alert.present(Some(&ui.window));
+                    }
                 }
                 Err(err) => {
-                    let alert = libadwaita::AlertDialog::builder()
-                        .heading("Download Failed")
-                        .body(&err)
-                        .build();
-                    alert.add_response("ok", "OK");
-                    alert.present(Some(&ui.window));
+                    finish_download_item(&ui.ctx, &asset_id);
+                    if show_result_dialog {
+                        let alert = libadwaita::AlertDialog::builder()
+                            .heading("Download Failed")
+                            .body(&err)
+                            .build();
+                        alert.add_response("ok", "OK");
+                        alert.present(Some(&ui.window));
+                    }
                 }
             }
         }
