@@ -11,7 +11,9 @@ The library view is an optional in-app browser for your Immich server's assets, 
 
 The library window opens instead of the settings window on the next launch. Settings remain accessible from the header bar gear button.
 
----
+| Photos (Light) | Photos (Dark) |
+| :---: | :---: |
+| ![Photos light](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/photos_page_view_sidebar_on.png) | ![Photos dark](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/photos_page_view_dark_sidebar_on.png) |
 
 ## Layout
 
@@ -33,6 +35,10 @@ The window uses a sidebar + content split.
 - select-mode toggle button
 - refresh button
 - gear button (opens Settings)
+
+| Search Options | View Options |
+| :---: | :---: |
+| ![Search options](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/search_options_menu_library_view.png) | ![View options](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/library_view_showing_view_options_for_albums_remote_local_unified.png) |
 
 ---
 
@@ -73,6 +79,10 @@ The source dropdown controls which assets the grid shows.
 
 Switching sources clears any active search and reloads from page 1.
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/library_view_showing_view_options_for_albums_remote_local_unified.png" width="40%" alt="Source view options" />
+</div>
+
 **Local source notes:**
 
 - Local enumeration walks your watch folders using the same extension filter as the sync engine.
@@ -99,6 +109,14 @@ Use the mode dropdown next to the search entry:
 - Filename mode works without ML and is the fastest option.
 - Clearing the search entry returns to the previous non-search source.
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/search_view_with_thequickbrownfox_searched_ocr_mode.png" width="80%" alt="OCR search example" />
+</div>
+
+| Advanced Filters | Advanced Filters (More Options) |
+| :---: | :---: |
+| ![Filters](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/advanced_filters_menu_library_view.png) | ![Filters more](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/advanced_filters_menu_library_view_more_options.png) |
+
 **Local and Unified search** always uses filename matching regardless of the mode selector. The mode selector is hidden when Local or Unified is active.
 
 ---
@@ -106,6 +124,10 @@ Use the mode dropdown next to the search entry:
 ## Explore
 
 Select **Explore** in the sidebar to open the Explore view.
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/explore_page_view_showing_people_places_sidebar_on.png" width="80%" alt="Explore page" />
+</div>
 
 Three sections are populated from the Immich server:
 
@@ -123,6 +145,10 @@ Use the **Refresh** button in the header to reload the Explore data. Sections th
 
 Select **Albums** in the sidebar to open the album landing page.
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/album_page_view_showing_albums_recent_youralbums.png" width="80%" alt="Album page" />
+</div>
+
 Three sections are shown:
 
 - **Recent** — recently accessed albums
@@ -130,6 +156,10 @@ Three sections are shown:
 - **Shared with you** — albums shared by other users
 
 Click an album tile to open it in the grid view. The album is also added to the sidebar list for quick re-access.
+
+| Selected Album (Dark) | Album View (Sidebar Off) |
+| :---: | :---: |
+| ![Album dark](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/selected_album_view_dark.png) | ![Album sidebar off](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/name_dark_album_selected_view_sidebar_off.png) |
 
 ### Creating an Album
 
@@ -142,6 +172,10 @@ To assign a new or existing album to a watch folder for automatic upload, use **
 ## Selection Mode
 
 Click the checkbox icon in the header bar (or use **Esc** to exit) to toggle selection mode.
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/library_view_photos_page_showing_selected_assets_with_checkboxes.png" width="80%" alt="Multi-select with checkboxes" />
+</div>
 
 In selection mode:
 
@@ -162,6 +196,10 @@ Selection mode exits automatically when all items are deselected.
 ## Lightbox and Asset Details
 
 Click any asset in the grid to open it in the lightbox.
+
+| Lightbox (Details On) | Lightbox (Details Off) |
+| :---: | :---: |
+| ![Lightbox details on](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/lightbox_view_details_pane_on.png) | ![Lightbox details off](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/lightbox_view_details_pane_off.png) |
 
 - The lightbox shows a preview image. If **Full Resolution Preview** is enabled in Settings → Behavior, it loads the original file instead of a server-generated proxy.
 - EXIF metadata is fetched and displayed alongside the asset.
@@ -184,6 +222,10 @@ When viewing an album, a footer row shows the linked local watch folder (if any)
 | :--- | :--- |
 | **Link folder** | Opens a picker to associate a local watch folder with this album |
 | **Sync** | Runs a bidirectional sync between the linked folder and the album |
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/library_view_showing_sync_album_dialog_upload_download_apply_cancel.png" width="80%" alt="Album sync dialog" />
+</div>
 
 **Sync steps:**
 

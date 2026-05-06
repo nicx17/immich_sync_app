@@ -69,6 +69,7 @@ struct LibraryWindowUi {
     timeline_toggle: gtk::ToggleButton,
     timeline_banner: gtk::Label,
     source_mode_suppressed: Cell<bool>,
+    sidebar_suppressed: Cell<bool>,
     select_toggle: gtk::ToggleButton,
     bulk_bar: gtk::Revealer,
     bulk_count_label: gtk::Label,
@@ -362,6 +363,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         timeline_toggle,
         timeline_banner,
         source_mode_suppressed: Cell::new(false),
+        sidebar_suppressed: Cell::new(false),
         select_toggle: select_toggle.clone(),
         bulk_bar: bulk_bar.clone(),
         bulk_count_label: bulk_count_label.clone(),
@@ -890,6 +892,9 @@ fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
         #[strong]
         ui,
         move |_, row| {
+            if ui.sidebar_suppressed.get() {
+                return;
+            }
             let Some(row) = row else {
                 return;
             };
@@ -1641,6 +1646,7 @@ fn reload_sidebar(ui: &Rc<LibraryWindowUi>) {
         | LibrarySource::AlbumLocal { id, .. }
         | LibrarySource::AlbumUnified { id, .. } => {
             ui.sidebar.fixed_list.unselect_all();
+            ui.sidebar_suppressed.set(true);
             let mut child = ui.sidebar.albums_list.first_child();
             while let Some(widget) = child {
                 let next = widget.next_sibling();
@@ -1650,10 +1656,12 @@ fn reload_sidebar(ui: &Rc<LibraryWindowUi>) {
                     })
                 {
                     ui.sidebar.albums_list.select_row(Some(&row));
+                    ui.sidebar_suppressed.set(false);
                     break;
                 }
                 child = next;
             }
+            ui.sidebar_suppressed.set(false);
         }
         _ => {
             ui.sidebar.fixed_list.unselect_all();

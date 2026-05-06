@@ -14,6 +14,10 @@ Once the application is running, the Mimick tray icon will appear in your system
 
 Clicking on the tray icon reveals a menu:
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/tray_icon_menu.png" width="40%" alt="Tray icon menu" />
+</div>
+
 * **Settings**: Opens the configuration and status window.
 * **Pause / Resume**: Temporarily stop uploads without quitting the app, then continue later.
 * **Sync Now**: Trigger an immediate rescan of watched folders and queue any eligible files right away.
@@ -40,6 +44,10 @@ The window follows your desktop appearance preference, so it can render in eithe
 
 ### Connectivity & Server Details
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_pane_showing_connnectivity_config_details.png" width="60%" alt="Connectivity settings" />
+</div>
+
 1. **Internal URL (LAN)**: Enter the local IP address of your Immich server (e.g., `http://192.168.1.10:2283`). Can be toggled on/off.
 2. **External URL (WAN)**: Enter the public address (e.g., `https://immich.yourdomain.com`). Can be toggled on/off. At least one URL must always remain enabled.
 3. **API Key**:
@@ -52,6 +60,10 @@ The window follows your desktop appearance preference, so it can render in eithe
 
 **Test Connection**: Verifies connectivity by pinging the Immich `/api/server/ping` endpoint, confirming a valid `{"res": "pong"}` JSON response to ensure you are talking to an actual Immich server rather than a captive portal.
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_pane_connection_successful_dialog.png" width="60%" alt="Connection test successful" />
+</div>
+
 ### Choosing Folders to Watch
 
 1. Under **Watch Folders**, click **+ Add Folder**.
@@ -62,6 +74,14 @@ The window follows your desktop appearance preference, so it can render in eithe
     * **Ignore hidden files and folders**
     * **Maximum file size (MB)**
     * **Allowed extensions** as a comma-separated allowlist like `jpg, png, mp4`
+
+| Watch Folders List | Album Selection | Album Search |
+| :---: | :---: | :---: |
+| ![Watch folders](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/watching_folders_list_in_settings_showing_folder_details.png) | ![Album selection](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/album_selection_menu_for_watching_folder.png) | ![Album search](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/watching_folder_album_selection_menu_with_search_feat.png) |
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/album_specific_rule_dialog.png" width="50%" alt="Folder rules dialog" />
+</div>
 
 Flatpak builds only have access to folders that you add through this picker. If you are upgrading from an older build that had wider filesystem access, remove and re-add existing watch folders once.
 
@@ -76,6 +96,10 @@ For example, if you watch `~/Pictures` (album: **All Photos**) and also `~/Pictu
 There is no limit on nesting depth. If a file matches multiple watch paths, the longest matching prefix wins.
 
 ### Startup Behavior
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_pane_showing_behaviour_settings.png" width="60%" alt="Behaviour settings" />
+</div>
 
 Use the **Run on Startup** switch in the **Behavior** section if you want Mimick to launch automatically when you log in.
 
@@ -136,6 +160,10 @@ The settings window has separate actions for hiding the window and quitting the 
 
 ### Status Page
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/status_pane_sync_status_health_dashboard_actions.png" width="60%" alt="Status and health dashboard" />
+</div>
+
 The **Status** page groups the live actions you may want while Mimick is already running:
 
 * **Sync Now** to trigger an immediate watched-folder scan
@@ -144,6 +172,10 @@ The **Status** page groups the live actions you may want while Mimick is already
 * **Export Diagnostics** for support bundles
 
 ### Queue Inspector and Recovery
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/queue_inspector_dialog.png" width="60%" alt="Queue inspector" />
+</div>
 
 Inside it you can:
 
@@ -176,7 +208,15 @@ API keys, raw logs, full local paths, and raw server URLs are intentionally omit
 
 Mimick includes an opt-in library browser for albums, Explore, and search.
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_pane_showing_library_settings_and_watch_folders.png" width="60%" alt="Library settings" />
+</div>
+
 Enable it in **Settings → Behavior → Enable Library View**, then restart. See the [Library View user guide](Library-View-User-Guide) for full usage documentation.
+
+| Photos Page | Explore Page |
+| :---: | :---: |
+| ![Photos](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/photos_page_view_sidebar_on.png) | ![Explore](https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/explore_page_view_showing_people_places_sidebar_on.png) |
 
 **Extra permissions:** Library browsing requires **Asset Read** and downloads require **Asset Download**.
 
