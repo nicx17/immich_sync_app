@@ -4,7 +4,7 @@
 
 - Rust toolchain via `rustup`
 - GTK4 development packages
-- Libadwaita development packages
+- Libadwaita development packages (>= 1.6 required)
 
 ### Ubuntu / Debian
 
@@ -57,17 +57,16 @@ Increase verbosity with:
 RUST_LOG=debug cargo run
 ```
 
-## Settings UX & Apply Behavior
+## Library View & Settings UX
 
-- Most UI changes in the Settings window are now applied live (auto-apply). This includes:
+- The `adw::PreferencesWindow` now serves as a unified interface for both the **Library View** (Photos, Explore, Albums, Search) and the **Settings** panel.
+- Most UI changes in the Settings section are applied live (auto-apply). This includes:
 	- upload worker count
 	- quiet hours start/end
 	- folder add/remove
 	- per-folder album target and folder rules
 
 - Connectivity fields (API Key, Internal/External server URLs) are treated as save-only. Changes to these fields are applied only when the user clicks **Save** in the Connectivity section to avoid partially-applied network credentials during configuration edits.
-
-See `/implementation.md` for the prioritized UX plan and acceptance criteria.
 
 ## Notifications
 

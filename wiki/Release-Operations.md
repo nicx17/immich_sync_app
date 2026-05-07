@@ -31,6 +31,31 @@ Current published Flatpak repo signing fingerprint:
 - `FLATPAK_GPG_KEY_ID`
 - `FLATPAK_GPG_PASSPHRASE` if the key is protected
 
+## Pre-Flight Validation
+
+Before tagging a release, ensure all metadata, manifests, and licenses are updated and valid:
+
+```bash
+# Validate Desktop Entry and AppStream Metadata
+desktop-file-validate setup/dev.nicx.mimick.desktop
+appstreamcli validate --explain setup/metainfo/dev.nicx.mimick.metainfo.xml
+
+# Lint Flatpak manifest and build output
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest dev.nicx.mimick.yml
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder builddir build-dir # Run after a successful build
+
+# Check code quality and formatting
+cargo fmt --all
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Refresh Flatpak Cargo sources
+python3 flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
+
+# Update third-party license summaries
+cargo about generate about.hbs --output-file THIRD_PARTY_LICENSES.txt
+cargo about generate about-summary.hbs --output-file THIRD_PARTY_LICENSES_SUMMARY.txt
+```
+
 ## Release Flow
 
 1. land the release-prep commit on `main`

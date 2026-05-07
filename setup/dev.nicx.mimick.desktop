@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Mimick
-Comment=Automatically upload photos to Immich
+Comment=Unofficial Immich desktop client and auto-sync agent
 Exec=mimick
 Icon=dev.nicx.mimick
 Terminal=false

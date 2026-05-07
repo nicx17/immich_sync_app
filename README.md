@@ -34,45 +34,17 @@ Mimick is an unofficial Immich desktop client for Linux. It provides a GTK4/liba
 
 ## Screenshots
 
-### Library View
-
-| Photos (Light) | Photos (Dark) |
+| Library View (Light) | Settings & Watch Folders |
 | :---: | :---: |
-| ![Photos page light](docs/screenshots/photos_page_view_sidebar_on.png) | ![Photos page dark](docs/screenshots/photos_page_view_dark_sidebar_on.png) |
-| **Explore Page** | **Album Page** |
-| ![Explore page](docs/screenshots/explore_page_view_showing_people_places_sidebar_on.png) | ![Album page](docs/screenshots/album_page_view_showing_albums_recent_youralbums.png) |
-| **Selected Album (Dark)** | **Album View (Dark, Sidebar Off)** |
-| ![Selected album dark](docs/screenshots/selected_album_view_dark.png) | ![Album sidebar off](docs/screenshots/name_dark_album_selected_view_sidebar_off.png) |
-| **Lightbox (Details On)** | **Lightbox (Details Off)** |
-| ![Lightbox details on](docs/screenshots/lightbox_view_details_pane_on.png) | ![Lightbox details off](docs/screenshots/lightbox_view_details_pane_off.png) |
-| **Multi-Select with Checkboxes** | **OCR Search** |
-| ![Multi-select](docs/screenshots/library_view_photos_page_showing_selected_assets_with_checkboxes.png) | ![OCR search](docs/screenshots/search_view_with_thequickbrownfox_searched_ocr_mode.png) |
-| **Search Options** | **View Options (Remote / Local / Unified)** |
-| ![Search options](docs/screenshots/search_options_menu_library_view.png) | ![View options](docs/screenshots/library_view_showing_view_options_for_albums_remote_local_unified.png) |
-| **Advanced Filters** | **Advanced Filters (More Options)** |
-| ![Advanced filters](docs/screenshots/advanced_filters_menu_library_view.png) | ![Advanced filters more](docs/screenshots/advanced_filters_menu_library_view_more_options.png) |
-| **Sync Album Dialog** | **Queue Inspector** |
-| ![Sync album](docs/screenshots/library_view_showing_sync_album_dialog_upload_download_apply_cancel.png) | ![Queue inspector](docs/screenshots/queue_inspector_dialog.png) |
+| ![Photos page light](docs/screenshots/photos_page_view_sidebar_on.png) | ![Library settings](docs/screenshots/settings_pane_showing_library_settings_and_watch_folders.png) |
+| **Sync Status Dashboard** | **Desktop Integration** |
+| ![Status dashboard](docs/screenshots/status_pane_sync_status_health_dashboard_actions.png) | ![Tray icon](docs/screenshots/tray_icon_menu.png) |
 
-### Settings
+<div align="center">
 
-| Connectivity | Connection Successful |
-| :---: | :---: |
-| ![Connectivity](docs/screenshots/settings_pane_showing_connnectivity_config_details.png) | ![Connection test](docs/screenshots/settings_pane_connection_successful_dialog.png) |
-| **Behaviour Settings** | **Library and Watch Folders** |
-| ![Behaviour](docs/screenshots/settings_pane_showing_behaviour_settings.png) | ![Library settings](docs/screenshots/settings_pane_showing_library_settings_and_watch_folders.png) |
-| **Watch Folder Details** | **Album Selection for Watch Folder** |
-| ![Watch folders](docs/screenshots/watching_folders_list_in_settings_showing_folder_details.png) | ![Album selection](docs/screenshots/album_selection_menu_for_watching_folder.png) |
-| **Album Selection with Search** | **Folder Rules Dialog** |
-| ![Album search](docs/screenshots/watching_folder_album_selection_menu_with_search_feat.png) | ![Folder rules](docs/screenshots/album_specific_rule_dialog.png) |
-| **Status and Health Dashboard** | **About Mimick** |
-| ![Status dashboard](docs/screenshots/status_pane_sync_status_health_dashboard_actions.png) | ![About dialog](docs/screenshots/about_mimick_dialog.png) |
+[![View All Screenshots](https://img.shields.io/badge/View_All-Screenshots-E05D44?style=for-the-badge&labelColor=E05D44)](wiki/Screenshots.md)
 
-### Desktop Integration
-
-| Tray Icon Menu | Desktop Notification |
-| :---: | :---: |
-| ![Tray icon](docs/screenshots/tray_icon_menu.png) | ![Notification](docs/screenshots/mimick_notification_popup_on_desktop.png) |
+</div>
 
 
 ## Core Architecture & Features
@@ -206,12 +178,13 @@ Mimick now uses selected-folder access instead of full home-directory access in 
 
 ### Existing Files and Album Changes
 
-Mimick does not only sync files created while it is already running.
+Mimick can process existing files and adapt to configuration changes automatically.
 
-* On startup, Mimick rescans watched folders and queues media that has not been synced yet.
-* A local sync index is used so unchanged files that are already known to be synced are skipped quickly.
-* If you change the target Immich album for a watched folder, unchanged files can be reassociated to the new album on the next startup without forcing a full reupload.
-* If a previously targeted album was deleted, Mimick refreshes album resolution and recreates or rebinds the target album as needed.
+* On startup (or when clicking **Sync Now**), Mimick rescans watched folders to queue missing media. You can constrain this with the **Startup Catch-up Mode** (e.g., "Recent Changed Only" or "New Files Only") to save disk I/O.
+* A local sync index (stored safely in the persistent data directory) ensures unchanged files that are already synced are skipped efficiently. Clearing the application cache will not wipe your sync state.
+* If you change a watch folder's target album, unchanged files are automatically reassociated to the new album on the next scan without requiring a full reupload.
+* If a previously targeted album is deleted, Mimick refreshes album resolution and recreates or rebinds the target album as needed.
+* For deeper manual synchronization, the **Library View** provides on-demand, bidirectional album syncing to download or upload differences between linked folders and remote albums.
 
 ### Quitting vs Closing
 

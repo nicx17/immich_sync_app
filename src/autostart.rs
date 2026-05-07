@@ -58,7 +58,7 @@ fn install_desktop_entry() -> Result<(), String> {
     let escaped_exec = escape_desktop_exec_arg(&executable.to_string_lossy());
 
     let desktop_entry = format!(
-        "[Desktop Entry]\nType=Application\nVersion=1.0\nName=Mimick\nComment=Automatically upload photos to Immich\nExec={escaped_exec}\nIcon=dev.nicx.mimick\nTerminal=false\nCategories=Utility;\nX-GNOME-Autostart-enabled=true\nStartupNotify=false\n"
+        "[Desktop Entry]\nType=Application\nVersion=1.0\nName=Mimick\nComment=Unofficial Immich desktop client and auto-sync agent\nExec={escaped_exec}\nIcon=dev.nicx.mimick\nTerminal=false\nCategories=Utility;\nX-GNOME-Autostart-enabled=true\nStartupNotify=false\n"
     );
 
     fs::write(&entry_path, desktop_entry)

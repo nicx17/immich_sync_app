@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [9.5.2] - 2026-05-07
+
+### Added
+
+- Right-click context menu on grid assets with download, open-with, and delete actions gated by asset type and source.
+- Sync status icons (cloud/computer/check) and centered video badge overlay on grid thumbnails, replacing the old generic icon.
+- Auto-refresh library surfaces after album creation, bulk delete, download completion, and album sync mutations.
+- Queue inspector launchable from the library header bar, with enlarged dialog and improved long-path rendering.
+- Settings save acknowledgement dialog on explicit save.
+
+### Changed
+
+- Updated `h2` and `tower-http` dependencies and removed unused `iri-string` dependency.
+- Bumped `github-actions` dependencies (`taiki-e/install-action` and `github/codeql-action`).
+
 ### Fixed
 
 - Sync index is now stored in the persistent data directory instead of the cache directory. Clearing the app cache no longer wipes sync state or triggers a full re-upload. Existing index files are migrated automatically on first run.

@@ -426,7 +426,7 @@ For these and/or other purposes and motivations, and without any expectation of 
 --------------------------------------------------------------------------------
 GNU General Public License v3.0 or later (GPL-3.0-or-later)
 Used by:
-  - mimick 9.5.1
+  - mimick 9.5.2
 --------------------------------------------------------------------------------
 
                     GNU GENERAL PUBLIC LICENSE
@@ -1363,16 +1363,16 @@ DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 Used by:
   - cfg-if 1.0.4
-  - js-sys 0.3.97
+  - js-sys 0.3.98
   - openssl-probe 0.2.1
   - openssl-sys 0.9.115
   - socket2 0.6.3
-  - wasm-bindgen-futures 0.4.70
-  - wasm-bindgen-macro-support 0.2.120
-  - wasm-bindgen-macro 0.2.120
-  - wasm-bindgen-shared 0.2.120
-  - wasm-bindgen 0.2.120
-  - web-sys 0.3.97
+  - wasm-bindgen-futures 0.4.71
+  - wasm-bindgen-macro-support 0.2.121
+  - wasm-bindgen-macro 0.2.121
+  - wasm-bindgen-shared 0.2.121
+  - wasm-bindgen 0.2.121
+  - web-sys 0.3.98
 --------------------------------------------------------------------------------
 
 Copyright (c) 2014 Alex Crichton
