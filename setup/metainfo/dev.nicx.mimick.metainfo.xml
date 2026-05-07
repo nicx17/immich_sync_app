@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>dev.nicx.mimick</id>
   <name>Mimick</name>
-  <summary>A background daemon to auto-sync photos to Immich on Linux</summary>
+  <summary>Unofficial Immich desktop client and auto-sync agent for Linux</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <developer id="dev.nicx">
@@ -11,11 +11,14 @@
   <description>
     <p>
       Mimick is a high-performance Rust desktop client that mirrors local media to your Immich server in real-time. 
-      Designed as an interactive agent with a modern dashboard and system tray indicator, it provides transparent, 
-      user-led control over your backups.
+      Designed as an interactive agent with a built-in Library View, modern dashboard, and system tray indicator, it provides transparent, 
+      user-led control over your backups and media browsing.
     </p>
     <p>Mimick is a community-developed client and is not affiliated with or endorsed by the Immich project.</p>
     <ul>
+      <li>Library View: Browse and manage your Immich assets directly in the app with dedicated Photos, Explore, and Albums pages.</li>
+      <li>Advanced Search: Find assets using EXIF metadata filters, timeline search, and OCR text matching.</li>
+      <li>Bidirectional Sync: On-demand album synchronization to seamlessly download or upload differences between local folders and remote albums.</li>
       <li>Intelligent Monitoring: Uses native filesystem events with a polling fallback for sandboxed directories.</li>
       <li>Efficient Deduplication: Tracks local assets using SHA-1 checksums to prevent redundant uploads.</li>
       <li>Secure Storage: Leverages the native secret keyring standard for all configuration parameters.</li>
@@ -163,6 +166,25 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="9.5.2" date="2026-05-07">
+      <description>
+        <ul>
+          <li>Added right-click context menu on grid assets with download, open-with, and delete actions gated by asset type and source.</li>
+          <li>Added sync status icons (cloud/computer/check) and centered video badge overlay on grid thumbnails.</li>
+          <li>Added auto-refresh to library surfaces after album creation, bulk delete, download completion, and album sync mutations.</li>
+          <li>Added queue inspector launchable from the library header bar.</li>
+          <li>Added settings save acknowledgement dialog on explicit save.</li>
+          <li>Fixed sync index being wiped on cache clear by migrating it to the persistent data directory.</li>
+          <li>Fixed Ctrl+click selection mode so it no longer skips the first asset.</li>
+          <li>Fixed local and unified views for linked albums to be scoped to the selected album's linked folder only.</li>
+          <li>Applied embedded EXIF orientation to thumbnails and lightbox images.</li>
+          <li>Fixed details pane to a static width with text constraints to prevent dynamic resizing.</li>
+          <li>Fixed grid view thumbnails to use a fixed width instead of expanding to fill available space.</li>
+          <li>Resized explore page places grid and album tab tiles to match explore page grid style.</li>
+          <li>Consolidated duplicate refresh buttons and added F5 keyboard shortcut for refresh.</li>
+        </ul>
+      </description>
+    </release>
     <release version="9.5.1" date="2026-05-04">
       <description>
         <ul>

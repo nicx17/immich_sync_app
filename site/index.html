@@ -1,51 +1,44 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mimick - Immich Desktop Client for Linux</title>
     <meta
       name="description"
-      content="Mimick is an unofficial Immich desktop client for Linux with background folder sync, a library browser, album management, Smart Search, OCR, and Flatpak support."
-    />
+      content="Mimick is an unofficial Immich desktop client for Linux with background folder sync, a library browser, album management, Smart Search, OCR, and Flatpak support.">
     <meta
       name="keywords"
-      content="Immich desktop client, Immich GUI Linux, Immich sync app, Linux photo sync, self-hosted photo backup, GTK4 Immich client"
-    />
-    <link rel="canonical" href="https://mimick.nicx.dev" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Mimick" />
+      content="Immich desktop client, Immich GUI Linux, Immich sync app, Linux photo sync, self-hosted photo backup, GTK4 Immich client">
+    <link rel="canonical" href="https://mimick.nicx.dev">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Mimick">
     <meta
       property="og:title"
-      content="Mimick - Immich Desktop Client for Linux"
-    />
+      content="Mimick - Immich Desktop Client for Linux">
     <meta
       property="og:description"
-      content="A native GTK4 desktop client for your self-hosted Immich server — background sync, library browser, album sync, and search."
-    />
-    <meta property="og:url" content="https://mimick.nicx.dev" />
-    <meta property="og:image" content="https://mimick.nicx.dev/icon.png" />
-    <meta name="twitter:card" content="summary" />
+      content="A native GTK4 desktop client for your self-hosted Immich server — background sync, library browser, album sync, and search.">
+    <meta property="og:url" content="https://mimick.nicx.dev">
+    <meta property="og:image" content="https://mimick.nicx.dev/icon.png">
+    <meta name="twitter:card" content="summary">
     <meta
       name="twitter:title"
-      content="Mimick - Immich Desktop Client for Linux"
-    />
+      content="Mimick - Immich Desktop Client for Linux">
     <meta
       name="twitter:description"
-      content="GTK4/libadwaita Immich client for Linux — background sync, library browser, and album management."
-    />
-    <meta name="twitter:image" content="https://mimick.nicx.dev/icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+      content="GTK4/libadwaita Immich client for Linux — background sync, library browser, and album management.">
+    <meta name="twitter:image" content="https://mimick.nicx.dev/icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap"
-    />
-    <meta name="theme-color" content="#000000" />
-    <link rel="icon" href="icon.png" sizes="192x192" type="image/png" />
-    <link rel="shortcut icon" href="icon.png" type="image/png" />
-    <link rel="apple-touch-icon" href="icon.png" />
-    <link rel="stylesheet" href="styles.css" />
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+    <meta name="theme-color" content="#000000">
+    <link rel="icon" href="icon.png" sizes="192x192" type="image/png">
+    <link rel="shortcut icon" href="icon.png" type="image/png">
+    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="stylesheet" href="styles.css">
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -82,7 +75,7 @@
         </div>
         <header>
           <div class="icon-frame">
-            <img class="hero-icon" src="icon.png" alt="Mimick app icon" />
+            <img class="hero-icon" src="icon.png" alt="Mimick app icon">
           </div>
           <p class="eyebrow">Unofficial Immich Desktop Client for Linux</p>
           <h1>Mimick</h1>
@@ -94,11 +87,7 @@
 
         <section class="feature-summary" aria-label="Mimick features">
           <p>
-            Mimick watches Linux folders in the background and uploads media to
-            Immich. The built-in library browser adds album management,
-            bidirectional album sync, Smart Search, OCR search, and Explore.
-            Per-folder album rules, failed-upload retries, quiet hours, and tray
-            controls are included.
+            Mimick is an unofficial Immich desktop client for Linux. It provides a native GTK4/libadwaita interface for automatic background sync of local photo and video folders to a self-hosted Immich server. It features an optional library browser for viewing, searching, and managing assets directly from the desktop, complete with bidirectional album sync, Smart Search, OCR search, and offline queuing.
           </p>
         </section>
 
@@ -186,9 +175,136 @@ flatpak install --user mimick-repo dev.nicx.mimick</code></pre>
             </span>
           </a>
         </section>
+
+        <section class="screenshots-section">
+          <h2>Screenshots</h2>
+          <div class="screenshots-grid">
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/photos_page_view_sidebar_on.png" alt="Library (Light)" loading="lazy">
+              <span class="figcaption">Library (Light)</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/photos_page_view_dark_sidebar_on.png" alt="Library (Dark)" loading="lazy">
+              <span class="figcaption">Library (Dark)</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/explore_page_view_showing_people_places_sidebar_on.png" alt="Explore Page" loading="lazy">
+              <span class="figcaption">Explore Page</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/album_page_view_showing_albums_recent_youralbums.png" alt="Album Page" loading="lazy">
+              <span class="figcaption">Album Page</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/selected_album_view_dark.png" alt="Selected Album (Dark)" loading="lazy">
+              <span class="figcaption">Selected Album (Dark)</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/name_dark_album_selected_view_sidebar_off.png" alt="Album View (Dark, Sidebar Off)" loading="lazy">
+              <span class="figcaption">Album View (Dark, Sidebar Off)</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/lightbox_view_details_pane_on.png" alt="Lightbox (Details On)" loading="lazy">
+              <span class="figcaption">Lightbox (Details On)</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/lightbox_view_details_pane_off.png" alt="Lightbox (Details Off)" loading="lazy">
+              <span class="figcaption">Lightbox (Details Off)</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/library_view_photos_page_showing_selected_assets_with_checkboxes.png" alt="Multi-Select with Checkboxes" loading="lazy">
+              <span class="figcaption">Multi-Select with Checkboxes</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/search_view_with_thequickbrownfox_searched_ocr_mode.png" alt="OCR Search" loading="lazy">
+              <span class="figcaption">OCR Search</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/search_options_menu_library_view.png" alt="Search Options" loading="lazy">
+              <span class="figcaption">Search Options</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/library_view_showing_view_options_for_albums_remote_local_unified.png" alt="View Options (Remote / Local / Unified)" loading="lazy">
+              <span class="figcaption">View Options (Remote / Local / Unified)</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/advanced_filters_menu_library_view.png" alt="Advanced Filters" loading="lazy">
+              <span class="figcaption">Advanced Filters</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/advanced_filters_menu_library_view_more_options.png" alt="Advanced Filters (More Options)" loading="lazy">
+              <span class="figcaption">Advanced Filters (More Options)</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/library_view_showing_sync_album_dialog_upload_download_apply_cancel.png" alt="Sync Album Dialog" loading="lazy">
+              <span class="figcaption">Sync Album Dialog</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/queue_inspector_dialog.png" alt="Queue Inspector" loading="lazy">
+              <span class="figcaption">Queue Inspector</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/settings_pane_showing_connnectivity_config_details.png" alt="Connectivity" loading="lazy">
+              <span class="figcaption">Connectivity</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/settings_pane_connection_successful_dialog.png" alt="Connection Successful" loading="lazy">
+              <span class="figcaption">Connection Successful</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/settings_pane_showing_behaviour_settings.png" alt="Behaviour Settings" loading="lazy">
+              <span class="figcaption">Behaviour Settings</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/settings_pane_showing_library_settings_and_watch_folders.png" alt="Library and Watch Folders" loading="lazy">
+              <span class="figcaption">Library and Watch Folders</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/watching_folders_list_in_settings_showing_folder_details.png" alt="Watch Folder Details" loading="lazy">
+              <span class="figcaption">Watch Folder Details</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/album_selection_menu_for_watching_folder.png" alt="Album Selection for Watch Folder" loading="lazy">
+              <span class="figcaption">Album Selection for Watch Folder</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/watching_folder_album_selection_menu_with_search_feat.png" alt="Album Selection with Search" loading="lazy">
+              <span class="figcaption">Album Selection with Search</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/album_specific_rule_dialog.png" alt="Folder Rules Dialog" loading="lazy">
+              <span class="figcaption">Folder Rules Dialog</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/status_pane_sync_status_health_dashboard_actions.png" alt="Status and Health Dashboard" loading="lazy">
+              <span class="figcaption">Status and Health Dashboard</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/about_mimick_dialog.png" alt="About Mimick" loading="lazy">
+              <span class="figcaption">About Mimick</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/tray_icon_menu.png" alt="Tray Icon Menu" loading="lazy">
+              <span class="figcaption">Tray Icon Menu</span>
+            </button>
+            <button type="button" class="screenshot-item">
+              <img src="screenshots/mimick_notification_popup_on_desktop.png" alt="Desktop Notification" loading="lazy">
+              <span class="figcaption">Desktop Notification</span>
+            </button>
+
+          </div>
+        </section>
       </div>
     </main>
 
+
+    <dialog id="image-modal" class="modal">
+      <button type="button" id="modal-close" class="modal-close" aria-label="Close image">×</button>
+      <div class="modal-content">
+        <img id="modal-img" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Fullscreen view">
+        <div id="modal-caption" class="modal-caption"></div>
+      </div>
+    </dialog>
     <footer>
       <div class="footer-inner">
         <p>
@@ -235,6 +351,52 @@ flatpak install --user mimick-repo dev.nicx.mimick</code></pre>
           localStorage.setItem(themeKey, nextTheme);
         });
       }
+
+
+      // Modal Logic
+      const modal = document.getElementById("image-modal");
+      const modalImg = document.getElementById("modal-img");
+      const modalCaption = document.getElementById("modal-caption");
+      const modalClose = document.getElementById("modal-close");
+      
+      document.querySelectorAll(".screenshot-item img").forEach((img) => {
+        const figure = img.closest(".screenshot-item");
+        
+        const openModal = () => {
+          modalImg.src = img.src;
+          modalImg.alt = img.alt;
+          modalCaption.textContent = img.alt;
+          modal.showModal();
+          modal.classList.add("visible");
+          document.body.style.overflow = "hidden";
+        };
+        
+        figure.addEventListener("click", openModal);
+        figure.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openModal();
+          }
+        });
+      });
+
+      const closeModal = () => {
+        modal.classList.remove("visible");
+        modal.close();
+        document.body.style.overflow = "";
+      };
+
+      modalClose.addEventListener("click", closeModal);
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal || e.target.classList.contains("modal-content")) {
+          closeModal();
+        }
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && modal.classList.contains("visible")) {
+          closeModal();
+        }
+      });
 
       document.querySelectorAll(".copy-button").forEach((btn) => {
         btn.addEventListener("click", async () => {

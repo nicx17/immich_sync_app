@@ -9,6 +9,7 @@
 - [Performance Tuning](Performance-Tuning)
 - [Flatpak and Permissions](Flatpak-and-Permissions)
 - [Troubleshooting](Troubleshooting)
+- [Screenshots](Screenshots)
 
 ### Building Mimick
 
