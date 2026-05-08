@@ -28,17 +28,19 @@ pub fn build_sidebar() -> SidebarParts {
     let connection_row = libadwaita::ActionRow::builder()
         .title("Connection")
         .subtitle("Offline")
+        .activatable(true)
         .build();
     let server_row = libadwaita::ActionRow::builder()
         .title("Server")
         .subtitle("Statistics unavailable")
+        .activatable(true)
         .build();
     let connection_list = gtk::ListBox::builder()
         .selection_mode(gtk::SelectionMode::None)
         .css_classes(vec!["boxed-list".to_string()])
         .build();
-    connection_list.append(&gtk::ListBoxRow::builder().child(&connection_row).build());
-    connection_list.append(&gtk::ListBoxRow::builder().child(&server_row).build());
+    connection_list.append(&connection_row);
+    connection_list.append(&server_row);
 
     fixed_list.append(&action_row(
         "Photos",
@@ -77,10 +79,10 @@ pub fn build_sidebar() -> SidebarParts {
         .child(&albums_list)
         .build();
 
-    root.append(&connection_list);
     root.append(&fixed_list);
     root.append(&albums_header);
     root.append(&albums_scroll);
+    root.append(&connection_list);
 
     SidebarParts {
         root,
@@ -91,15 +93,14 @@ pub fn build_sidebar() -> SidebarParts {
     }
 }
 
-fn action_row(title: &str, subtitle: &str, icon_name: &str, key: &str) -> gtk::ListBoxRow {
+fn action_row(title: &str, subtitle: &str, icon_name: &str, key: &str) -> libadwaita::ActionRow {
     let row = libadwaita::ActionRow::builder()
         .title(title)
         .subtitle(subtitle)
+        .tooltip_text(key)
+        .activatable(true)
         .build();
     let icon = gtk::Image::from_icon_name(icon_name);
     row.add_prefix(&icon);
-    gtk::ListBoxRow::builder()
-        .tooltip_text(key)
-        .child(&row)
-        .build()
+    row
 }

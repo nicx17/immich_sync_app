@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Relocated the server connection status indicator from the sidebar top to the bottom for better visibility and layout balance.
+- Removed the redundant checkbox toggle icon from the library header bar; selection mode is now managed via Ctrl-hold or keyboard interaction.
+- Removed support for `.xmp` files from the media scanning and MIME detection logic as they are not utilized by the application.
+
+### Fixed
+
+- Escape key and Clear button now properly exit selection mode entirely instead of just clearing selected items.
+
 ---
 
 ## [9.5.2] - 2026-05-07

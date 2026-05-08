@@ -1807,7 +1807,6 @@ fn mime_for_path(path: &Path) -> &'static str {
         Some("vob") => "video/dvd",
         Some("webm") => "video/webm",
         Some("wmv") => "video/x-ms-wmv",
-        Some("xmp") => "application/xml",
         _ => "application/octet-stream",
     }
 }
@@ -1955,7 +1954,6 @@ mod tests {
         assert_eq!(mime_for_path(Path::new("test.insv")), "video/mp4");
         assert_eq!(mime_for_path(Path::new("test.mkv")), "video/x-matroska");
         assert_eq!(mime_for_path(Path::new("test.mxf")), "application/mxf");
-        assert_eq!(mime_for_path(Path::new("test.xmp")), "application/xml");
         assert_eq!(
             mime_for_path(Path::new("test.unknown")),
             "application/octet-stream"
@@ -1975,8 +1973,7 @@ mod tests {
             "heic", "heif", "hif", "insp", "jp2", "jpe", "jxl", "mpo", "svg", "tif", "tiff",
             // Video
             "3gp", "3gpp", "avi", "flv", "insv", "m2t", "m2ts", "m4v", "mkv", "mov", "mp4", "mpe",
-            "mpeg", "mpg", "mts", "mxf", "ts", "vob", "webm", "wmv", // Sidecar
-            "xmp",
+            "mpeg", "mpg", "mts", "mxf", "ts", "vob", "webm", "wmv",
         ];
         for ext in SPEC_EXTENSIONS {
             let p = std::path::PathBuf::from(format!("a.{}", ext));

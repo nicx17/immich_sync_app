@@ -177,7 +177,6 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .icon_name("checkbox-symbolic")
         .tooltip_text("Select assets (Esc to exit)")
         .build();
-    header.pack_end(&select_toggle);
 
     let toolbar = libadwaita::ToolbarView::builder().build();
     toolbar.add_top_bar(&header);
@@ -829,6 +828,7 @@ fn connect_select_mode(ui: Rc<LibraryWindowUi>, select_toggle: gtk::ToggleButton
     // and the release no longer collapses select mode.
     let transient = Rc::new(Cell::new(false));
     let key_controller = gtk::EventControllerKey::new();
+    key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
     key_controller.connect_key_pressed({
         let select_toggle = select_toggle.clone();
         let transient = transient.clone();
@@ -877,6 +877,7 @@ fn connect_bulk_actions(
         ui,
         move |_| {
             ui.grid.selection.unselect_all();
+            ui.select_toggle.set_active(false);
         }
     ));
 
