@@ -4,8 +4,8 @@
   <name>Mimick</name>
   <summary>Desktop client for Immich</summary>
   <branding>
-    <color type="primary" scheme_preference="light">#f2a35e</color>
-    <color type="primary" scheme_preference="dark">#c4651b</color>
+    <color type="primary" scheme_preference="light">#FFC1F0</color>
+    <color type="primary" scheme_preference="dark">#510738</color>
   </branding>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
