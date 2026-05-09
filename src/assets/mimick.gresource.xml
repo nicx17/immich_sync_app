@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/dev/nicx/mimick/icons">
+    <file alias="scalable/actions/mimick-upload-symbolic.svg"
+          compressed="true"
+          preprocess="xml-stripblanks">scalable/actions/mimick-upload-symbolic.svg</file>
+    <file alias="scalable/actions/mimick-download-symbolic.svg"
+          compressed="true"
+          preprocess="xml-stripblanks">scalable/actions/mimick-download-symbolic.svg</file>
+  </gresource>
+</gresources>

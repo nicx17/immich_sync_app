@@ -1891,14 +1891,6 @@ pub fn show_queue_inspector(
 }
 
 fn show_about_dialog(parent: &impl gtk::prelude::IsA<gtk::Widget>) {
-    // Register asset search path so the "icon" name resolves
-    let display = gtk::gdk::Display::default();
-    if let Some(display) = display {
-        let theme = gtk::IconTheme::for_display(&display);
-        let assets_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/assets");
-        theme.add_search_path(&assets_dir);
-    }
-
     let about = adw::AboutDialog::builder()
         .application_name("Mimick")
         .application_icon("dev.nicx.mimick")

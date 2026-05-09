@@ -74,7 +74,6 @@ pub enum LibrarySortMode {
     NewestFirst,
     Filename,
     FileType,
-    SyncState,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -224,7 +223,6 @@ impl LibraryState {
                     .then_with(|| a.filename.cmp(&b.filename))
                     .then_with(|| a.id.cmp(&b.id))
             }),
-            LibrarySortMode::SyncState => self.assets.sort_by(|a, b| a.id.cmp(&b.id)),
         }
     }
 

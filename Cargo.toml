@@ -31,6 +31,9 @@ base64 = "0.22"
 [dev-dependencies]
 tempfile = "3.27.0"
 
+[build-dependencies]
+glib-build-tools = "0.22"
+
 [profile.release]
 opt-level = "z"        # Optimise for binary size (less code = less mapped pages)
 codegen-units = 1      # Full whole-program optimisation

@@ -113,6 +113,9 @@ async fn main() {
         .start()
         .expect("Failed to initialize logger");
 
+    gtk::gio::resources_register_include!("mimick.gresource")
+        .expect("Failed to register bundled GResource");
+
     let app = adw::Application::builder()
         .application_id("dev.nicx.mimick")
         .flags(gtk::gio::ApplicationFlags::HANDLES_COMMAND_LINE)

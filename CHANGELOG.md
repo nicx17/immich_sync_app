@@ -12,10 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Relocated the server connection status indicator from the sidebar top to the bottom for better visibility and layout balance.
 - Removed the redundant checkbox toggle icon from the library header bar; selection mode is now managed via Ctrl-hold or keyboard interaction.
 - Removed support for `.xmp` files from the media scanning and MIME detection logic as they are not utilized by the application.
+- Removed the "Sync State" option from the library sort dropdown; it was only meaningful in unified/local views and produced no useful ordering in the standard photos view.
+- Transfer direction in the progress bar is now shown as an icon (`mimick-upload-symbolic` / `mimick-download-symbolic`) rather than the text prefix "Uploading" / "Downloading", keeping the label focused on the active filename and speed.
 
 ### Fixed
 
 - Escape key and Clear button now properly exit selection mode entirely instead of just clearing selected items.
+- Asset sync status in the lightbox details pane and thumbnail hover now reflects the asset's true state (local only, remote only, or both) instead of being implied by the active view. Root cause: Immich returns SHA-1 checksums as base64 in API responses while the sync index stores them as lowercase hex; the representations are now normalised on read so checksum-to-path reverse lookups resolve correctly across all views including unified and album-unified.
+- In-app symbolic icons (`mimick-upload-symbolic`, `mimick-download-symbolic`) are now compiled into the binary via `glib-build-tools::compile_resources` and registered at startup with `gtk::IconTheme::add_resource_path("/dev/nicx/mimick/icons")`, replacing a `theme.add_search_path(env!("CARGO_MANIFEST_DIR"))` call that resolved to a nonexistent path in all non-`cargo run` environments.
 
 ---
 

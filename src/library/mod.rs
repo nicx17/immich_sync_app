@@ -98,6 +98,13 @@ fn finish_download_item(ctx: &Arc<AppContext>, item_id: &str) {
         .finish_item(TransferDirection::Download, item_id, route);
 }
 
+fn register_app_icons() {
+    if let Some(display) = gtk::gdk::Display::default() {
+        let theme = gtk::IconTheme::for_display(&display);
+        theme.add_resource_path("/dev/nicx/mimick/icons");
+    }
+}
+
 fn load_texture_oriented(path: &std::path::Path) -> Option<gdk4::Texture> {
     let raw = gtk::gdk_pixbuf::Pixbuf::from_file(path).ok()?;
     let pixbuf = raw.apply_embedded_orientation().unwrap_or(raw);
@@ -118,6 +125,7 @@ struct LibraryWindowUi {
     error_label: gtk::Label,
     transfer_bar: gtk::Box,
     transfer_progress: gtk::ProgressBar,
+    transfer_icon: gtk::Image,
     transfer_label: gtk::Label,
     search_entry: gtk::SearchEntry,
     search_mode: gtk::DropDown,
@@ -139,6 +147,7 @@ struct LibraryWindowUi {
 
 pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>) {
     style::ensure_registered();
+    register_app_icons();
 
     let window = libadwaita::ApplicationWindow::builder()
         .application(app)
@@ -221,7 +230,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .icon_name("view-more-symbolic")
         .tooltip_text("Advanced filters (date, location, camera, EXIF)")
         .build();
-    let sort_model = gtk::StringList::new(&["Newest", "Filename", "File Type", "Sync State"]);
+    let sort_model = gtk::StringList::new(&["Newest", "Filename", "File Type"]);
     let sort_mode = gtk::DropDown::builder()
         .model(&sort_model)
         .selected(0)
@@ -283,6 +292,11 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .valign(gtk::Align::Center)
         .css_classes(vec!["mimick-transfer-progress".to_string()])
         .build();
+    let transfer_icon = gtk::Image::builder()
+        .icon_size(gtk::IconSize::Normal)
+        .css_classes(vec!["dim-label".to_string()])
+        .visible(false)
+        .build();
     let transfer_label = gtk::Label::builder()
         .xalign(0.0)
         .hexpand(true)
@@ -300,6 +314,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .css_classes(vec!["mimick-transfer-shell".to_string()])
         .build();
     transfer_bar.append(&transfer_progress);
+    transfer_bar.append(&transfer_icon);
     transfer_bar.append(&transfer_label);
 
     let album_link_row = libadwaita::ActionRow::builder()
@@ -418,6 +433,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         error_label,
         transfer_bar,
         transfer_progress,
+        transfer_icon,
         transfer_label,
         search_entry,
         search_mode,
@@ -758,7 +774,6 @@ fn connect_controls(
             let sort_mode = match dropdown.selected() {
                 1 => LibrarySortMode::Filename,
                 2 => LibrarySortMode::FileType,
-                3 => LibrarySortMode::SyncState,
                 _ => LibrarySortMode::NewestFirst,
             };
 
@@ -2091,6 +2106,7 @@ fn update_transfer_ui(ui: &LibraryWindowUi) {
     if !transfer.active {
         ui.transfer_bar.remove_css_class("active");
         ui.transfer_progress.set_fraction(0.0);
+        ui.transfer_icon.set_visible(false);
         let idle_summary =
             if transfer.last_upload_avg_bps > 0.0 || transfer.last_download_avg_bps > 0.0 {
                 format!(
@@ -2106,10 +2122,13 @@ fn update_transfer_ui(ui: &LibraryWindowUi) {
     }
     ui.transfer_bar.add_css_class("active");
 
-    let direction = match transfer.direction {
-        TransferDirection::Upload => "Uploading",
-        TransferDirection::Download => "Downloading",
+    let icon_name = match transfer.direction {
+        TransferDirection::Upload => "mimick-upload-symbolic",
+        TransferDirection::Download => "mimick-download-symbolic",
     };
+    ui.transfer_icon.set_icon_name(Some(icon_name));
+    ui.transfer_icon.set_visible(true);
+
     let detail = transfer
         .active_item_label
         .as_deref()
@@ -2119,9 +2138,8 @@ fn update_transfer_ui(ui: &LibraryWindowUi) {
         });
     let live_speed = format_rate(transfer.instant_bps);
     let avg_speed = format_rate(transfer.session_avg_bps);
-    ui.transfer_label.set_label(&format!(
-        "{direction} {detail}  {live_speed}  avg {avg_speed}"
-    ));
+    ui.transfer_label
+        .set_label(&format!("{detail}  {live_speed}  avg {avg_speed}"));
 
     match transfer.total_bytes {
         Some(total) if total > 0 => {
@@ -2176,6 +2194,12 @@ fn build_status_view(icon_name: &str, title: &str, subtitle: &str) -> gtk::Box {
     container
 }
 
+fn immich_checksum_to_hex(b64: &str) -> Option<String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
+    Some(bytes.iter().map(|b| format!("{:02x}", b)).collect())
+}
+
 fn asset_objects_from_state(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<AssetObject> {
     let sync_index = ctx.sync_index.lock().unwrap();
     assets
@@ -2197,10 +2221,13 @@ fn asset_objects_from_state(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<As
                 return object;
             }
             // Remote rows: 2 = "both" when a sibling local copy exists, else 0 (remote-only).
+            // Immich returns checksum as base64 SHA-1; SyncIndex stores hex SHA-1.
             let local_match = asset
                 .checksum
                 .as_deref()
-                .and_then(|checksum| sync_index.local_path_for_checksum(checksum));
+                .and_then(immich_checksum_to_hex)
+                .as_deref()
+                .and_then(|hex| sync_index.local_path_for_checksum(hex));
             let sync_state = if local_match.is_some() { 2 } else { 0 };
             let object = AssetObject::new(
                 &asset.id,
@@ -2398,11 +2425,10 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .hexpand(false)
-        .width_request(320)
+        .min_content_width(320)
+        .max_content_width(320)
         .visible(false)
         .build();
-    details_pane.set_size_request(320, -1);
-    details_pane.set_propagate_natural_width(false);
     let details_filename = gtk::Label::builder()
         .xalign(0.0)
         .wrap(true)
@@ -2944,7 +2970,8 @@ async fn merge_unified_page(
         Ok(idx) => remote
             .iter()
             .filter_map(|a| a.checksum.as_deref())
-            .filter_map(|cs| idx.local_path_for_checksum(cs))
+            .filter_map(immich_checksum_to_hex)
+            .filter_map(|hex| idx.local_path_for_checksum(&hex))
             .collect(),
         Err(_) => std::collections::HashSet::new(),
     };
@@ -2988,7 +3015,8 @@ async fn merge_album_unified_page(
         Ok(idx) => remote
             .iter()
             .filter_map(|a| a.checksum.as_deref())
-            .filter_map(|cs| idx.local_path_for_checksum(cs))
+            .filter_map(immich_checksum_to_hex)
+            .filter_map(|hex| idx.local_path_for_checksum(&hex))
             .collect(),
         Err(_) => std::collections::HashSet::new(),
     };
