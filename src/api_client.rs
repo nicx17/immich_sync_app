@@ -169,6 +169,31 @@ pub struct ExploreSection {
     pub items: Vec<ExploreItem>,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+struct AssetWithExif {
+    id: String,
+    #[serde(rename = "exifInfo", default)]
+    exif_info: Option<ExifInfo>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ExifSearchResponse {
+    assets: ExifSearchAssets,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ExifSearchAssets {
+    items: Vec<AssetWithExif>,
+    #[serde(rename = "nextPage", default)]
+    next_page: Option<String>,
+}
+
+/// One city with a representative asset ID for thumbnail display.
+pub struct PlaceItem {
+    pub city: String,
+    pub asset_id: String,
+}
+
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExifInfo {
@@ -1407,6 +1432,67 @@ impl ImmichApiClient {
             Ok(resp) => Err(format!("HTTP {}", resp.status())),
             Err(err) => Err(err.to_string()),
         }
+    }
+
+    /// Fetch all unique cities that have at least one asset with EXIF city data.
+    /// Pages through `/api/search/metadata` collecting one representative asset
+    /// per city. Caps at 500 pages to bound runtime on very large libraries.
+    pub async fn fetch_all_places(&self) -> Result<Vec<PlaceItem>, String> {
+        let base_url = self
+            .get_active_url()
+            .await
+            .ok_or_else(|| "No active connection".to_string())?;
+        let settings = self.settings_snapshot();
+        let url = format!("{}/api/search/metadata", base_url);
+
+        let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut page: u32 = 1;
+        const PAGE_SIZE: u32 = 250;
+        const MAX_PAGES: u32 = 500;
+
+        loop {
+            let body = serde_json::json!({
+                "withExif": true,
+                "page": page,
+                "size": PAGE_SIZE,
+            });
+            let resp = match self
+                .client
+                .post(&url)
+                .header("x-api-key", &settings.api_key)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .json(&body)
+                .timeout(Duration::from_secs(30))
+                .send()
+                .await
+            {
+                Ok(r) if r.status().is_success() => r,
+                Ok(r) => return Err(format!("HTTP {}", r.status())),
+                Err(e) => return Err(e.to_string()),
+            };
+            let parsed: ExifSearchResponse = match resp.json().await {
+                Ok(p) => p,
+                Err(e) => return Err(e.to_string()),
+            };
+            let has_more = parsed.assets.next_page.is_some();
+            for asset in parsed.assets.items {
+                if let Some(city) = asset.exif_info.as_ref().and_then(|e| e.city.clone()) {
+                    seen.entry(city).or_insert(asset.id);
+                }
+            }
+            if !has_more || page >= MAX_PAGES {
+                break;
+            }
+            page += 1;
+        }
+
+        let mut places: Vec<PlaceItem> = seen
+            .into_iter()
+            .map(|(city, asset_id)| PlaceItem { city, asset_id })
+            .collect();
+        places.sort_by(|a, b| a.city.cmp(&b.city));
+        Ok(places)
     }
 
     /// Per-person face thumbnail. Distinct from `fetch_thumbnail` (asset).

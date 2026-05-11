@@ -1847,6 +1847,7 @@ fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
         async move {
             let people = ctx.api_client.fetch_people().await.unwrap_or_default();
             let sections = ctx.api_client.fetch_explore().await.unwrap_or_default();
+            let places = ctx.api_client.fetch_all_places().await.unwrap_or_default();
 
             let click_ui = ui.clone();
             explore_view::populate_people(&ui.explore, ctx.clone(), people, move |id, name| {
@@ -1864,21 +1865,26 @@ fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
                 load_source_page(click_ui.clone(), request, false);
             });
             let click_ui = ui.clone();
+            explore_view::populate_places(&ui.explore, ctx.clone(), places, move |_kind, value| {
+                let next = LibrarySource::AdvancedSearch {
+                    filters: Box::new(MetadataSearchFilters {
+                        city: Some(value.clone()),
+                        ..Default::default()
+                    }),
+                };
+                let request = click_ui.ctx.library_state.lock().switch_source(next);
+                click_ui.search_entry.set_text(&value);
+                apply_timeline_ui_state(&click_ui, &request.1);
+                load_source_page(click_ui.clone(), request, false);
+            });
+            let click_ui = ui.clone();
             explore_view::populate_explore(
                 &ui.explore,
                 ctx.clone(),
                 sections,
-                move |kind, value| {
-                    let next = match kind {
-                        "place" => LibrarySource::AdvancedSearch {
-                            filters: Box::new(MetadataSearchFilters {
-                                city: Some(value.clone()),
-                                ..Default::default()
-                            }),
-                        },
-                        _ => LibrarySource::SmartSearch {
-                            query: value.clone(),
-                        },
+                move |_kind, value| {
+                    let next = LibrarySource::SmartSearch {
+                        query: value.clone(),
                     };
                     let request = click_ui.ctx.library_state.lock().switch_source(next);
                     click_ui.search_entry.set_text(&value);
@@ -2288,7 +2294,7 @@ fn fill_exif_box(container: &gtk::Box, exif: &crate::api_client::ExifInfo) {
         rows.push(("Size".into(), format_bytes(size)));
     }
     if let Some(dt) = &exif.date_time_original {
-        rows.push(("Taken".into(), dt.clone()));
+        rows.push(("Taken".into(), format_datetime_display(dt)));
     }
     let camera = match (&exif.make, &exif.model) {
         (Some(m), Some(n)) => Some(format!("{} {}", m, n)),
@@ -2373,6 +2379,30 @@ fn format_bytes(n: u64) -> String {
     } else {
         format!("{} B", n)
     }
+}
+
+/// Format an ISO 8601 timestamp for display, converting from UTC to the
+/// user's local timezone.
+///
+/// Immich normalises `date_time_original` and `fileCreatedAt` to UTC before
+/// storage, so a photo taken at 19:55:15+05:30 is stored as
+/// 2024-01-15T14:25:15.000Z. We parse the UTC value and convert it to the
+/// system's local timezone so the displayed time matches what the camera
+/// originally recorded. Falls back to the raw string if parsing fails.
+fn format_datetime_display(iso: &str) -> String {
+    use chrono::{DateTime, Local, Utc};
+    // Try offset-aware parse first (handles +05:30, Z, etc.)
+    if let Ok(dt) = DateTime::parse_from_rfc3339(iso) {
+        let local: DateTime<Local> = dt.into();
+        return local.format("%Y-%m-%d %H:%M:%S UTC%:z").to_string();
+    }
+    // Fallback: try treating as UTC
+    if let Ok(dt) = iso.parse::<DateTime<Utc>>() {
+        let local: DateTime<Local> = dt.into();
+        return local.format("%Y-%m-%d %H:%M:%S UTC%:z").to_string();
+    }
+    // Last resort: strip trailing fractional seconds / timezone suffix
+    iso.get(..19).unwrap_or(iso).replace('T', " ").to_string()
 }
 
 /// Apply zoom to a lightbox Picture. Zoom is fit-relative: 1.0 = the size the
@@ -2666,7 +2696,12 @@ fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
                 1 => "Local only",
                 _ => "On Immich only",
             };
-            details_summary.set_label(&format!("{} · {}\nCreated: {}", mime, sync_label, created));
+            details_summary.set_label(&format!(
+                "{} · {}\nCreated: {}",
+                mime,
+                sync_label,
+                format_datetime_display(&created)
+            ));
 
             while let Some(c) = details_exif.first_child() {
                 details_exif.remove(&c);

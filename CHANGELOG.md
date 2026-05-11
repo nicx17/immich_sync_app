@@ -35,7 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the "Sync State" option from the library sort dropdown; it was only meaningful in unified/local views and produced no useful ordering in the standard photos view.
 - Transfer direction in the progress bar is now shown as an icon (`mimick-upload-symbolic` / `mimick-download-symbolic`) rather than the text prefix "Uploading" / "Downloading", keeping the label focused on the active filename and speed.
 
+### Changed
+
+- Explore page Places section now shows all cities with geotagged assets instead of only the small popular subset returned by `/api/search/explore`. A new `fetch_all_places` method pages through all assets with EXIF city data, collecting unique cities and a representative thumbnail asset per city.
+
 ### Fixed
+
+- Details pane timestamps (Taken and Created) no longer display the raw UTC ISO 8601 string with a confusing `+00:00` suffix. A new `format_datetime_display` helper parses the timestamp and formats it as `YYYY-MM-DD HH:MM:SS`, stripping the offset indicator so the displayed time matches the unambiguous value Immich recorded.
 
 - Search pagination — particularly OCR search — now uses Immich's `nextPage` field as the source of truth instead of a "did we get a full page?" heuristic. Previously, when Immich's search response post-filtered results (for visibility, archive, library scope) it returned short pages even with more matches available, causing pagination to stop early and hide the rest. Applies to all four search endpoints (Smart, OCR, Metadata, Advanced) and to album/unified variants that route through the same endpoint.
 - Closing the settings window no longer also closes the library window when background sync is disabled. The "quit when settings closes" path now checks for other open application windows first and only quits when settings was the only window left.

@@ -68,3 +68,4 @@ test_about.py
 workflow_audit.md
 CLAUDE.md
 scripts/sstool.py
+.zed/settings.json

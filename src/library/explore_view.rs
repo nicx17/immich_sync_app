@@ -12,7 +12,7 @@ use gdk4::Texture;
 use glib::Bytes;
 use gtk::prelude::*;
 
-use crate::api_client::{ExploreSection, Person, ThumbnailSize};
+use crate::api_client::{ExploreSection, Person, PlaceItem, ThumbnailSize};
 use crate::app_context::AppContext;
 
 type ExploreClick = Rc<dyn Fn(&str, String)>;
@@ -133,6 +133,31 @@ pub fn populate_people<F>(
     }
 }
 
+pub fn populate_places<F>(
+    parts: &ExploreViewParts,
+    ctx: Arc<AppContext>,
+    places: Vec<PlaceItem>,
+    on_click: F,
+) where
+    F: Fn(&str, String) + 'static,
+{
+    while let Some(child) = parts.places_grid.first_child() {
+        parts.places_grid.remove(&child);
+    }
+    parts.places_section.set_visible(!places.is_empty());
+    let on_click = Rc::new(on_click);
+    for place in places {
+        let tile = explore_tile(
+            ctx.clone(),
+            "place",
+            &place.city,
+            &place.asset_id,
+            on_click.clone(),
+        );
+        parts.places_grid.append(&tile);
+    }
+}
+
 pub fn populate_explore<F>(
     parts: &ExploreViewParts,
     ctx: Arc<AppContext>,
@@ -141,45 +166,30 @@ pub fn populate_explore<F>(
 ) where
     F: Fn(&str, String) + 'static,
 {
-    while let Some(child) = parts.places_grid.first_child() {
-        parts.places_grid.remove(&child);
-    }
     while let Some(child) = parts.things_grid.first_child() {
         parts.things_grid.remove(&child);
     }
-    let mut had_places = false;
     let mut had_things = false;
 
     let on_click = Rc::new(on_click);
     for section in sections {
-        // Places use `exifInfo.city`; everything else (smartInfo.tags /
-        // smartInfo.objects / future fields) routes into Things so we never
-        // silently drop a section the server returned.
-        let kind = if section.field_name.contains("city") {
-            "place"
-        } else {
-            "thing"
-        };
-        let target_grid = if kind == "place" {
-            had_places = true;
-            &parts.places_grid
-        } else {
-            had_things = true;
-            &parts.things_grid
-        };
+        if section.field_name.contains("city") {
+            // Places are populated separately via populate_places.
+            continue;
+        }
+        had_things = true;
         for item in section.items.into_iter().take(24) {
             let tile = explore_tile(
                 ctx.clone(),
-                kind,
+                "thing",
                 &item.value,
                 &item.data.id,
                 on_click.clone(),
             );
-            target_grid.append(&tile);
+            parts.things_grid.append(&tile);
         }
     }
 
-    parts.places_section.set_visible(had_places);
     parts.things_section.set_visible(had_things);
 }
 

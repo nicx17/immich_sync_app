@@ -2,11 +2,12 @@ Mimick bundles or links against the third-party Rust crates listed below.
 Full license texts are shipped alongside the application binary.
 
 == Summary ==
-  249 crates: MIT License (MIT)
+  267 crates: MIT License (MIT)
   19 crates: Unicode License v3 (Unicode-3.0)
-  2 crates: Apache License 2.0 (Apache-2.0)
+  4 crates: Apache License 2.0 (Apache-2.0)
   2 crates: BSD 3-Clause "New" or "Revised" License (BSD-3-Clause)
   2 crates: ISC License (ISC)
+  1 crates: BSD 2-Clause "Simplified" License (BSD-2-Clause)
   1 crates: Creative Commons Zero v1.0 Universal (CC0-1.0)
   1 crates: GNU General Public License v3.0 or later (GPL-3.0-or-later)
   1 crates: Mozilla Public License 2.0 (MPL-2.0)
@@ -15,7 +16,10 @@ Full license texts are shipped alongside the application binary.
 
 == Crate listing ==
   openssl 0.10.79 — Apache-2.0
+  blake3 1.8.5 — Apache-2.0
+  constant_time_eq 0.4.2 — Apache-2.0
   sync_wrapper 1.0.2 — Apache-2.0
+  arrayref 0.3.9 — BSD-2-Clause
   subtle 2.6.1 — BSD-3-Clause
   encoding_rs 0.8.35 — BSD-3-Clause
   notify 8.2.0 — CC0-1.0
@@ -25,6 +29,8 @@ Full license texts are shipped alongside the application binary.
   uds_windows 1.2.1 — MIT
   md-5 0.10.6 — MIT
   sha2 0.10.9 — MIT
+  rayon-core 1.13.0 — MIT
+  rayon 1.12.0 — MIT
   core-foundation-sys 0.8.7 — MIT
   core-foundation 0.10.1 — MIT
   hex 0.4.3 — MIT
@@ -62,11 +68,13 @@ Full license texts are shipped alongside the application binary.
   uuid 1.23.1 — MIT
   hyper 1.9.0 — MIT
   unicase 2.9.0 — MIT
+  either 1.15.0 — MIT
   tempfile 3.27.0 — MIT
   heck 0.5.0 — MIT
   schannel 0.1.29 — MIT
   hkdf 0.12.4 — MIT
   httparse 1.10.1 — MIT
+  num_cpus 1.17.0 — MIT
   futures-channel 0.3.32 — MIT
   futures-core 0.3.32 — MIT
   futures-executor 0.3.32 — MIT
@@ -75,12 +83,16 @@ Full license texts are shipped alongside the application binary.
   futures-sink 0.3.32 — MIT
   futures-task 0.3.32 — MIT
   futures-util 0.3.32 — MIT
-  hashbrown 0.17.0 — MIT
+  hashbrown 0.17.1 — MIT
+  lock_api 0.4.14 — MIT
+  parking_lot 0.12.5 — MIT
+  parking_lot_core 0.9.12 — MIT
   native-tls 0.2.18 — MIT
-  kqueue-sys 1.1.0 — MIT
+  kqueue-sys 1.1.1 — MIT
   kqueue 1.1.1 — MIT
   indexmap 2.14.0 — MIT
   equivalent 1.0.2 — MIT
+  scopeguard 1.2.0 — MIT
   cipher 0.4.4 — MIT
   reqwest 0.13.3 — MIT
   sha1 0.11.0 — MIT
@@ -90,6 +102,7 @@ Full license texts are shipped alongside the application binary.
   fnv 1.0.7 — MIT
   memoffset 0.9.1 — MIT
   enumflags2_derive 0.7.12 — MIT
+  redox_syscall 0.5.18 — MIT
   stable_deref_trait 1.2.1 — MIT
   hyper-tls 0.6.0 — MIT
   foreign-types-shared 0.1.1 — MIT
@@ -134,7 +147,7 @@ Full license texts are shipped alongside the application binary.
   crypto-common 0.2.1 — MIT
   openssl-macros 0.1.1 — MIT
   inout 0.1.4 — MIT
-  hybrid-array 0.4.11 — MIT
+  hybrid-array 0.4.12 — MIT
   rustls-pki-types 1.14.1 — MIT
   notify-types 2.1.0 — MIT
   hyper-util 0.1.20 — MIT
@@ -148,6 +161,7 @@ Full license texts are shipped alongside the application binary.
   toml_parser 1.1.2+spec-1.1.0 — MIT
   libc 0.2.186 — MIT
   idna_adapter 1.2.2 — MIT
+  arrayvec 0.7.6 — MIT
   synstructure 0.13.2 — MIT
   ipnet 2.12.0 — MIT
   rand 0.9.4 — MIT
@@ -165,6 +179,7 @@ Full license texts are shipped alongside the application binary.
   chrono 0.4.44 — MIT
   libm 0.2.16 — MIT
   r-efi 6.0.0 — MIT
+  siphasher 1.0.3 — MIT
   thumbhash 0.1.0 — MIT
   wasip3 0.4.0+wasi-0.3.0-rc-2026-01-06 — MIT
   windows-core 0.62.2 — MIT
@@ -185,7 +200,7 @@ Full license texts are shipped alongside the application binary.
   windows_x86_64_gnullvm 0.53.1 — MIT
   windows_x86_64_msvc 0.53.1 — MIT
   tokio-util 0.7.18 — MIT
-  tokio 1.52.2 — MIT
+  tokio 1.52.3 — MIT
   async-recursion 1.1.1 — MIT
   async-trait 0.1.89 — MIT
   atomic-waker 1.1.2 — MIT
@@ -196,6 +211,7 @@ Full license texts are shipped alongside the application binary.
   event-listener 5.4.1 — MIT
   fastrand 2.4.1 — MIT
   futures-lite 2.6.1 — MIT
+  hermit-abi 0.5.2 — MIT
   itoa 1.0.18 — MIT
   linux-raw-sys 0.12.1 — MIT
   once_cell 1.21.4 — MIT
@@ -256,6 +272,10 @@ Full license texts are shipped alongside the application binary.
   pango 0.22.6 — MIT
   android_system_properties 0.1.5 — MIT
   typenum 1.20.0 — MIT
+  phf 0.13.1 — MIT
+  phf_generator 0.13.1 — MIT
+  phf_macros 0.13.1 — MIT
+  phf_shared 0.13.1 — MIT
   base64 0.22.1 — MIT
   aho-corasick 1.1.4 — MIT
   memchr 2.8.0 — MIT
@@ -266,6 +286,8 @@ Full license texts are shipped alongside the application binary.
   same-file 1.0.6 — MIT
   winapi-util 0.1.11 — MIT
   redox_users 0.5.2 — MIT
+  crossbeam-deque 0.8.6 — MIT
+  crossbeam-epoch 0.9.18 — MIT
   crossbeam-utils 0.8.21 — MIT
   async-broadcast 0.7.2 — MIT
   nu-ansi-term 0.50.3 — MIT

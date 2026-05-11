@@ -218,6 +218,8 @@ Used by:
 --------------------------------------------------------------------------------
 Apache License 2.0 (Apache-2.0)
 Used by:
+  - blake3 1.8.5
+  - constant_time_eq 0.4.2
   - sync_wrapper 1.0.2
 --------------------------------------------------------------------------------
 
@@ -294,6 +296,42 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+BSD 2-Clause "Simplified" License (BSD-2-Clause)
+Used by:
+  - arrayref 0.3.9
+--------------------------------------------------------------------------------
+
+Copyright (c) 2015 David Roundy <roundyd@physics.oregonstate.edu>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the
+   distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ================================================================================
@@ -426,7 +464,7 @@ For these and/or other purposes and motivations, and without any expectation of 
 --------------------------------------------------------------------------------
 GNU General Public License v3.0 or later (GPL-3.0-or-later)
 Used by:
-  - mimick 9.5.2
+  - mimick 9.5.3
 --------------------------------------------------------------------------------
 
                     GNU GENERAL PUBLIC LICENSE
@@ -1224,6 +1262,42 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
+  - rayon-core 1.13.0
+  - rayon 1.12.0
+--------------------------------------------------------------------------------
+
+Copyright (c) 2010 The Rust Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+MIT License (MIT)
+Used by:
   - core-foundation-sys 0.8.7
   - core-foundation 0.10.1
 --------------------------------------------------------------------------------
@@ -1643,6 +1717,41 @@ THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
+  - either 1.15.0
+--------------------------------------------------------------------------------
+
+Copyright (c) 2015
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+MIT License (MIT)
+Used by:
   - tempfile 3.27.0
 --------------------------------------------------------------------------------
 
@@ -1767,6 +1876,7 @@ DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 Used by:
   - httparse 1.10.1
+  - num_cpus 1.17.0
 --------------------------------------------------------------------------------
 
 Copyright (c) 2015-2025 Sean McArthur
@@ -1839,10 +1949,47 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - hashbrown 0.17.0
+  - hashbrown 0.17.1
 --------------------------------------------------------------------------------
 
 Copyright (c) 2016 Amanieu d'Antras
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+MIT License (MIT)
+Used by:
+  - lock_api 0.4.14
+  - parking_lot 0.12.5
+  - parking_lot_core 0.9.12
+--------------------------------------------------------------------------------
+
+Copyright (c) 2016 The Rust Project Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -1903,7 +2050,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - kqueue-sys 1.1.0
+  - kqueue-sys 1.1.1
   - kqueue 1.1.1
 --------------------------------------------------------------------------------
 
@@ -1972,6 +2119,41 @@ Used by:
 --------------------------------------------------------------------------------
 
 Copyright (c) 2016--2023
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+MIT License (MIT)
+Used by:
+  - scopeguard 1.2.0
+--------------------------------------------------------------------------------
+
+Copyright (c) 2016-2019 Ulrik Sverdrup "bluss" and scopeguard developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -2269,6 +2451,38 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+MIT License (MIT)
+Used by:
+  - redox_syscall 0.5.18
+--------------------------------------------------------------------------------
+
+Copyright (c) 2017 Redox OS Developers
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 ================================================================================
@@ -3448,7 +3662,7 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - hybrid-array 0.4.11
+  - hybrid-array 0.4.12
 --------------------------------------------------------------------------------
 
 Copyright (c) 2022-2026 The RustCrypto Project Developers
@@ -3691,6 +3905,41 @@ Used by:
 --------------------------------------------------------------------------------
 
 Copyright (c) The rust-url developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+MIT License (MIT)
+Used by:
+  - arrayvec 0.7.6
+--------------------------------------------------------------------------------
+
+Copyright (c) Ulrik Sverdrup "bluss" 2015-2023
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -4080,6 +4329,7 @@ Used by:
   - chrono 0.4.44
   - libm 0.2.16
   - r-efi 6.0.0
+  - siphasher 1.0.3
   - thumbhash 0.1.0
   - wasip3 0.4.0+wasi-0.3.0-rc-2026-01-06
   - windows-core 0.62.2
@@ -4127,7 +4377,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 Used by:
   - tokio-util 0.7.18
-  - tokio 1.52.2
+  - tokio 1.52.3
 --------------------------------------------------------------------------------
 
 MIT License
@@ -4199,6 +4449,7 @@ Used by:
   - event-listener 5.4.1
   - fastrand 2.4.1
   - futures-lite 2.6.1
+  - hermit-abi 0.5.2
   - itoa 1.0.18
   - linux-raw-sys 0.12.1
   - once_cell 1.21.4
@@ -4436,6 +4687,39 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
+  - phf 0.13.1
+  - phf_generator 0.13.1
+  - phf_macros 0.13.1
+  - phf_shared 0.13.1
+--------------------------------------------------------------------------------
+
+The MIT License (MIT)
+
+Copyright (c) 2014-2022 Steven Fackler, Yuki Okushi
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+MIT License (MIT)
+Used by:
   - base64 0.22.1
 --------------------------------------------------------------------------------
 
@@ -4627,6 +4911,8 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
+  - crossbeam-deque 0.8.6
+  - crossbeam-epoch 0.9.18
   - crossbeam-utils 0.8.21
 --------------------------------------------------------------------------------
 

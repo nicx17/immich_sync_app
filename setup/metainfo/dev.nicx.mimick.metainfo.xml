@@ -1,11 +1,11 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <component type="desktop-application">
   <id>dev.nicx.mimick</id>
   <name>Mimick</name>
-  <summary>Desktop client for Immich</summary>
+  <summary>Back up and browse your photos</summary>
   <branding>
-    <color type="primary" scheme_preference="light">#FFC1F0</color>
-    <color type="primary" scheme_preference="dark">#510738</color>
+    <color type="primary" scheme_preference="light">#ffeaba</color>
+    <color type="primary" scheme_preference="dark">#892139</color>
   </branding>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
@@ -14,53 +14,73 @@
   </developer>
   <description>
     <p>
-      Mimick is a high-performance Rust desktop client that mirrors local media to your Immich server in real-time. 
-      Designed as an interactive agent with a built-in Library View, modern dashboard, and system tray indicator, it provides transparent, 
+      Mimick is a high-performance Rust desktop client that mirrors local media to your Immich server in real-time.
+      Designed as an interactive agent with a built-in Library View, modern dashboard, and system tray indicator, it provides transparent,
       user-led control over your backups and media browsing.
     </p>
-    <p>Mimick is a community-developed client and is not affiliated with or endorsed by the Immich project.</p>
+    <p
+        >Mimick is a community-developed client and is not affiliated with or endorsed by the Immich project.</p>
     <ul>
-      <li>Library View: Browse and manage your Immich assets directly in the app with dedicated Photos, Explore, and Albums pages.</li>
-      <li>Advanced Search: Find assets using EXIF metadata filters, timeline search, and OCR text matching.</li>
-      <li>Bidirectional Sync: On-demand album synchronization to seamlessly download or upload differences between local folders and remote albums.</li>
-      <li>Intelligent Monitoring: Uses native filesystem events with a polling fallback for sandboxed directories.</li>
-      <li>Efficient Deduplication: Tracks local assets using SHA-1 checksums to prevent redundant uploads.</li>
-      <li>Secure Storage: Leverages the native secret keyring standard for all configuration parameters.</li>
-      <li>User-Centric UI: Provides a graphical dashboard and tray menu for manual sync, settings, and status monitoring.</li>
+      <li
+            >Library View: Browse and manage your Immich assets directly in the app with dedicated Photos, Explore, and Albums pages.</li>
+      <li
+            >Advanced Search: Find assets using EXIF metadata filters, timeline search, and OCR text matching.</li>
+      <li
+            >Bidirectional Sync: On-demand album synchronization to seamlessly download or upload differences between local folders and remote albums.</li>
+      <li
+            >Intelligent Monitoring: Uses native filesystem events with a polling fallback for sandboxed directories.</li>
+      <li
+            >Efficient Deduplication: Tracks local assets using SHA-1 checksums to prevent redundant uploads.</li>
+      <li
+            >Secure Storage: Leverages the native secret keyring standard for all configuration parameters.</li>
+      <li
+            >User-Centric UI: Provides a graphical dashboard and tray menu for manual sync, settings, and status monitoring.</li>
     </ul>
   </description>
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/photos_page_view_sidebar_on.png</image>
+      <image
+            >https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/photos_page_view_sidebar_on.png</image>
       <caption xml:lang="en">Library View - Photos page with sidebar</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/explore_page_view_showing_people_places_sidebar_on.png</image>
-      <caption xml:lang="en">Explore page showing People, Places, and Things</caption>
+      <image
+            >https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/explore_page_view_showing_people_places_sidebar_on.png</image>
+      <caption
+                xml:lang="en"
+            >Explore page showing People, Places, and Things</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/selected_album_view_dark.png</image>
+      <image
+            >https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/selected_album_view_dark.png</image>
       <caption xml:lang="en">Selected album view in dark mode</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/lightbox_view_details_pane_on.png</image>
+      <image
+            >https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/lightbox_view_details_pane_on.png</image>
       <caption xml:lang="en">Lightbox viewer with details pane</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/search_view_with_thequickbrownfox_searched_ocr_mode.png</image>
+      <image
+            >https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/search_view_with_thequickbrownfox_searched_ocr_mode.png</image>
       <caption xml:lang="en">OCR search for text inside images</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/library_view_showing_sync_album_dialog_upload_download_apply_cancel.png</image>
-      <caption xml:lang="en">Album sync dialog with upload and download actions</caption>
+      <image
+            >https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/library_view_showing_sync_album_dialog_upload_download_apply_cancel.png</image>
+      <caption
+                xml:lang="en"
+            >Album sync dialog with upload and download actions</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_pane_showing_connnectivity_config_details.png</image>
+      <image
+            >https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/settings_pane_showing_connnectivity_config_details.png</image>
       <caption xml:lang="en">Settings - Connectivity configuration</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/status_pane_sync_status_health_dashboard_actions.png</image>
+      <image
+            >https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/status_pane_sync_status_health_dashboard_actions.png</image>
       <caption xml:lang="en">Status page with sync health dashboard</caption>
     </screenshot>
   </screenshots>
@@ -88,188 +108,270 @@
     <category>Utility</category>
     <category>Network</category>
   </categories>
-  <content_rating type="oars-1.1"/>
+  <content_rating type="oars-1.1" />
   <releases>
     <release version="9.5.2" date="2026-05-07">
       <description>
         <ul>
-          <li>Added right-click context menu on grid assets with download, open-with, and delete actions gated by asset type and source.</li>
-          <li>Added sync status icons (cloud/computer/check) and centered video badge overlay on grid thumbnails.</li>
-          <li>Added auto-refresh to library surfaces after album creation, bulk delete, download completion, and album sync mutations.</li>
+          <li
+                    >Added right-click context menu on grid assets with download, open-with, and delete actions gated by asset type and source.</li>
+          <li
+                    >Added sync status icons (cloud/computer/check) and centered video badge overlay on grid thumbnails.</li>
+          <li
+                    >Added auto-refresh to library surfaces after album creation, bulk delete, download completion, and album sync mutations.</li>
           <li>Added queue inspector launchable from the library header bar.</li>
           <li>Added settings save acknowledgement dialog on explicit save.</li>
-          <li>Fixed sync index being wiped on cache clear by migrating it to the persistent data directory.</li>
-          <li>Fixed Ctrl+click selection mode so it no longer skips the first asset.</li>
-          <li>Fixed local and unified views for linked albums to be scoped to the selected album's linked folder only.</li>
-          <li>Applied embedded EXIF orientation to thumbnails and lightbox images.</li>
-          <li>Fixed details pane to a static width with text constraints to prevent dynamic resizing.</li>
-          <li>Fixed grid view thumbnails to use a fixed width instead of expanding to fill available space.</li>
-          <li>Resized explore page places grid and album tab tiles to match explore page grid style.</li>
-          <li>Consolidated duplicate refresh buttons and added F5 keyboard shortcut for refresh.</li>
+          <li
+                    >Fixed sync index being wiped on cache clear by migrating it to the persistent data directory.</li>
+          <li
+                    >Fixed Ctrl+click selection mode so it no longer skips the first asset.</li>
+          <li
+                    >Fixed local and unified views for linked albums to be scoped to the selected album's linked folder only.</li>
+          <li
+                    >Applied embedded EXIF orientation to thumbnails and lightbox images.</li>
+          <li
+                    >Fixed details pane to a static width with text constraints to prevent dynamic resizing.</li>
+          <li
+                    >Fixed grid view thumbnails to use a fixed width instead of expanding to fill available space.</li>
+          <li
+                    >Resized explore page places grid and album tab tiles to match explore page grid style.</li>
+          <li
+                    >Consolidated duplicate refresh buttons and added F5 keyboard shortcut for refresh.</li>
         </ul>
       </description>
     </release>
     <release version="9.5.1" date="2026-05-04">
       <description>
         <ul>
-          <li>Fixed startup view being forced to Settings when background sync is disabled; the correct default window now opens.</li>
-          <li>Fixed direct navigation between Album and Explore views, which previously required routing through Photos.</li>
-          <li>Fixed default folder name albums not auto-linking to the remote album and creating duplicate config entries on re-save.</li>
-          <li>Fixed folder-linking UI appearing on Explore and Album views when entered from an album context.</li>
-          <li>Fixed local asset count double-counting files reached via symlinks or duplicate paths in album sync.</li>
-          <li>Removed <code>MESA_LOG_LEVEL=error</code> from Flatpak manifests.</li>
+          <li
+                    >Fixed startup view being forced to Settings when background sync is disabled; the correct default window now opens.</li>
+          <li
+                    >Fixed direct navigation between Album and Explore views, which previously required routing through Photos.</li>
+          <li
+                    >Fixed default folder name albums not auto-linking to the remote album and creating duplicate config entries on re-save.</li>
+          <li
+                    >Fixed folder-linking UI appearing on Explore and Album views when entered from an album context.</li>
+          <li
+                    >Fixed local asset count double-counting files reached via symlinks or duplicate paths in album sync.</li>
+          <li>Removed <code
+                        >MESA_LOG_LEVEL=error</code> from Flatpak manifests.</li>
         </ul>
       </description>
     </release>
     <release version="9.5.0" date="2026-05-03">
       <description>
         <ul>
-          <li>Added a built-in Library View to browse, search, and manage Immich assets directly in the app.</li>
-          <li>Introduced bidirectional Album Synchronization between local folders and remote albums.</li>
-          <li>Expanded search with Smart Search (CLIP), OCR, timeline, and EXIF metadata filters.</li>
-          <li>Optimized thumbnail rendering with ThumbHash for faster loading and smoother grid scrolling.</li>
+          <li
+                    >Added a built-in Library View to browse, search, and manage Immich assets directly in the app.</li>
+          <li
+                    >Introduced bidirectional Album Synchronization between local folders and remote albums.</li>
+          <li
+                    >Expanded search with Smart Search (CLIP), OCR, timeline, and EXIF metadata filters.</li>
+          <li
+                    >Optimized thumbnail rendering with ThumbHash for faster loading and smoother grid scrolling.</li>
         </ul>
       </description>
     </release>
     <release version="9.4.2" date="2026-04-28">
       <description>
         <ul>
-          <li>Revised background sync logic: the application now correctly exits when closed if background sync is disabled, and prompts for configuration on startup.</li>
-          <li>Moved the About section to the title bar for better accessibility and UI consistency.</li>
+          <li
+                    >Revised background sync logic: the application now correctly exits when closed if background sync is disabled, and prompts for configuration on startup.</li>
+          <li
+                    >Moved the About section to the title bar for better accessibility and UI consistency.</li>
         </ul>
       </description>
     </release>
     <release version="9.4.1" date="2026-04-25">
       <description>
         <ul>
-          <li>Stream startup scan candidates into the upload queue to reduce memory churn.</li>
-          <li>Fetch albums on save and parse album responses into typed structs.</li>
-          <li>Use local time for quiet-hours and reduce unnecessary state cloning for performance.</li>
-          <li>Prevent auto-saving partial settings and avoid creating albums during inspection.</li>
-          <li>UI fixes: action button sizing, pause-label initialization, and install-card overflow.</li>
+          <li
+                    >Stream startup scan candidates into the upload queue to reduce memory churn.</li>
+          <li
+                    >Fetch albums on save and parse album responses into typed structs.</li>
+          <li
+                    >Use local time for quiet-hours and reduce unnecessary state cloning for performance.</li>
+          <li
+                    >Prevent auto-saving partial settings and avoid creating albums during inspection.</li>
+          <li
+                    >UI fixes: action button sizing, pause-label initialization, and install-card overflow.</li>
         </ul>
       </description>
     </release>
     <release version="9.4.0" date="2026-04-23">
       <description>
         <ul>
-          <li>Settings: Live auto-apply for most preferences (workers, quiet hours, folder rules, per-folder album selection, watch-folders). Connectivity fields (API key and server URLs) are now applied only when explicitly saved from the Connectivity section.</li>
-          <li>Single-batch sync summary notification: multiple concurrent upload workers now aggregate results and emit a single "processed" summary notification when a sync batch completes.</li>
-          <li>Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.</li>
-          <li>GitHub Pages repository pipeline now dynamically generates a mimick.flatpakref file for one-click graphical installations.</li>
-          <li>Logging: Console output is colorized by level and file logs use a plain, machine-friendly formatter with automatic rotation.</li>
+          <li
+                    >Settings: Live auto-apply for most preferences (workers, quiet hours, folder rules, per-folder album selection, watch-folders). Connectivity fields (API key and server URLs) are now applied only when explicitly saved from the Connectivity section.</li>
+          <li
+                    >Single-batch sync summary notification: multiple concurrent upload workers now aggregate results and emit a single "processed" summary notification when a sync batch completes.</li>
+          <li
+                    >Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.</li>
+          <li
+                    >GitHub Pages repository pipeline now dynamically generates a mimick.flatpakref file for one-click graphical installations.</li>
+          <li
+                    >Logging: Console output is colorized by level and file logs use a plain, machine-friendly formatter with automatic rotation.</li>
         </ul>
       </description>
     </release>
     <release version="9.3.0" date="2026-04-14">
       <description>
         <ul>
-          <li>Added a notification toggle to let users enable or disable app notifications.</li>
-          <li>Switched from <code>secret-tool</code> (libsecret CLI) to the pure-Rust <code>oo7</code> crate for credential storage. Credentials are now stored in a portal-encrypted file inside the Flatpak sandbox, or in the system keyring on native installs. This fixes the <code>user interaction failed</code> error with Flatpak.</li>
-          <li>The <code>.flatpakrepo</code> now includes a <code>RuntimeRepo</code> directive for automatic GNOME Platform runtime resolution on systems without Flathub pre-configured.</li>
-          <li>Removed <code>libsecret</code> build dependencies and unnecessary D-Bus permissions from Flatpak manifests.</li>
-          <li>Removed hardcoded <code>GSK_RENDERER=gl</code>; GTK4 now auto-selects the best renderer.</li>
-          <li>Added <code>MESA_LOG_LEVEL=error</code> to Flatpak manifests to suppress harmless Mesa driver warnings.</li>
-          <li>Consolidated all documentation into the project wiki and removed local markdown files.</li>
-          <li>Fixed duplicate URL toggle validation handlers that could cause multiple error dialogs.</li>
-          <li>Added missing config fields to diagnostics export and summary.</li>
-          <li>Fixed Flatpak install failures on systems missing Flathub by default.</li>
+          <li
+                    >Added a notification toggle to let users enable or disable app notifications.</li>
+          <li>Switched from <code
+                        >secret-tool</code> (libsecret CLI) to the pure-Rust <code
+                        >oo7</code> crate for credential storage. Credentials are now stored in a portal-encrypted file inside the Flatpak sandbox, or in the system keyring on native installs. This fixes the <code
+                        >user interaction failed</code> error with Flatpak.</li>
+          <li>The <code>.flatpakrepo</code> now includes a <code
+                        >RuntimeRepo</code> directive for automatic GNOME Platform runtime resolution on systems without Flathub pre-configured.</li>
+          <li>Removed <code
+                        >libsecret</code> build dependencies and unnecessary D-Bus permissions from Flatpak manifests.</li>
+          <li>Removed hardcoded <code
+                        >GSK_RENDERER=gl</code>; GTK4 now auto-selects the best renderer.</li>
+          <li>Added <code
+                        >MESA_LOG_LEVEL=error</code> to Flatpak manifests to suppress harmless Mesa driver warnings.</li>
+          <li
+                    >Consolidated all documentation into the project wiki and removed local markdown files.</li>
+          <li
+                    >Fixed duplicate URL toggle validation handlers that could cause multiple error dialogs.</li>
+          <li
+                    >Added missing config fields to diagnostics export and summary.</li>
+          <li
+                    >Fixed Flatpak install failures on systems missing Flathub by default.</li>
         </ul>
       </description>
     </release>
     <release version="9.2.0" date="2026-04-14">
       <description>
         <ul>
-          <li>Migrated desktop notifications from the `notify-send` system command to native `gio::Notification`, fixing the issue where notifications would silently fail inside the Flatpak sandbox.</li>
-          <li>Notifications now correctly display the app's SVG icon natively via the XDG Notification Portal constraint.</li>
-          <li>Removed redundant async blocking wrappers (`tokio::task::spawn_blocking`) around notification dispatches, delegating instead directly to `glib::idle_add_once`.</li>
-          <li>Added `SingleMainWindow=true` to the `.desktop` launcher to better integrate with GNOME 50+ dock contexts preventing redundant "New Window" options.</li>
-          <li>Cleaned up redundant branch metadata keys in the Flatpak manifests to optimize build parsing.</li>
-          <li>Refined the "Startup Catch-up Mode" drop-down label length in the Settings UI so it no longer visually clips within its ComboRow box.</li>
+          <li
+                    >Migrated desktop notifications from the `notify-send` system command to native `gio::Notification`, fixing the issue where notifications would silently fail inside the Flatpak sandbox.</li>
+          <li
+                    >Notifications now correctly display the app's SVG icon natively via the XDG Notification Portal constraint.</li>
+          <li
+                    >Removed redundant async blocking wrappers (`tokio::task::spawn_blocking`) around notification dispatches, delegating instead directly to `glib::idle_add_once`.</li>
+          <li
+                    >Added `SingleMainWindow=true` to the `.desktop` launcher to better integrate with GNOME 50+ dock contexts preventing redundant "New Window" options.</li>
+          <li
+                    >Cleaned up redundant branch metadata keys in the Flatpak manifests to optimize build parsing.</li>
+          <li
+                    >Refined the "Startup Catch-up Mode" drop-down label length in the Settings UI so it no longer visually clips within its ComboRow box.</li>
         </ul>
       </description>
     </release>
     <release version="9.1.1" date="2026-04-10">
       <description>
         <ul>
-          <li>Fixed an internal GTK focus assertion error in the folder rules configuration dialog.</li>
-          <li>Fixed a bug where discarded failed uploads could leave a persistent "Pending: 1" ghost label across application restarts.</li>
-          <li>Promoted application repository to correctly advertise as a stable channel instead of beta.</li>
-          <li>Reconfigured the Flatpak repository builder workflow to deploy on new tag releases rather than on every push to the main branch.</li>
+          <li
+                    >Fixed an internal GTK focus assertion error in the folder rules configuration dialog.</li>
+          <li
+                    >Fixed a bug where discarded failed uploads could leave a persistent "Pending: 1" ghost label across application restarts.</li>
+          <li
+                    >Promoted application repository to correctly advertise as a stable channel instead of beta.</li>
+          <li
+                    >Reconfigured the Flatpak repository builder workflow to deploy on new tag releases rather than on every push to the main branch.</li>
         </ul>
       </description>
     </release>
     <release version="9.1.0" date="2026-04-08">
       <description>
         <ul>
-          <li>Expanded supported media formats to match the latest Immich server compatibility list, including AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, Matroska (MKV), MP2T, MXF, and more.</li>
-          <li>The settings window now follows the desktop light and dark appearance preference at startup, and the status page uses a standard symbolic icon for more consistent rendering across icon themes.</li>
-          <li>Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.</li>
+          <li
+                    >Expanded supported media formats to match the latest Immich server compatibility list, including AVIF, BMP, HEIF, JPEG 2000, JPEG XL, PSD, SVG, 3GPP, AVI, FLV, M4V, Matroska (MKV), MP2T, MXF, and more.</li>
+          <li
+                    >The settings window now follows the desktop light and dark appearance preference at startup, and the status page uses a standard symbolic icon for more consistent rendering across icon themes.</li>
+          <li
+                    >Flatpak packaging now targets the GNOME 50 runtime for current desktop compatibility.</li>
         </ul>
       </description>
     </release>
     <release version="9.0.0" date="2026-03-29">
       <description>
         <ul>
-          <li>Fixed an Immich asset timestamp regression where newly uploaded files could land at the wrong timeline time or lose their intended timezone after server-side metadata processing.</li>
-          <li>Upload metadata handling now preserves filesystem-based creation times more reliably and reapplies the local timezone after upload so Immich keeps the correct asset date placement.</li>
-          <li>The settings window now uses <code>Status</code> and <code>Settings</code> pages, shows the first-run API-key guidance at the top of the configuration flow, and no longer forces dark mode.</li>
+          <li
+                    >Fixed an Immich asset timestamp regression where newly uploaded files could land at the wrong timeline time or lose their intended timezone after server-side metadata processing.</li>
+          <li
+                    >Upload metadata handling now preserves filesystem-based creation times more reliably and reapplies the local timezone after upload so Immich keeps the correct asset date placement.</li>
+          <li>The settings window now uses <code>Status</code> and <code
+                        >Settings</code> pages, shows the first-run API-key guidance at the top of the configuration flow, and no longer forces dark mode.</li>
           <li>
-            <code>Save &amp; Restart</code> has been replaced with live <code>Save Changes</code> behavior that updates the running API client, queue policy, upload worker count, and watched folders without relaunching Mimick.</li>
-          <li>Watch-folder changes now reconfigure the live filesystem monitor in place, so adding or removing folders takes effect immediately after saving.</li>
+            <code>Save &amp; Restart</code> has been replaced with live <code
+                        >Save Changes</code> behavior that updates the running API client, queue policy, upload worker count, and watched folders without relaunching Mimick.</li>
+          <li
+                    >Watch-folder changes now reconfigure the live filesystem monitor in place, so adding or removing folders takes effect immediately after saving.</li>
         </ul>
       </description>
     </release>
     <release version="8.0.0" date="2026-03-25">
       <description>
         <ul>
-          <li>Added a mobile-responsive UI refactor using <code>adw::PreferencesWindow</code> and adaptive <code>gtk::FlowBox</code> layouts for small screens.</li>
-          <li>Fixed critical offline sync stability bugs ("endless loop" and false progress reporting during network outages).</li>
-          <li>Introduced a health dashboard, per-folder queue status indicators, and actionable error messaging.</li>
-          <li>Added new user controls for upload concurrency, quiet hours, and safer startup catch-up modes to optimize disk I/O.</li>
-          <li>Improved desktop notifications with batch summaries and dedicated connectivity-lost alerts.</li>
-          <li>Enhanced the album picker with a searchable modal dialog and inline album creation.</li>
+          <li>Added a mobile-responsive UI refactor using <code
+                        >adw::PreferencesWindow</code> and adaptive <code
+                        >gtk::FlowBox</code> layouts for small screens.</li>
+          <li
+                    >Fixed critical offline sync stability bugs ("endless loop" and false progress reporting during network outages).</li>
+          <li
+                    >Introduced a health dashboard, per-folder queue status indicators, and actionable error messaging.</li>
+          <li
+                    >Added new user controls for upload concurrency, quiet hours, and safer startup catch-up modes to optimize disk I/O.</li>
+          <li
+                    >Improved desktop notifications with batch summaries and dedicated connectivity-lost alerts.</li>
+          <li
+                    >Enhanced the album picker with a searchable modal dialog and inline album creation.</li>
         </ul>
       </description>
     </release>
     <release version="7.0.0" date="2026-03-22">
       <description>
         <ul>
-          <li>Added queue inspection, retry controls, pause and resume actions, manual sync, diagnostics export, and per-folder upload rules.</li>
-          <li>Uploads can now defer automatically on metered connections or while the system is running on battery power.</li>
-          <li>Refined the settings window with separate Setup and Controls pages plus a persistent footer for the main actions.</li>
+          <li
+                    >Added queue inspection, retry controls, pause and resume actions, manual sync, diagnostics export, and per-folder upload rules.</li>
+          <li
+                    >Uploads can now defer automatically on metered connections or while the system is running on battery power.</li>
+          <li
+                    >Refined the settings window with separate Setup and Controls pages plus a persistent footer for the main actions.</li>
         </ul>
       </description>
     </release>
     <release version="6.0.0" date="2026-03-15">
       <description>
         <ul>
-          <li>Added a startup catch-up scan and a persistent local sync index so previously missed media can be queued on launch without reprocessing unchanged files.</li>
-          <li>Retargeted watch folders now reassociate unchanged files to the new album, and stale or deleted album mappings are refreshed automatically.</li>
-          <li>Improved troubleshooting with timestamped logs and a narrower Flatpak tray permission model.</li>
+          <li
+                    >Added a startup catch-up scan and a persistent local sync index so previously missed media can be queued on launch without reprocessing unchanged files.</li>
+          <li
+                    >Retargeted watch folders now reassociate unchanged files to the new album, and stale or deleted album mappings are refreshed automatically.</li>
+          <li
+                    >Improved troubleshooting with timestamped logs and a narrower Flatpak tray permission model.</li>
         </ul>
       </description>
     </release>
     <release version="5.0.1" date="2026-03-14">
       <description>
         <ul>
-          <li>Added signed <code>.flatpakrepo</code> and checksum assets to GitHub releases.</li>
-          <li>Signed the published Flatpak repository metadata and embedded the public key into generated repository files.</li>
+          <li>Added signed <code
+                        >.flatpakrepo</code> and checksum assets to GitHub releases.</li>
+          <li
+                    >Signed the published Flatpak repository metadata and embedded the public key into generated repository files.</li>
         </ul>
       </description>
     </release>
     <release version="5.0.0" date="2026-03-14">
       <description>
         <ul>
-          <li>Added Run on Startup support for both Flatpak and native installs.</li>
-          <li>Switched Flatpak folder access to selected directories only through the file chooser portal.</li>
-          <li>Improved shutdown controls with working Save and Restart, explicit Close and Quit actions, and friendlier folder labels for portal-backed paths.</li>
+          <li
+                    >Added Run on Startup support for both Flatpak and native installs.</li>
+          <li
+                    >Switched Flatpak folder access to selected directories only through the file chooser portal.</li>
+          <li
+                    >Improved shutdown controls with working Save and Restart, explicit Close and Quit actions, and friendlier folder labels for portal-backed paths.</li>
         </ul>
       </description>
     </release>
     <release version="4.0.0" date="2026-03-14">
       <description>
-        <p>Complete rewrite in Rust + GTK4 + Libadwaita. Replaces the Python/PySide6 implementation with a lean, memory-safe daemon. Binary size drops from ~80MB to ~2MB. Concurrent upload workers, in-memory shared state, persistent file logging, and tray via StatusNotifierItem.</p>
+        <p
+                >Complete rewrite in Rust + GTK4 + Libadwaita. Replaces the Python/PySide6 implementation with a lean, memory-safe daemon. Binary size drops from ~80MB to ~2MB. Concurrent upload workers, in-memory shared state, persistent file logging, and tray via StatusNotifierItem.</p>
       </description>
     </release>
   </releases>
