@@ -47,54 +47,7 @@ jobs:
             exit 1
           fi
 
-      - name: Import Flatpak signing key
-        id: signing_key
-        env:
-          FLATPAK_GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
-          FLATPAK_GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
-        run: |
-          export GNUPGHOME="$RUNNER_TEMP/gnupg"
-          mkdir -p "$GNUPGHOME"
-          chmod 700 "$GNUPGHOME"
 
-          printf '%s' "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --import
-          gpg --batch --export "$FLATPAK_GPG_KEY_ID" > "$RUNNER_TEMP/mimick-repo-public.gpg"
-
-          echo "public_key_b64=$(base64 --wrap=0 "$RUNNER_TEMP/mimick-repo-public.gpg")" >> "$GITHUB_OUTPUT"
-
-      - name: Build release assets
-        env:
-          REPO_GPG_KEY: ${{ steps.signing_key.outputs.public_key_b64 }}
-        run: |
-          mkdir -p dist
-
-          {
-            printf '[Flatpak Repo]\n'
-            printf 'Title=Mimick Repository\n'
-            printf 'RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo\n'
-            printf 'Url=https://mimick.nicx.dev/\n'
-            printf 'Homepage=https://github.com/nicx17/mimick\n'
-            printf 'Comment=Official repository for the Mimick Immich sync daemon\n'
-            printf 'Description=A daemon-based synchronization tool for uploading media files from a Linux desktop to an Immich server.\n'
-            printf 'Icon=https://mimick.nicx.dev/icon.png\n'
-            printf 'GPGKey=%s\n' "$REPO_GPG_KEY"
-          } > dist/mimick.flatpakrepo
-
-          {
-            printf '[Flatpak Ref]\n'
-            printf 'Title=Mimick\n'
-            printf 'Name=dev.nicx.mimick\n'
-            printf 'Branch=stable\n'
-            printf 'Url=https://mimick.nicx.dev/\n'
-            printf 'SuggestRemoteName=mimick\n'
-            printf 'Homepage=https://github.com/nicx17/mimick\n'
-            printf 'Icon=https://mimick.nicx.dev/icon.png\n'
-            printf 'RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo\n'
-            printf 'IsRuntime=false\n'
-            printf 'GPGKey=%s\n' "$REPO_GPG_KEY"
-          } > dist/mimick.flatpakref
-
-          sha256sum dist/mimick.flatpakrepo dist/mimick.flatpakref > dist/SHA256SUMS.txt
 
       - name: Find matching draft release
         id: draft_release
@@ -176,9 +129,6 @@ jobs:
             --input dist/release-payload.json
 
           gh release upload "${GITHUB_REF_NAME}" \
-            dist/mimick.flatpakrepo \
-            dist/mimick.flatpakref \
-            dist/SHA256SUMS.txt \
             --clobber
 
       - name: Publish GitHub release from changelog fallback
@@ -189,8 +139,5 @@ jobs:
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           gh release create "${GITHUB_REF_NAME}" \
-            dist/mimick.flatpakrepo \
-            dist/mimick.flatpakref \
-            dist/SHA256SUMS.txt \
             --title "${TAG_VERSION}" \
             --notes-file dist/release-notes.md

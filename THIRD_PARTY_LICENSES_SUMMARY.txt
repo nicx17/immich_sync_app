@@ -23,7 +23,7 @@ Full license texts are shipped alongside the application binary.
   subtle 2.6.1 — BSD-3-Clause
   encoding_rs 0.8.35 — BSD-3-Clause
   notify 8.2.0 — CC0-1.0
-  mimick 9.5.2 — GPL-3.0-or-later
+  mimick 9.5.3 — GPL-3.0-or-later
   inotify-sys 0.1.5 — ISC
   inotify 0.11.1 — ISC
   uds_windows 1.2.1 — MIT

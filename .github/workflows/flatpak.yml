@@ -1,0 +1,56 @@
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "pv_docs/**"
+      - "site/**"
+      - "wiki/**"
+      - ".github/ISSUE_TEMPLATE/**"
+
+name: CI Build Flatpak
+
+jobs:
+  flatpak:
+    name: "Flatpak"
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    strategy:
+      fail-fast: false
+      matrix:
+        manifest: [dev.nicx.mimick.local.yml, dev.nicx.mimick.yml]
+        variant:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+        exclude:
+          # Only test the non-local manifest on x86_64 to save CI time, 
+          # as it just downloads the remote tag instead of local source
+          - manifest: dev.nicx.mimick.yml
+            variant: { arch: aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.variant.runner }}
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        submodules: recursive
+
+    - name: Check if non-local manifest changed
+      id: check_manifest
+      uses: tj-actions/changed-files@v44
+      with:
+        files: dev.nicx.mimick.yml
+
+    - name: Build Flatpak
+      if: matrix.manifest == 'dev.nicx.mimick.local.yml' || steps.check_manifest.outputs.any_changed == 'true'
+      uses: flatpak/flatpak-github-actions/flatpak-builder@92ae9851ad316786193b1fd3f40c4b51eb5cb101 # v6.6
+      with:
+        bundle: mimick.flatpak
+        manifest-path: ${{ matrix.manifest }}
+        cache-key: flatpak-builder-${{ matrix.manifest }}-${{ matrix.variant.arch }}-${{ hashFiles(matrix.manifest, 'Cargo.lock', 'cargo-sources.json') }}
+        arch: ${{ matrix.variant.arch }}
+        verbose: true

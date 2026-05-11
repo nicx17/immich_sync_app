@@ -1,6 +1,6 @@
 [package]
 name = "mimick"
-version = "9.5.2"
+version = "9.5.3"
 edition = "2024"
 license = "GPL-3.0-or-later"
 

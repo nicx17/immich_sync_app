@@ -14,28 +14,18 @@
   </developer>
   <description>
     <p>
-      Mimick is a high-performance Rust desktop client that mirrors local media to your Immich server in real-time.
-      Designed as an interactive agent with a built-in Library View, modern dashboard, and system tray indicator, it provides transparent,
-      user-led control over your backups and media browsing.
+      Mimick is a native Linux desktop client designed to seamlessly integrate your local media with your self-hosted Immich server. Operating quietly in the background, it continuously monitors your designated folders and automatically streams new photos and videos to your server in real-time.
     </p>
-    <p
-        >Mimick is a community-developed client and is not affiliated with or endorsed by the Immich project.</p>
-    <ul>
-      <li
-            >Library View: Browse and manage your Immich assets directly in the app with dedicated Photos, Explore, and Albums pages.</li>
-      <li
-            >Advanced Search: Find assets using EXIF metadata filters, timeline search, and OCR text matching.</li>
-      <li
-            >Bidirectional Sync: On-demand album synchronization to seamlessly download or upload differences between local folders and remote albums.</li>
-      <li
-            >Intelligent Monitoring: Uses native filesystem events with a polling fallback for sandboxed directories.</li>
-      <li
-            >Efficient Deduplication: Tracks local assets using SHA-1 checksums to prevent redundant uploads.</li>
-      <li
-            >Secure Storage: Leverages the native secret keyring standard for all configuration parameters.</li>
-      <li
-            >User-Centric UI: Provides a graphical dashboard and tray menu for manual sync, settings, and status monitoring.</li>
-    </ul>
+    <p>
+      Beyond automatic backups, Mimick features a powerful built-in Library View that brings your entire Immich collection directly to your desktop. You can seamlessly browse your timeline, manage remote albums, explore geotagged locations, and leverage advanced search capabilities—including AI-powered Smart Search, OCR text matching, and EXIF metadata filtering—without ever needing to open a web browser.
+    </p>
+    <p>
+      Built entirely in Rust with a modern GTK4 interface, Mimick is highly optimized for performance and reliability. It employs intelligent SHA-1 deduplication to prevent redundant transfers, utilizes parallel worker threads for high-speed uploads, and safely persists its state offline so you never lose data during network interruptions. It is also environment-aware, automatically pausing resource-intensive operations when your device is on battery power or a metered connection.
+    </p>
+    <p>
+      Designed for transparency and user-led control, Mimick includes a comprehensive settings dashboard, a queue inspector for troubleshooting, and a system tray indicator for quick access. With configurable watch rules, quiet hours, and strict one-way mirroring, you retain absolute control over your backup process while keeping your local filesystem completely untouched.
+    </p>
+    <p>Mimick is a community-developed client and is not affiliated with or endorsed by the Immich project.</p>
   </description>
 
   <screenshots>
@@ -47,9 +37,7 @@
     <screenshot>
       <image
             >https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/explore_page_view_showing_people_places_sidebar_on.png</image>
-      <caption
-                xml:lang="en"
-            >Explore page showing People, Places, and Things</caption>
+      <caption xml:lang="en">Explore page showing People, Places, and Things</caption>
     </screenshot>
     <screenshot>
       <image
@@ -69,9 +57,7 @@
     <screenshot>
       <image
             >https://raw.githubusercontent.com/nicx17/mimick/main/docs/screenshots/library_view_showing_sync_album_dialog_upload_download_apply_cancel.png</image>
-      <caption
-                xml:lang="en"
-            >Album sync dialog with upload and download actions</caption>
+      <caption xml:lang="en">Album sync dialog with upload and download actions</caption>
     </screenshot>
     <screenshot>
       <image
@@ -96,9 +82,13 @@
     <control>touch</control>
   </recommends>
 
-  <url type="homepage">https://github.com/nicx17/mimick</url>
+  <url type="homepage">https://mimick.nicx.dev</url>
   <url type="bugtracker">https://github.com/nicx17/mimick/issues</url>
   <url type="vcs-browser">https://github.com/nicx17/mimick</url>
+  <url type="donation">https://github.com/sponsors/nicx17</url>
+  <url type="contact">https://github.com/nicx17</url>
+  <url type="help">https://github.com/nicx17/mimick/wiki</url>
+  <url type="contribute">https://github.com/nicx17/mimick</url>
 
   <provides>
     <binary>mimick</binary>
@@ -108,8 +98,22 @@
     <category>Utility</category>
     <category>Network</category>
   </categories>
+
+  <keywords>
+    <keyword>immich</keyword>
+    <keyword>sync</keyword>
+    <keyword>backup</keyword>
+    <keyword>photos</keyword>
+    <keyword>gallery</keyword>
+  </keywords>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="9.5.3" date="2026-05-11">
+      <description>
+        <p>This major update brings significant enhancements to the library viewing experience, including new lightbox image zoom capabilities, smooth slide animations, and dedicated back navigation. The Explore page has also been upgraded to show all of your geotagged locations, and asset timestamps now accurately reflect your local timezone.</p>
+        <p>Under the hood, Mimick has received massive performance improvements to handle larger libraries. Startup scans and thumbnail loading are now heavily parallelized, memory usage is strictly bounded with a new sliding window architecture, and quitting the application gracefully waits for active uploads to finish safely.</p>
+      </description>
+    </release>
     <release version="9.5.2" date="2026-05-07">
       <description>
         <ul>
