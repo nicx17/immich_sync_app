@@ -17,6 +17,7 @@
 
 [![Flathub Version](https://img.shields.io/flathub/v/dev.nicx.mimick?style=for-the-badge&logoSize=auto&color=%23e9b24c)](https://flathub.org/en/apps/dev.nicx.mimick)
 [![Flathub Downloads](https://img.shields.io/flathub/downloads/dev.nicx.mimick?style=for-the-badge&color=%23e9b24c)](https://flathub.org/en/apps/dev.nicx.mimick)
+![Codacy grade (branch)](https://img.shields.io/codacy/grade/b79ffac30db1427cae73a56ed8c89fee/main?style=for-the-badge)
 
 </div>
 
