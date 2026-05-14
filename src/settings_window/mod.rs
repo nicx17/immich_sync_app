@@ -468,8 +468,8 @@ pub fn build_settings_window_with_parent(
 
     let catchup_model = gtk::StringList::new(&["Full Scan", "Recent Only (7d)", "New Files Only"]);
     let catchup_row = adw::ComboRow::builder()
-        .title("Startup Catch-up Mode")
-        .subtitle("Limits how aggressively Mimick scans for changes when launching.")
+        .title("Default Startup Catch-up Mode")
+        .subtitle("Used by folders that do not have their own startup scan setting.")
         .model(&catchup_model)
         .build();
     behavior_group.add(&catchup_row);
@@ -991,11 +991,14 @@ pub fn build_settings_window_with_parent(
     let add_folder_btn = Button::builder().label("Add Folder").margin_top(12).build();
     folders_group.add(&add_folder_btn);
 
+    let folder_default_catchup = config.data.startup_catchup_mode.clone();
+
     // Add existing paths to listbox with album dropdown
     for entry in &config.data.watch_paths {
         add_folder_row(
             &folders_list,
             entry,
+            folder_default_catchup.clone(),
             albums.clone(),
             &tracked_rows,
             auto_apply_settings.clone(),
@@ -1007,6 +1010,7 @@ pub fn build_settings_window_with_parent(
     let tracked_rows_clone = tracked_rows.clone();
     let albums_clone = albums.clone();
     let apply_settings_for_add = auto_apply_settings.clone();
+    let folder_default_catchup_for_add = folder_default_catchup.clone();
 
     add_folder_btn.connect_clicked(move |_| {
         let dialog = FileDialog::builder().title("Select Watch Folder").build();
@@ -1014,6 +1018,7 @@ pub fn build_settings_window_with_parent(
         let tracked_clone = tracked_rows_clone.clone();
         let albums_ref = albums_clone.clone();
         let apply_settings_for_add = apply_settings_for_add.clone();
+        let folder_default_catchup_for_add = folder_default_catchup_for_add.clone();
 
         dialog.select_folder(
             Some(&window_clone),
@@ -1029,6 +1034,7 @@ pub fn build_settings_window_with_parent(
                     add_folder_row(
                         &list_clone,
                         &WatchPathEntry::Simple(path_str),
+                        folder_default_catchup_for_add.clone(),
                         albums_ref.clone(),
                         &tracked_clone,
                         apply_settings_for_add.clone(),

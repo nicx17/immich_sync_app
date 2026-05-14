@@ -29,12 +29,12 @@ mod tray_icon;
 mod util;
 mod watch_path_display;
 
-use api_client::ImmichApiClient;
+use api_client::{ImmichApiClient, LibraryAsset};
 use app_context::AppContext;
 use config::{Config, best_matching_watch_entry};
 use library::state::LibraryState;
 use library::thumbnail_cache::ThumbnailCache;
-use monitor::Monitor;
+use monitor::{Monitor, MonitorEvent};
 use queue_manager::{EnvironmentPolicy, FileTask, QueueManager};
 use settings_window::build_settings_window;
 use startup_scan::queue_unsynced_files;
@@ -49,6 +49,14 @@ use std::io::Write;
 
 /// Shared application context reused by UI entry points and the shutdown path.
 static APP_CONTEXT: std::sync::OnceLock<Arc<AppContext>> = std::sync::OnceLock::new();
+
+#[derive(Clone, Debug)]
+struct LocalDeletionRequest {
+    local_path: String,
+    asset_id: String,
+    asset_name: String,
+    album_name: String,
+}
 
 fn format_log_location(record: &Record) -> String {
     match (record.file(), record.line()) {
@@ -87,6 +95,135 @@ fn detailed_colored_format(
         record.args(),
         format_log_location(record)
     )
+}
+
+async fn build_local_deletion_request(
+    ctx: Arc<AppContext>,
+    path: String,
+) -> Option<LocalDeletionRequest> {
+    let record = match ctx.sync_index.record_for_path(&path) {
+        Some(record) => record,
+        None => {
+            log::debug!(
+                "Ignoring deletion for '{}': no synced record was found",
+                path
+            );
+            return None;
+        }
+    };
+
+    let path_obj = std::path::Path::new(&path);
+    let entry = {
+        let entries = ctx.live_watch_paths.lock();
+        best_matching_watch_entry(path_obj, &entries).cloned()
+    }?;
+    let rules = entry.rules();
+    if !rules.delete_folder_to_album || rules.sync_method == config::FolderSyncMethod::DownloadOnly
+    {
+        return None;
+    }
+
+    let album_name = entry
+        .album_name()
+        .map(|name| name.to_string())
+        .or(record.album_name.clone())
+        .or_else(|| {
+            path_obj
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .map(|name| name.to_string_lossy().to_string())
+        })
+        .unwrap_or_else(|| "Mimick".to_string());
+
+    let configured_album_id = match &entry {
+        config::WatchPathEntry::WithConfig { album_id, .. } => album_id.clone(),
+        config::WatchPathEntry::Simple(_) => None,
+    };
+    let album_id = match configured_album_id.or(record.album_id.clone()) {
+        Some(id) => Some(id),
+        None => match ctx.api_client.get_album_id_if_exists(&album_name).await {
+            Ok(id) => id,
+            Err(err) => {
+                log::warn!(
+                    "Could not resolve album '{}' for deletion sync: {}",
+                    album_name,
+                    err
+                );
+                None
+            }
+        },
+    }?;
+
+    match find_album_asset_by_checksum(ctx.api_client.clone(), &album_id, &record.checksum).await {
+        Ok(Some(asset)) => Some(LocalDeletionRequest {
+            local_path: path,
+            asset_id: asset.id,
+            asset_name: asset.filename,
+            album_name,
+        }),
+        Ok(None) => {
+            log::debug!(
+                "Ignoring deletion for '{}': no album asset matched checksum {}",
+                path,
+                record.checksum
+            );
+            None
+        }
+        Err(err) => {
+            log::warn!("Could not inspect album for deletion sync: {}", err);
+            None
+        }
+    }
+}
+
+async fn trash_remote_after_local_delete(ctx: Arc<AppContext>, request: LocalDeletionRequest) {
+    let ids = vec![request.asset_id.clone()];
+    match ctx.api_client.delete_assets(&ids).await {
+        Ok(()) => {
+            if let Err(err) = ctx.sync_index.remove_path(&request.local_path) {
+                log::warn!(
+                    "Deleted remote asset but could not remove sync record for '{}': {}",
+                    request.local_path,
+                    err
+                );
+            }
+            log::info!(
+                "Moved '{}' from album '{}' to Immich trash after local deletion",
+                request.asset_name,
+                request.album_name
+            );
+        }
+        Err(err) => {
+            log::warn!(
+                "Could not move '{}' to Immich trash after local deletion: {}",
+                request.asset_name,
+                err
+            );
+        }
+    }
+}
+
+async fn find_album_asset_by_checksum(
+    api_client: Arc<ImmichApiClient>,
+    album_id: &str,
+    checksum: &str,
+) -> Result<Option<LibraryAsset>, String> {
+    let mut page = 1;
+    loop {
+        let (assets, has_more) = api_client
+            .fetch_album_assets(album_id, page, 1000, None)
+            .await?;
+        if let Some(asset) = assets
+            .into_iter()
+            .find(|asset| asset.checksum.as_deref() == Some(checksum))
+        {
+            return Ok(Some(asset));
+        }
+        if !has_more {
+            return Ok(None);
+        }
+        page += 1;
+    }
 }
 
 #[tokio::main]
@@ -252,46 +389,6 @@ async fn main() {
             log::info!("Background sync is disabled; monitor started with no active watches");
         }
 
-        // Feed monitor events into the upload queue, preserving per-path album config
-        let qm_clone = qm.clone();
-        let live_watch_paths_for_queue = live_watch_paths.clone();
-        tokio::spawn(async move {
-            while let Some((path, checksum)) = rx.recv().await {
-                log::info!("Queuing: {} (sha1={})", path, checksum);
-
-                let (album_id, album_name, watch_path) = {
-                    let path_configs = live_watch_paths_for_queue.lock();
-                    best_matching_watch_entry(std::path::Path::new(&path), &path_configs)
-                        .map(|entry| match entry {
-                            config::WatchPathEntry::WithConfig {
-                                album_id,
-                                album_name,
-                                ..
-                            } => (
-                                album_id.clone(),
-                                album_name.clone(),
-                                entry.path().to_string(),
-                            ),
-                            config::WatchPathEntry::Simple(_) => {
-                                (None, None, entry.path().to_string())
-                            }
-                        })
-                        .unwrap_or((None, None, String::new()))
-                };
-
-                let _ = qm_clone
-                    .add_to_queue(FileTask {
-                        path,
-                        watch_path,
-                        checksum,
-                        album_id,
-                        album_name,
-                        reassociate_only: false,
-                    })
-                    .await;
-            }
-        });
-
         let startup_qm = qm.clone();
         let startup_paths = config.data.watch_paths.clone();
         let startup_sync_index = sync_index.clone();
@@ -319,10 +416,62 @@ async fn main() {
         });
         let _ = APP_CONTEXT.set(ctx.clone());
 
+        let qm_clone = qm.clone();
+        let live_watch_paths_for_queue = live_watch_paths.clone();
+        let deletion_ctx = ctx.clone();
+        tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                match event {
+                    MonitorEvent::Ready { path, checksum } => {
+                        log::info!("Queuing: {} (sha1={})", path, checksum);
+
+                        let (album_id, album_name, watch_path) = {
+                            let path_configs = live_watch_paths_for_queue.lock();
+                            best_matching_watch_entry(std::path::Path::new(&path), &path_configs)
+                                .map(|entry| match entry {
+                                    config::WatchPathEntry::WithConfig {
+                                        album_id,
+                                        album_name,
+                                        ..
+                                    } => (
+                                        album_id.clone(),
+                                        album_name.clone(),
+                                        entry.path().to_string(),
+                                    ),
+                                    config::WatchPathEntry::Simple(_) => {
+                                        (None, None, entry.path().to_string())
+                                    }
+                                })
+                                .unwrap_or((None, None, String::new()))
+                        };
+
+                        let _ = qm_clone
+                            .add_to_queue(FileTask {
+                                path,
+                                watch_path,
+                                checksum,
+                                album_id,
+                                album_name,
+                                reassociate_only: false,
+                            })
+                            .await;
+                    }
+                    MonitorEvent::Deleted { path } => {
+                        if let Some(request) =
+                            build_local_deletion_request(deletion_ctx.clone(), path).await
+                        {
+                            trash_remote_after_local_delete(deletion_ctx.clone(), request).await;
+                        }
+                    }
+                }
+            }
+        });
+
         // The startup scan backfills anything that arrived while Mimick was not running.
         if background_sync_enabled {
             let shared_state_startup_task = shared_state_startup.clone();
             let startup_api = ctx.api_client.clone();
+            let startup_ctx = ctx.clone();
             let catchup_mode = shared_config.read().data.startup_catchup_mode.clone();
             tokio::spawn(async move {
                 queue_unsynced_files(
@@ -332,6 +481,7 @@ async fn main() {
                     startup_api,
                     catchup_mode,
                     shared_state_startup_task,
+                    startup_ctx,
                 )
                 .await;
             });
@@ -362,6 +512,7 @@ async fn main() {
         let manual_sync_api = ctx.api_client.clone();
         let shared_state_manual_task = shared_state_startup.clone();
         let manual_config = shared_config.clone();
+        let manual_ctx = ctx.clone();
         tokio::spawn(async move {
             while manual_sync_rx.recv().await.is_some() {
                 let (watch_paths, catchup_mode) = {
@@ -375,6 +526,7 @@ async fn main() {
                     manual_sync_api.clone(),
                     catchup_mode,
                     shared_state_manual_task.clone(),
+                    manual_ctx.clone(),
                 )
                 .await;
             }

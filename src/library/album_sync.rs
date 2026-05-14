@@ -6,15 +6,19 @@ use std::sync::Arc;
 
 use crate::api_client::{LibraryAsset, TransferProgressCallback};
 use crate::app_context::AppContext;
+use crate::config::{FolderRules, FolderSyncMethod};
 use crate::library::local_source::{LocalAsset, enumerate_local};
 use crate::monitor::compute_sha1_chunked;
 use crate::queue_manager::FileTask;
 use crate::state_manager::TransferDirection;
+use crate::sync_index::SyncTarget;
 
 #[derive(Debug, Default, Clone)]
 pub struct AlbumDiff {
     pub to_upload: Vec<LocalEntry>,
     pub to_download: Vec<LibraryAsset>,
+    pub to_delete_remote: Vec<LibraryAsset>,
+    pub to_delete_local: Vec<LocalEntry>,
     pub remote_unhashed: usize,
 }
 
@@ -28,6 +32,7 @@ pub async fn diff_album_vs_folder(
     ctx: Arc<AppContext>,
     album_id: &str,
     watch_path: &Path,
+    rules: &FolderRules,
 ) -> Result<AlbumDiff, String> {
     let mut remote = Vec::new();
     let mut page: u32 = 1;
@@ -52,14 +57,22 @@ pub async fn diff_album_vs_folder(
 
     let local_entries = resolve_local_checksums(ctx.clone(), locals).await;
     let local_set: HashSet<String> = local_entries.iter().map(|e| e.checksum.clone()).collect();
+    let local_paths: HashSet<String> = local_entries
+        .iter()
+        .map(|e| e.local.path.to_string_lossy().to_string())
+        .collect();
 
     let mut to_download = Vec::new();
+    let mut remote_by_checksum = std::collections::HashMap::new();
     let mut remote_set = HashSet::new();
     let mut remote_unhashed = 0usize;
     for asset in &remote {
         match &asset.checksum {
             Some(c) if !c.is_empty() => {
                 remote_set.insert(c.clone());
+                remote_by_checksum
+                    .entry(c.clone())
+                    .or_insert_with(|| asset.clone());
                 if !local_set.contains(c) {
                     to_download.push(asset.clone());
                 }
@@ -68,14 +81,61 @@ pub async fn diff_album_vs_folder(
         }
     }
 
-    let to_upload: Vec<LocalEntry> = local_entries
-        .into_iter()
-        .filter(|e| !remote_set.contains(&e.checksum))
-        .collect();
+    let mut to_upload = Vec::new();
+    let mut to_delete_local = Vec::new();
+    for entry in local_entries {
+        if remote_set.contains(&entry.checksum) {
+            continue;
+        }
+
+        let path_str = entry.local.path.to_string_lossy().to_string();
+        let was_previously_synced = ctx
+            .sync_index
+            .stored_checksum(&path_str)
+            .is_some_and(|checksum| checksum == entry.checksum);
+
+        if rules.delete_album_to_folder && was_previously_synced && remote_unhashed == 0 {
+            to_delete_local.push(entry);
+        } else if was_previously_synced && remote_unhashed > 0 {
+            log::debug!(
+                "Skipping local delete/upload decision for {} because {} remote album item(s) have no checksum",
+                entry.local.path.display(),
+                remote_unhashed
+            );
+        } else {
+            to_upload.push(entry);
+        }
+    }
+
+    let mut to_delete_remote = Vec::new();
+    if rules.delete_folder_to_album {
+        let mut seen_remote_delete_ids = HashSet::new();
+        for (path, record) in ctx.sync_index.records_under_path(watch_path) {
+            if local_paths.contains(&path) {
+                continue;
+            }
+            if let Some(asset) = remote_by_checksum.get(&record.checksum) {
+                if !seen_remote_delete_ids.insert(asset.id.clone()) {
+                    continue;
+                }
+                to_delete_remote.push(asset.clone());
+            }
+        }
+    }
+
+    if rules.sync_method == FolderSyncMethod::UploadOnly {
+        to_download.clear();
+        to_delete_local.clear();
+    } else if rules.sync_method == FolderSyncMethod::DownloadOnly {
+        to_upload.clear();
+        to_delete_remote.clear();
+    }
 
     Ok(AlbumDiff {
         to_upload,
         to_download,
+        to_delete_remote,
+        to_delete_local,
         remote_unhashed,
     })
 }
@@ -142,6 +202,8 @@ pub async fn execute_uploads(
 pub async fn execute_downloads(
     ctx: Arc<AppContext>,
     watch_path: PathBuf,
+    album_id: Option<String>,
+    album_name: Option<String>,
     assets: Vec<LibraryAsset>,
 ) -> (usize, usize) {
     let mut ok = 0;
@@ -166,6 +228,23 @@ pub async fn execute_downloads(
             .await
         {
             Ok(_) => {
+                if let Some(checksum) = asset.checksum.as_deref()
+                    && let Err(err) = ctx.sync_index.record_synced(
+                        &dest.to_string_lossy(),
+                        checksum,
+                        &SyncTarget {
+                            album_name: album_name.clone(),
+                            album_id: album_id.clone(),
+                        },
+                    )
+                {
+                    log::warn!(
+                        "Downloaded {} but could not record sync index for {}: {}",
+                        asset.filename,
+                        dest.display(),
+                        err
+                    );
+                }
                 finish_album_download(&ctx, &asset.id);
                 ok += 1
             }
@@ -177,6 +256,63 @@ pub async fn execute_downloads(
         }
     }
     (ok, failed)
+}
+
+pub async fn execute_remote_deletions(ctx: Arc<AppContext>, assets: Vec<LibraryAsset>) -> usize {
+    let ids: Vec<String> = assets.into_iter().map(|asset| asset.id).collect();
+    if ids.is_empty() {
+        return 0;
+    }
+    match ctx.api_client.delete_assets(&ids).await {
+        Ok(()) => ids.len(),
+        Err(err) => {
+            log::warn!("Remote trash operation failed: {}", err);
+            0
+        }
+    }
+}
+
+pub async fn execute_local_deletions(
+    ctx: Arc<AppContext>,
+    entries: Vec<LocalEntry>,
+) -> (usize, usize) {
+    let mut ok = 0;
+    let mut failed = 0;
+    for entry in entries {
+        let path = entry.local.path.clone();
+        match move_to_trash(entry.local.path.clone()).await {
+            Ok(()) => {
+                if let Err(err) = ctx.sync_index.remove_path(&path.to_string_lossy()) {
+                    log::warn!(
+                        "Local trash succeeded but sync index cleanup failed for {}: {}",
+                        path.display(),
+                        err
+                    );
+                }
+                ok += 1
+            }
+            Err(err) => {
+                log::warn!(
+                    "Local trash operation failed for {}: {}",
+                    entry.local.path.display(),
+                    err
+                );
+                failed += 1;
+            }
+        }
+    }
+    (ok, failed)
+}
+
+async fn move_to_trash(path: PathBuf) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        use gtk::gio::prelude::FileExt;
+        let file = gtk::gio::File::for_path(path);
+        file.trash(gtk::gio::Cancellable::NONE)
+            .map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 fn unique_destination(folder: &Path, filename: &str) -> PathBuf {

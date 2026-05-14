@@ -189,6 +189,49 @@ impl ShardedSyncIndex {
             .map(|record| record.checksum.clone())
     }
 
+    /// Return a synced record for a specific path without touching the filesystem.
+    pub fn record_for_path(&self, path: &str) -> Option<SyncedFileRecord> {
+        let idx = shard_for(path);
+        let shard = self.shards[idx].read().unwrap();
+        shard.entries.get(path).cloned()
+    }
+
+    /// Remove one synced path from the index after a deliberate delete sync.
+    pub fn remove_path(&self, path: &str) -> io::Result<bool> {
+        let idx = shard_for(path);
+        let mut shard = self.shards[idx].write().unwrap();
+        let Some(record) = shard.entries.remove(path) else {
+            return Ok(false);
+        };
+        let should_remove_checksum = shard
+            .checksum_to_path
+            .get(&record.checksum)
+            .is_some_and(|record_path| record_path == path);
+        if should_remove_checksum {
+            shard.checksum_to_path.remove(&record.checksum);
+        }
+        shard.dirty = true;
+        drop(shard);
+        self.flush()?;
+        Ok(true)
+    }
+
+    /// Return synced records rooted under a watch path.
+    pub fn records_under_path(&self, root: &Path) -> Vec<(String, SyncedFileRecord)> {
+        let mut records = Vec::new();
+        for lock in &self.shards {
+            let shard = lock.read().unwrap();
+            records.extend(
+                shard
+                    .entries
+                    .iter()
+                    .filter(|(path, _)| Path::new(path.as_str()).starts_with(root))
+                    .map(|(path, record)| (path.clone(), record.clone())),
+            );
+        }
+        records
+    }
+
     /// Reverse-lookup a local path by checksum for library sync-state indicators.
     pub fn local_path_for_checksum(&self, checksum: &str) -> Option<String> {
         // The checksum could be in any shard, so we must search all.

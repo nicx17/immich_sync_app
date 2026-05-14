@@ -7,8 +7,11 @@
 //!      index, hashes only when needed, and queues uploads with bounded concurrency.
 
 use crate::api_client::ImmichApiClient;
+use crate::app_context::AppContext;
+use crate::config::FolderSyncMethod;
 use crate::config::StartupCatchupMode;
 use crate::config::WatchPathEntry;
+use crate::library::album_sync;
 use crate::monitor::{compute_sha1_chunked, is_supported_media_path, is_temporary_file};
 use crate::queue_manager::{FileTask, QueueManager};
 use crate::state_manager::AppState;
@@ -39,6 +42,7 @@ pub async fn queue_unsynced_files(
     api_client: Arc<ImmichApiClient>,
     catchup_mode: StartupCatchupMode,
     shared_state: Arc<Mutex<AppState>>,
+    app_ctx: Arc<AppContext>,
 ) {
     if watch_paths.is_empty() {
         return;
@@ -53,7 +57,7 @@ pub async fn queue_unsynced_files(
         .last_successful_sync_at
         .unwrap_or_default();
 
-    let (candidates, seen_paths, skipped_enum, enum_errors) =
+    let (candidates, mut seen_paths, skipped_enum, enum_errors) =
         enumerate_candidates(&watch_paths, catchup_mode, last_sync, &shared_state);
 
     // ── Stage 2: Async decide + queue ────────────────────────────────────
@@ -210,7 +214,29 @@ pub async fn queue_unsynced_files(
         })
         .await;
 
-    // Prune index entries for files that no longer exist.
+    trash_remote_assets_for_missing_local_files(
+        &watch_paths,
+        &seen_paths,
+        sync_index.clone(),
+        api_client.clone(),
+    )
+    .await;
+
+    sync_album_to_folder_entries(&watch_paths, app_ctx).await;
+
+    // Prune index entries for files that no longer exist. If a folder is
+    // configured to mirror local deletions to the album, keep its missing
+    // records so the next album sync can move the remote asset to trash.
+    for entry in &watch_paths {
+        let rules = entry.rules();
+        if !rules.delete_folder_to_album {
+            continue;
+        }
+        let root = Path::new(entry.path());
+        for (path, _) in sync_index.records_under_path(root) {
+            seen_paths.insert(path);
+        }
+    }
     if let Err(err) = sync_index.prune_missing(&seen_paths) {
         log::warn!("Failed to prune sync index after startup scan: {}", err);
     }
@@ -236,12 +262,251 @@ pub async fn queue_unsynced_files(
     );
 }
 
+async fn trash_remote_assets_for_missing_local_files(
+    watch_paths: &[WatchPathEntry],
+    seen_paths: &HashSet<String>,
+    sync_index: Arc<ShardedSyncIndex>,
+    api_client: Arc<ImmichApiClient>,
+) {
+    for entry in watch_paths {
+        let rules = entry.rules();
+        if !rules.delete_folder_to_album || rules.sync_method == FolderSyncMethod::DownloadOnly {
+            continue;
+        }
+
+        let root = Path::new(entry.path());
+        for (path, record) in sync_index.records_under_path(root) {
+            if seen_paths.contains(&path) {
+                continue;
+            }
+
+            let album_name = entry
+                .album_name()
+                .map(|name| name.to_string())
+                .or(record.album_name.clone())
+                .or_else(|| {
+                    Path::new(&path)
+                        .parent()
+                        .and_then(|parent| parent.file_name())
+                        .map(|name| name.to_string_lossy().to_string())
+                })
+                .unwrap_or_else(|| "Mimick".to_string());
+
+            let configured_album_id = match entry {
+                WatchPathEntry::WithConfig { album_id, .. } => album_id.clone(),
+                WatchPathEntry::Simple(_) => None,
+            };
+            let Some(album_id) = configured_album_id.or(record.album_id.clone()) else {
+                match api_client.get_album_id_if_exists(&album_name).await {
+                    Ok(Some(album_id)) => {
+                        if trash_remote_asset_by_checksum(
+                            &api_client,
+                            &sync_index,
+                            &path,
+                            &album_id,
+                            &record.checksum,
+                            &album_name,
+                        )
+                        .await
+                        {
+                            continue;
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        log::warn!(
+                            "Startup deletion sync could not resolve album '{}': {}",
+                            album_name,
+                            err
+                        );
+                    }
+                }
+                continue;
+            };
+
+            trash_remote_asset_by_checksum(
+                &api_client,
+                &sync_index,
+                &path,
+                &album_id,
+                &record.checksum,
+                &album_name,
+            )
+            .await;
+        }
+    }
+}
+
+async fn sync_album_to_folder_entries(watch_paths: &[WatchPathEntry], app_ctx: Arc<AppContext>) {
+    for entry in watch_paths {
+        let rules = entry.rules();
+        if rules.sync_method == FolderSyncMethod::UploadOnly {
+            continue;
+        }
+
+        let watch_path = Path::new(entry.path()).to_path_buf();
+        if !watch_path.is_dir() {
+            continue;
+        }
+
+        let album_name = entry
+            .album_name()
+            .map(|name| name.to_string())
+            .or_else(|| {
+                watch_path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+            })
+            .unwrap_or_else(|| "Mimick".to_string());
+
+        let configured_album_id = match entry {
+            WatchPathEntry::WithConfig { album_id, .. } => album_id.clone(),
+            WatchPathEntry::Simple(_) => None,
+        };
+        let album_id = match configured_album_id {
+            Some(id) => Some(id),
+            None => match app_ctx.api_client.get_album_id_if_exists(&album_name).await {
+                Ok(id) => id,
+                Err(err) => {
+                    log::warn!(
+                        "Album-to-folder sync could not resolve album '{}': {}",
+                        album_name,
+                        err
+                    );
+                    None
+                }
+            },
+        };
+        let Some(album_id) = album_id else {
+            continue;
+        };
+
+        let diff =
+            match album_sync::diff_album_vs_folder(app_ctx.clone(), &album_id, &watch_path, &rules)
+                .await
+            {
+                Ok(diff) => diff,
+                Err(err) => {
+                    log::warn!(
+                        "Album-to-folder sync diff failed for '{}': {}",
+                        album_name,
+                        err
+                    );
+                    continue;
+                }
+            };
+
+        if !diff.to_download.is_empty() {
+            let (downloaded, failed) = album_sync::execute_downloads(
+                app_ctx.clone(),
+                watch_path.clone(),
+                Some(album_id.clone()),
+                Some(album_name.clone()),
+                diff.to_download,
+            )
+            .await;
+            log::info!(
+                "Album-to-folder sync for '{}' downloaded {} item(s), {} failure(s)",
+                album_name,
+                downloaded,
+                failed
+            );
+        }
+
+        if !diff.to_delete_local.is_empty() {
+            let (trashed, failed) =
+                album_sync::execute_local_deletions(app_ctx.clone(), diff.to_delete_local).await;
+            log::info!(
+                "Album-to-folder deletion sync for '{}' moved {} local item(s) to trash, {} failure(s)",
+                album_name,
+                trashed,
+                failed
+            );
+        }
+    }
+}
+
+async fn trash_remote_asset_by_checksum(
+    api_client: &ImmichApiClient,
+    sync_index: &ShardedSyncIndex,
+    local_path: &str,
+    album_id: &str,
+    checksum: &str,
+    album_name: &str,
+) -> bool {
+    match find_album_asset_id_by_checksum(api_client, album_id, checksum).await {
+        Ok(Some((asset_id, filename))) => {
+            let ids = vec![asset_id];
+            match api_client.delete_assets(&ids).await {
+                Ok(()) => {
+                    if let Err(err) = sync_index.remove_path(local_path) {
+                        log::warn!(
+                            "Startup deletion sync trashed '{}' in album '{}' but could not remove sync record for '{}': {}",
+                            filename,
+                            album_name,
+                            local_path,
+                            err
+                        );
+                    }
+                    log::info!(
+                        "Startup deletion sync moved '{}' in album '{}' to Immich trash",
+                        filename,
+                        album_name
+                    );
+                    true
+                }
+                Err(err) => {
+                    log::warn!(
+                        "Startup deletion sync could not move '{}' in album '{}' to trash: {}",
+                        filename,
+                        album_name,
+                        err
+                    );
+                    false
+                }
+            }
+        }
+        Ok(None) => false,
+        Err(err) => {
+            log::warn!(
+                "Startup deletion sync could not inspect album '{}': {}",
+                album_name,
+                err
+            );
+            false
+        }
+    }
+}
+
+async fn find_album_asset_id_by_checksum(
+    api_client: &ImmichApiClient,
+    album_id: &str,
+    checksum: &str,
+) -> Result<Option<(String, String)>, String> {
+    let mut page = 1;
+    loop {
+        let (assets, has_more) = api_client
+            .fetch_album_assets(album_id, page, 1000, None)
+            .await?;
+        if let Some(asset) = assets
+            .into_iter()
+            .find(|asset| asset.checksum.as_deref() == Some(checksum))
+        {
+            return Ok(Some((asset.id, asset.filename)));
+        }
+        if !has_more {
+            return Ok(None);
+        }
+        page += 1;
+    }
+}
+
 /// Stage 1: Walk all watch paths in parallel using rayon.
 ///
 /// Returns `(candidates, seen_paths, skipped_count, error_count)`.
 fn enumerate_candidates(
     watch_paths: &[WatchPathEntry],
-    catchup_mode: StartupCatchupMode,
+    fallback_catchup_mode: StartupCatchupMode,
     last_sync: f64,
     shared_state: &Arc<Mutex<AppState>>,
 ) -> (Vec<ScanCandidate>, HashSet<String>, usize, usize) {
@@ -252,6 +517,11 @@ fn enumerate_candidates(
     let candidates: Vec<ScanCandidate> = watch_paths
         .par_iter()
         .flat_map(|entry| {
+            if entry.sync_method() == FolderSyncMethod::DownloadOnly {
+                return Vec::new();
+            }
+
+            let catchup_mode = entry.startup_catchup_mode(&fallback_catchup_mode);
             let watch_path_str = entry.path().to_string();
             let root = Path::new(&watch_path_str);
             if !root.exists() {

@@ -14,6 +14,15 @@ pub struct FolderRules {
     pub max_file_size_mb: Option<u64>,
     #[serde(default)]
     pub allowed_extensions: Vec<String>,
+    #[serde(default)]
+    pub sync_method: FolderSyncMethod,
+    /// None means "use the legacy/global startup catch-up mode".
+    #[serde(default)]
+    pub startup_catchup_mode: Option<StartupCatchupMode>,
+    #[serde(default)]
+    pub delete_folder_to_album: bool,
+    #[serde(default)]
+    pub delete_album_to_folder: bool,
 }
 
 impl FolderRules {
@@ -63,6 +72,17 @@ impl FolderRules {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub enum FolderSyncMethod {
+    /// Upload folder-only assets and download album-only assets.
+    Full,
+    /// Only upload assets found in the folder.
+    #[default]
+    UploadOnly,
+    /// Only download assets found in the album.
+    DownloadOnly,
+}
+
 /// A watch path entry stored in config.
 ///
 /// Older configs may contain plain strings, while newer entries can also store per-folder
@@ -101,6 +121,16 @@ impl WatchPathEntry {
             WatchPathEntry::Simple(_) => FolderRules::default(),
             WatchPathEntry::WithConfig { rules, .. } => rules.clone(),
         }
+    }
+
+    pub fn sync_method(&self) -> FolderSyncMethod {
+        self.rules().sync_method
+    }
+
+    pub fn startup_catchup_mode(&self, fallback: &StartupCatchupMode) -> StartupCatchupMode {
+        self.rules()
+            .startup_catchup_mode
+            .unwrap_or_else(|| fallback.clone())
     }
 }
 
@@ -408,6 +438,28 @@ mod tests {
     }
 
     #[test]
+    fn test_legacy_folder_rules_default_to_upload_only_and_global_startup_fallback() {
+        let entry: WatchPathEntry = serde_json::from_str(
+            r#"{
+                "path": "/home/nick/Pictures",
+                "rules": {
+                    "ignore_hidden": true
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let rules = entry.rules();
+        assert_eq!(rules.sync_method, FolderSyncMethod::UploadOnly);
+        assert_eq!(
+            entry.startup_catchup_mode(&StartupCatchupMode::RecentOnly),
+            StartupCatchupMode::RecentOnly
+        );
+        assert!(!rules.delete_folder_to_album);
+        assert!(!rules.delete_album_to_folder);
+    }
+
+    #[test]
     fn test_watch_path_strings_helper() {
         let mut data = ConfigData::default();
         data.watch_paths.push(WatchPathEntry::Simple("/a".into()));
@@ -437,6 +489,7 @@ mod tests {
             ignore_hidden: false,
             max_file_size_mb: Some(1),
             allowed_extensions: vec!["jpg".into(), "png".into()],
+            ..FolderRules::default()
         };
 
         assert!(rules.matches(&path));
@@ -445,6 +498,7 @@ mod tests {
             ignore_hidden: false,
             max_file_size_mb: Some(0),
             allowed_extensions: vec!["png".into()],
+            ..FolderRules::default()
         };
 
         assert!(!restricted.matches(&path));

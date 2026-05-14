@@ -9,7 +9,7 @@ use gtk::prelude::*;
 use gtk::{Box, Button, Entry, ListBox, Orientation};
 use libadwaita as adw;
 
-use crate::config::FolderRules;
+use crate::config::{FolderRules, FolderSyncMethod, StartupCatchupMode};
 use crate::watch_path_display::{display_watch_path, watch_path_subtitle};
 
 use super::{DEFAULT_ALBUM_LABEL, FolderRowData, WatchPathEntry};
@@ -17,6 +17,7 @@ use super::{DEFAULT_ALBUM_LABEL, FolderRowData, WatchPathEntry};
 pub(super) fn add_folder_row(
     list: &ListBox,
     entry: &WatchPathEntry,
+    fallback_catchup_mode: StartupCatchupMode,
     albums_ref: Rc<RefCell<Vec<(String, String)>>>,
     tracked_rows: &Rc<RefCell<Vec<FolderRowData>>>,
     on_settings_changed: Rc<dyn Fn()>,
@@ -105,6 +106,7 @@ pub(super) fn add_folder_row(
     let rules_clone = rules.clone();
     let path_for_rules = path.clone();
     let on_settings_changed_for_rules = on_settings_changed.clone();
+    let fallback_catchup_mode_for_rules = fallback_catchup_mode.clone();
 
     rules_btn.connect_clicked(clone!(
         #[weak]
@@ -118,10 +120,12 @@ pub(super) fn add_folder_row(
                 let path_for_rules = path_for_rules.clone();
                 let rules_clone = rules_clone.clone();
                 let on_settings_changed_for_rules = on_settings_changed_for_rules.clone();
+                let fallback_catchup_mode_for_rules = fallback_catchup_mode_for_rules.clone();
                 glib::idle_add_local_once(move || {
                     show_folder_rules_dialog(
                         &window,
                         &path_for_rules,
+                        fallback_catchup_mode_for_rules.clone(),
                         rules_clone,
                         on_settings_changed_for_rules,
                     );
@@ -173,6 +177,7 @@ pub(super) fn add_folder_row(
 fn show_folder_rules_dialog(
     parent: &impl gtk::prelude::IsA<gtk::Window>,
     folder_path: &str,
+    fallback_catchup_mode: StartupCatchupMode,
     rules_state: Rc<RefCell<FolderRules>>,
     on_settings_changed: Rc<dyn Fn()>,
 ) {
@@ -212,6 +217,55 @@ fn show_folder_rules_dialog(
         .active(current.ignore_hidden)
         .build();
 
+    let sync_model = gtk::StringList::new(&[
+        "Full Sync",
+        "Only Upload from Folder",
+        "Only Download to Folder",
+    ]);
+    let sync_method = adw::ComboRow::builder()
+        .title("Sync Method")
+        .subtitle("Controls which direction this folder syncs.")
+        .model(&sync_model)
+        .build();
+    sync_method.set_selected(match current.sync_method {
+        FolderSyncMethod::Full => 0,
+        FolderSyncMethod::UploadOnly => 1,
+        FolderSyncMethod::DownloadOnly => 2,
+    });
+
+    let startup_model = gtk::StringList::new(&["Full Scan", "Recent Only (7d)", "New Files Only"]);
+    let startup_scan = adw::ComboRow::builder()
+        .title("Startup Scan")
+        .subtitle("Controls how this folder is scanned when Mimick starts.")
+        .model(&startup_model)
+        .build();
+    startup_scan.set_selected(
+        match current
+            .startup_catchup_mode
+            .clone()
+            .unwrap_or(fallback_catchup_mode)
+        {
+            StartupCatchupMode::Full => 0,
+            StartupCatchupMode::RecentOnly => 1,
+            StartupCatchupMode::NewFilesOnly => 2,
+        },
+    );
+
+    let delete_folder_to_album = adw::SwitchRow::builder()
+        .title("Mirror Folder Deletions to Album")
+        .subtitle("When a synced folder file is gone, move the matching Immich asset to trash.")
+        .active(current.delete_folder_to_album)
+        .build();
+    let delete_album_to_folder = adw::SwitchRow::builder()
+        .title("Mirror Album Deletions to Folder")
+        .subtitle("When a synced album asset is gone, move the matching local file to trash.")
+        .active(current.delete_album_to_folder)
+        .build();
+
+    list_box.append(&sync_method);
+    list_box.append(&startup_scan);
+    list_box.append(&delete_folder_to_album);
+    list_box.append(&delete_album_to_folder);
     list_box.append(&ignore_hidden);
     content.append(&list_box);
 
@@ -272,6 +326,18 @@ fn show_folder_rules_dialog(
                 ignore_hidden: ignore_hidden.is_active(),
                 max_file_size_mb,
                 allowed_extensions,
+                sync_method: match sync_method.selected() {
+                    1 => FolderSyncMethod::UploadOnly,
+                    2 => FolderSyncMethod::DownloadOnly,
+                    _ => FolderSyncMethod::Full,
+                },
+                startup_catchup_mode: Some(match startup_scan.selected() {
+                    1 => StartupCatchupMode::RecentOnly,
+                    2 => StartupCatchupMode::NewFilesOnly,
+                    _ => StartupCatchupMode::Full,
+                }),
+                delete_folder_to_album: delete_folder_to_album.is_active(),
+                delete_album_to_folder: delete_album_to_folder.is_active(),
             };
             (on_settings_changed)();
             dialog.close();

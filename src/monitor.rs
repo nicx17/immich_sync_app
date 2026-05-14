@@ -1,6 +1,6 @@
 //! Provides live filesystem monitoring, file-settling checks, and checksum generation for watched paths.
 
-use crate::config::{WatchPathEntry, best_matching_watch_entry};
+use crate::config::{FolderSyncMethod, WatchPathEntry, best_matching_watch_entry};
 use crate::media_kinds;
 use crate::watch_path_display::display_watch_path;
 use notify::{Config as NotifyConfig, EventKind, PollWatcher, RecursiveMode, Watcher};
@@ -23,6 +23,12 @@ pub struct Monitor {
     background_sync_enabled: bool,
 }
 
+#[derive(Debug, Clone)]
+pub enum MonitorEvent {
+    Ready { path: String, checksum: String },
+    Deleted { path: String },
+}
+
 enum MonitorCommand {
     ReplaceWatchPaths {
         watch_paths: Vec<WatchPathEntry>,
@@ -43,11 +49,11 @@ impl Monitor {
         }
     }
 
-    /// Start the watcher thread and emit `(path, sha1_hex)` tuples for ready files.
+    /// Start the watcher thread and emit file-ready and deletion events.
     ///
     /// Hashing is offloaded to a bounded worker pool (N = num_cpus / 2, capped at 4)
     /// so bursts of file events don't serialise on hash latency.
-    pub fn start(&self, tx: mpsc::Sender<(String, String)>) -> MonitorHandle {
+    pub fn start(&self, tx: mpsc::Sender<MonitorEvent>) -> MonitorHandle {
         let watch_paths = self.watch_paths.clone();
         let background_sync_enabled = self.background_sync_enabled;
         let handle = tokio::runtime::Handle::current();
@@ -86,7 +92,12 @@ impl Monitor {
                         {
                             Ok(Ok(checksum)) => {
                                 log::info!("File ready: {} (sha1={})", path_str, checksum);
-                                let _ = tx_out.send((path_str.clone(), checksum)).await;
+                                let _ = tx_out
+                                    .send(MonitorEvent::Ready {
+                                        path: path_str.clone(),
+                                        checksum,
+                                    })
+                                    .await;
                             }
                             Ok(Err(e)) => {
                                 log::error!("Checksum error for {}: {}", path_str, e);
@@ -157,12 +168,13 @@ impl Monitor {
 
                 match res {
                     Ok(event) => {
-                        let is_relevant =
+                        let is_upsert =
                             matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_));
+                        let is_delete = matches!(event.kind, EventKind::Remove(_));
 
-                        if is_relevant {
+                        if is_upsert || is_delete {
                             for path in event.paths {
-                                if path.is_dir() {
+                                if is_upsert && path.is_dir() {
                                     continue;
                                 }
 
@@ -175,10 +187,28 @@ impl Monitor {
                                 }
 
                                 let path_str = path.to_string_lossy().into_owned();
-                                if is_temporary_file(&path)
-                                    || !best_matching_watch_entry(&path, &watch_paths)
-                                        .map(|entry| entry.rules().matches(&path))
-                                        .unwrap_or(true)
+                                let Some(matched_entry) =
+                                    best_matching_watch_entry(&path, &watch_paths)
+                                else {
+                                    continue;
+                                };
+                                let rules = matched_entry.rules();
+                                if is_delete {
+                                    if rules.delete_folder_to_album
+                                        && rules.sync_method != FolderSyncMethod::DownloadOnly
+                                        && !is_temporary_file(&path)
+                                    {
+                                        log::info!("Deleted file event: {}", path_str);
+                                        let _ = tx.blocking_send(MonitorEvent::Deleted {
+                                            path: path_str,
+                                        });
+                                    }
+                                    continue;
+                                }
+
+                                if rules.sync_method == FolderSyncMethod::DownloadOnly
+                                    || is_temporary_file(&path)
+                                    || !rules.matches(&path)
                                 {
                                     continue;
                                 }
