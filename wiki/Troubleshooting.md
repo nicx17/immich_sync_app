@@ -38,7 +38,7 @@ The key is valid but missing one or more permissions Mimick uses. Confirm in Imm
 
 - Base sync: `asset.upload`, `asset.update`, `album.read`, `album.create`, `album.addAsset`
 - Add `asset.read` + `asset.download` if you use Library view or Download Only / Full sync method
-- Add `asset.delete` + `album.removeAsset` if you enabled `delete_folder_to_album`
+- Add `asset.delete` + `album.removeAsset` if you enabled **Mirror Folder Deletions to Album** in any folder's rules
 
 See Configuration & First Run → "API Key Security & Required Permissions" for the full feature/permission mapping.
 

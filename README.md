@@ -161,9 +161,9 @@ When generating the API key in Immich (Account Settings → API Keys), grant onl
 | Feature | Additional permissions |
 |---|---|
 | Library / Explore view (browse photos inside Mimick) | `asset.read`, `asset.view`, `asset.download`, `person.read` |
-| Sync method **Full** or **Download Only** (mirror album → folder) | `asset.read`, `asset.download` |
-| `delete_folder_to_album = on` (mirror local deletion to album) | `asset.delete` *and* `album.removeAsset` (the latter is used when the same asset is referenced by another watch folder, so we just unlink instead of trashing) |
-| `delete_album_to_folder = on` (mirror album deletion to folder) | No additional remote permissions — the album listing is already covered by `album.read`, the trash happens locally |
+| **Sync Method** set to **Full** or **Download Only** (folder rules) | `asset.read`, `asset.download` |
+| **Mirror Folder Deletions to Album** (folder rules toggle) | `asset.delete` *and* `album.removeAsset` (the latter is used when the same asset is referenced by another watch folder, so we just unlink instead of trashing) |
+| **Mirror Album Deletions to Folder** (folder rules toggle) | No additional remote permissions — the album listing is already covered by `album.read`, the trash happens locally |
 
 If you grant `all`, every feature works without further configuration. The granular list above is for users who prefer least-privilege keys.
 

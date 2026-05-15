@@ -348,9 +348,9 @@ When generating an API Key in the Immich Web UI (Account Settings → API Keys),
 | Feature | Additional permissions |
 |---|---|
 | Library / Explore browsing inside Mimick | `asset.read`, `asset.view`, `asset.download`, `person.read` |
-| Sync method **Full** or **Download Only** | `asset.read`, `asset.download` |
-| `delete_folder_to_album = on` | `asset.delete` and `album.removeAsset` (used when the same asset is referenced by another watch folder, so we unlink instead of trashing) |
-| `delete_album_to_folder = on` | No additional remote permissions — `album.read` already lists the album, and the local trash is purely client-side |
+| Sync Method set to **Full** or **Download Only** (folder rules) | `asset.read`, `asset.download` |
+| **Mirror Folder Deletions to Album** (folder rules toggle) | `asset.delete` and `album.removeAsset` (used when the same asset is referenced by another watch folder, so we unlink instead of trashing) |
+| **Mirror Album Deletions to Folder** (folder rules toggle) | No additional remote permissions — `album.read` already lists the album, and the local trash is purely client-side |
 
 If you grant `all`, every feature works without further configuration. The list above is for users who prefer scoped keys.
 
