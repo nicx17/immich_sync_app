@@ -95,18 +95,19 @@ pub async fn queue_unsynced_files(
             .await;
     }
 
-    // 2b. Process each candidate: sync_decision -> hash (if needed) -> queue.
-    let queued = Arc::new(AtomicUsize::new(0));
+    // 2b. Per-candidate: sync_decision -> hash (if needed) -> collect FileTask.
+    //     Tasks are NOT yet queued; we batch a server-side checksum check next
+    //     so files already on Immich never enter the upload pipeline.
+    let prepared: Arc<Mutex<Vec<FileTask>>> = Arc::new(Mutex::new(Vec::new()));
     let skipped = Arc::new(AtomicUsize::new(skipped_enum));
     let errors = Arc::new(AtomicUsize::new(enum_errors));
 
     stream::iter(candidates)
         .for_each_concurrent(16, |candidate| {
             let sync_index = sync_index.clone();
-            let queue_manager = queue_manager.clone();
             let api_client = api_client.clone();
             let album_cache = album_id_cache.clone();
-            let queued = queued.clone();
+            let prepared = prepared.clone();
             let skipped = skipped.clone();
             let errors = errors.clone();
 
@@ -136,83 +137,111 @@ pub async fn queue_unsynced_files(
                     }
                 };
 
-                match decision {
+                let (reassociate_only, cached_checksum) = match decision {
                     SyncDecision::UpToDate => {
                         skipped.fetch_add(1, Ordering::Relaxed);
+                        return;
                     }
-                    SyncDecision::NeedsUpload => {
-                        let album_id =
-                            match resolve_album(&api_client, &album_name, &album_cache).await {
-                                Ok(id) => id,
-                                Err(err) => {
-                                    errors.fetch_add(1, Ordering::Relaxed);
-                                    log::warn!(
-                                        "Startup scan skipping '{}': album resolution failed: {}",
-                                        candidate.path,
-                                        err
-                                    );
-                                    return;
-                                }
-                            };
-                        match hash_and_queue(
-                            &queue_manager,
-                            candidate.path,
-                            candidate.watch_path,
-                            album_id,
-                            Some(album_name),
-                            false,
-                            None,
-                        )
-                        .await
-                        {
-                            Ok(true) => {
-                                queued.fetch_add(1, Ordering::Relaxed);
-                            }
-                            Ok(false) => {}
-                            Err(()) => {
-                                errors.fetch_add(1, Ordering::Relaxed);
-                            }
-                        }
-                    }
+                    SyncDecision::NeedsUpload => (false, None),
                     SyncDecision::NeedsReassociate => {
-                        let album_id =
-                            match resolve_album(&api_client, &album_name, &album_cache).await {
-                                Ok(id) => id,
-                                Err(err) => {
-                                    errors.fetch_add(1, Ordering::Relaxed);
-                                    log::warn!(
-                                        "Startup scan skipping '{}': album resolution failed: {}",
-                                        candidate.path,
-                                        err
-                                    );
-                                    return;
-                                }
-                            };
-                        let checksum = sync_index.stored_checksum(&candidate.path);
-                        match hash_and_queue(
-                            &queue_manager,
+                        (true, sync_index.stored_checksum(&candidate.path))
+                    }
+                };
+
+                let album_id = match resolve_album(&api_client, &album_name, &album_cache).await {
+                    Ok(id) => id,
+                    Err(err) => {
+                        errors.fetch_add(1, Ordering::Relaxed);
+                        log::warn!(
+                            "Startup scan skipping '{}': album resolution failed: {}",
                             candidate.path,
-                            candidate.watch_path,
-                            album_id,
-                            Some(album_name),
-                            true,
-                            checksum,
-                        )
-                        .await
-                        {
-                            Ok(true) => {
-                                queued.fetch_add(1, Ordering::Relaxed);
-                            }
-                            Ok(false) => {}
-                            Err(()) => {
-                                errors.fetch_add(1, Ordering::Relaxed);
-                            }
-                        }
+                            err
+                        );
+                        return;
+                    }
+                };
+
+                match hash_to_task(
+                    candidate.path,
+                    candidate.watch_path,
+                    album_id,
+                    Some(album_name),
+                    reassociate_only,
+                    cached_checksum,
+                )
+                .await
+                {
+                    Ok(task) => prepared.lock().push(task),
+                    Err(()) => {
+                        errors.fetch_add(1, Ordering::Relaxed);
                     }
                 }
             }
         })
         .await;
+
+    // 2c. Batch pre-flight: ask the server which checksums it already has, so
+    //     pre-existing assets bypass the upload queue entirely.
+    let prepared_tasks: Vec<FileTask> = std::mem::take(&mut *prepared.lock());
+    let unique_checksums: Vec<String> = prepared_tasks
+        .iter()
+        .map(|t| t.checksum.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let existing_on_server = if unique_checksums.is_empty() {
+        HashMap::new()
+    } else {
+        api_client.bulk_existing_asset_ids(&unique_checksums).await
+    };
+
+    // 2d. Split tasks. Hits get reassociated inline (no upload); misses go to
+    //     the upload queue.
+    let mut to_reassociate: Vec<(FileTask, String)> = Vec::new();
+    let mut to_upload: Vec<FileTask> = Vec::new();
+    for task in prepared_tasks {
+        match existing_on_server.get(&task.checksum) {
+            Some(asset_id) => to_reassociate.push((task, asset_id.clone())),
+            None => to_upload.push(task),
+        }
+    }
+
+    let reassociated = Arc::new(AtomicUsize::new(0));
+    stream::iter(to_reassociate)
+        .for_each_concurrent(8, |(task, asset_id)| {
+            let api = api_client.clone();
+            let sync_index = sync_index.clone();
+            let reassociated = reassociated.clone();
+            async move {
+                if let Some(ref album_id) = task.album_id
+                    && !album_id.is_empty()
+                {
+                    let _ = api
+                        .add_assets_to_album(album_id, std::slice::from_ref(&asset_id))
+                        .await;
+                }
+                let target = SyncTarget {
+                    album_name: task.album_name.clone(),
+                    album_id: task.album_id.clone(),
+                };
+                if let Err(err) = sync_index.record_synced(&task.path, &task.checksum, &target) {
+                    log::warn!(
+                        "Could not record sync index for pre-existing asset '{}': {}",
+                        task.path,
+                        err
+                    );
+                }
+                reassociated.fetch_add(1, Ordering::Relaxed);
+            }
+        })
+        .await;
+
+    let queued = Arc::new(AtomicUsize::new(0));
+    for task in to_upload {
+        if queue_manager.add_to_queue(task).await {
+            queued.fetch_add(1, Ordering::Relaxed);
+        }
+    }
 
     trash_remote_assets_for_missing_local_files(
         &watch_paths,
@@ -244,8 +273,9 @@ pub async fn queue_unsynced_files(
     let total_queued = queued.load(Ordering::Relaxed);
     let total_skipped = skipped.load(Ordering::Relaxed);
     let total_errors = errors.load(Ordering::Relaxed);
+    let total_reassociated = reassociated.load(Ordering::Relaxed);
 
-    if total_queued == 0 {
+    if total_queued == 0 && total_reassociated == 0 {
         log::info!(
             "Startup scan complete: no unsynced files found ({} already current, {} error(s)).",
             total_skipped,
@@ -255,8 +285,9 @@ pub async fn queue_unsynced_files(
     }
 
     log::info!(
-        "Startup scan queued {} unsynced file(s) ({} already current, {} error(s)).",
+        "Startup scan: queued={} reassociated={} skipped={} errors={}",
         total_queued,
+        total_reassociated,
         total_skipped,
         total_errors
     );
@@ -270,7 +301,7 @@ async fn trash_remote_assets_for_missing_local_files(
 ) {
     for entry in watch_paths {
         let rules = entry.rules();
-        if !rules.delete_folder_to_album || rules.sync_method == FolderSyncMethod::DownloadOnly {
+        if !rules.delete_folder_to_album {
             continue;
         }
 
@@ -339,90 +370,110 @@ async fn trash_remote_assets_for_missing_local_files(
 
 async fn sync_album_to_folder_entries(watch_paths: &[WatchPathEntry], app_ctx: Arc<AppContext>) {
     for entry in watch_paths {
-        let rules = entry.rules();
-        if rules.sync_method == FolderSyncMethod::UploadOnly {
-            continue;
-        }
+        reconcile_entry(app_ctx.clone(), entry).await;
+    }
+}
 
-        let watch_path = Path::new(entry.path()).to_path_buf();
-        if !watch_path.is_dir() {
-            continue;
-        }
+/// Reconcile a single watch entry against its remote album: download new
+/// items, trash local files removed from the album, and trash remote items
+/// missing locally — gated by the entry's per-folder rules.
+pub async fn reconcile_entry(app_ctx: Arc<AppContext>, entry: &WatchPathEntry) {
+    let rules = entry.rules();
+    let download_enabled = rules.sync_method != FolderSyncMethod::UploadOnly;
+    if !download_enabled && !rules.delete_album_to_folder && !rules.delete_folder_to_album {
+        return;
+    }
 
-        let album_name = entry
-            .album_name()
-            .map(|name| name.to_string())
-            .or_else(|| {
-                watch_path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-            })
-            .unwrap_or_else(|| "Mimick".to_string());
+    let watch_path = Path::new(entry.path()).to_path_buf();
+    if !watch_path.is_dir() {
+        return;
+    }
 
-        let configured_album_id = match entry {
-            WatchPathEntry::WithConfig { album_id, .. } => album_id.clone(),
-            WatchPathEntry::Simple(_) => None,
+    let album_name = entry
+        .album_name()
+        .map(|name| name.to_string())
+        .or_else(|| {
+            watch_path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+        })
+        .unwrap_or_else(|| "Mimick".to_string());
+
+    let configured_album_id = match entry {
+        WatchPathEntry::WithConfig { album_id, .. } => album_id.clone(),
+        WatchPathEntry::Simple(_) => None,
+    };
+    let album_id = match configured_album_id {
+        Some(id) => Some(id),
+        None => match app_ctx.api_client.get_album_id_if_exists(&album_name).await {
+            Ok(id) => id,
+            Err(err) => {
+                log::warn!(
+                    "Album-to-folder sync could not resolve album '{}': {}",
+                    album_name,
+                    err
+                );
+                None
+            }
+        },
+    };
+    let Some(album_id) = album_id else {
+        return;
+    };
+
+    let diff =
+        match album_sync::diff_album_vs_folder(app_ctx.clone(), &album_id, &watch_path, &rules)
+            .await
+        {
+            Ok(diff) => diff,
+            Err(err) => {
+                log::warn!(
+                    "Album-to-folder sync diff failed for '{}': {}",
+                    album_name,
+                    err
+                );
+                return;
+            }
         };
-        let album_id = match configured_album_id {
-            Some(id) => Some(id),
-            None => match app_ctx.api_client.get_album_id_if_exists(&album_name).await {
-                Ok(id) => id,
-                Err(err) => {
-                    log::warn!(
-                        "Album-to-folder sync could not resolve album '{}': {}",
-                        album_name,
-                        err
-                    );
-                    None
-                }
-            },
-        };
-        let Some(album_id) = album_id else {
-            continue;
-        };
 
-        let diff =
-            match album_sync::diff_album_vs_folder(app_ctx.clone(), &album_id, &watch_path, &rules)
-                .await
-            {
-                Ok(diff) => diff,
-                Err(err) => {
-                    log::warn!(
-                        "Album-to-folder sync diff failed for '{}': {}",
-                        album_name,
-                        err
-                    );
-                    continue;
-                }
-            };
+    if !diff.to_download.is_empty() {
+        let (downloaded, failed) = album_sync::execute_downloads(
+            app_ctx.clone(),
+            watch_path.clone(),
+            Some(album_id.clone()),
+            Some(album_name.clone()),
+            diff.to_download,
+        )
+        .await;
+        log::info!(
+            "Album-to-folder sync for '{}' downloaded {} item(s), {} failure(s)",
+            album_name,
+            downloaded,
+            failed
+        );
+    }
 
-        if !diff.to_download.is_empty() {
-            let (downloaded, failed) = album_sync::execute_downloads(
-                app_ctx.clone(),
-                watch_path.clone(),
-                Some(album_id.clone()),
-                Some(album_name.clone()),
-                diff.to_download,
-            )
-            .await;
-            log::info!(
-                "Album-to-folder sync for '{}' downloaded {} item(s), {} failure(s)",
-                album_name,
-                downloaded,
-                failed
-            );
-        }
+    if !diff.to_delete_local.is_empty() {
+        let (trashed, failed) =
+            album_sync::execute_local_deletions(app_ctx.clone(), diff.to_delete_local).await;
+        log::info!(
+            "Album-to-folder deletion sync for '{}' moved {} local item(s) to trash, {} failure(s)",
+            album_name,
+            trashed,
+            failed
+        );
+    }
 
-        if !diff.to_delete_local.is_empty() {
-            let (trashed, failed) =
-                album_sync::execute_local_deletions(app_ctx.clone(), diff.to_delete_local).await;
-            log::info!(
-                "Album-to-folder deletion sync for '{}' moved {} local item(s) to trash, {} failure(s)",
-                album_name,
-                trashed,
-                failed
-            );
-        }
+    if !diff.to_delete_remote.is_empty() {
+        let count = diff.to_delete_remote.len();
+        let trashed =
+            album_sync::execute_remote_deletions(app_ctx.clone(), diff.to_delete_remote).await;
+        log::info!(
+            "Folder-to-album deletion sync for '{}' moved {} of {} remote item(s) to Immich trash",
+            album_name,
+            trashed,
+            count
+        );
     }
 }
 
@@ -619,15 +670,14 @@ fn enumerate_candidates(
 }
 
 /// Hash a candidate file and submit it to the upload queue.
-async fn hash_and_queue(
-    queue_manager: &QueueManager,
+async fn hash_to_task(
     path: String,
     watch_path: String,
     album_id: Option<String>,
     album_name: Option<String>,
     reassociate_only: bool,
     checksum: Option<String>,
-) -> Result<bool, ()> {
+) -> Result<FileTask, ()> {
     let checksum = if let Some(checksum) = checksum {
         checksum
     } else {
@@ -645,16 +695,14 @@ async fn hash_and_queue(
         }
     };
 
-    Ok(queue_manager
-        .add_to_queue(FileTask {
-            path,
-            watch_path,
-            checksum,
-            album_id,
-            album_name,
-            reassociate_only,
-        })
-        .await)
+    Ok(FileTask {
+        path,
+        watch_path,
+        checksum,
+        album_id,
+        album_name,
+        reassociate_only,
+    })
 }
 
 /// Resolve the effective album name for a file using per-folder configuration.

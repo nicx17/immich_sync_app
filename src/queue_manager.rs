@@ -850,17 +850,19 @@ async fn handle_upload(
     task: &FileTask,
     progress: TransferProgressCallback,
 ) -> Option<SyncTarget> {
-    let asset_id = if task.reassociate_only {
-        match api.find_existing_asset_id(&task.checksum).await {
-            Some(existing) => Some(existing),
-            None => {
-                api.upload_asset(&task.path, &task.checksum, Some(progress.clone()))
-                    .await
-            }
+    // Pre-flight: ask the server whether this checksum already exists. When it
+    // does, we skip streaming the file body entirely and reuse the existing
+    // asset id for album assignment. The 409 DUPLICATE path below still acts
+    // as a safety net for races (e.g. concurrent upload by another client).
+    let asset_id = match api.find_existing_asset_id(&task.checksum).await {
+        Some(existing) => {
+            log::debug!("Asset already on server, skipping upload: {}", task.path);
+            Some(existing)
         }
-    } else {
-        api.upload_asset(&task.path, &task.checksum, Some(progress.clone()))
-            .await
+        None => {
+            api.upload_asset(&task.path, &task.checksum, Some(progress.clone()))
+                .await
+        }
     };
 
     let asset_id = match asset_id {

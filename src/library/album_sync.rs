@@ -81,27 +81,44 @@ pub async fn diff_album_vs_folder(
         }
     }
 
+    // Build a map of sync-index records whose local path no longer exists, keyed by
+    // checksum. A local file that matches one of these is treated as a rename: we
+    // rewrite the index in place instead of trashing the remote and re-uploading.
+    let mut orphan_by_checksum: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for (path, record) in ctx.sync_index.records_under_path(watch_path) {
+        if !local_paths.contains(&path) {
+            orphan_by_checksum.entry(record.checksum).or_insert(path);
+        }
+    }
+
     let mut to_upload = Vec::new();
     let mut to_delete_local = Vec::new();
     for entry in local_entries {
+        let path_str = entry.local.path.to_string_lossy().to_string();
         if remote_set.contains(&entry.checksum) {
+            if let Some(old_path) = orphan_by_checksum.remove(&entry.checksum) {
+                migrate_renamed_record(&ctx, &old_path, &path_str, &entry.checksum);
+            }
             continue;
         }
-
-        let path_str = entry.local.path.to_string_lossy().to_string();
         let was_previously_synced = ctx
             .sync_index
             .stored_checksum(&path_str)
             .is_some_and(|checksum| checksum == entry.checksum);
 
-        if rules.delete_album_to_folder && was_previously_synced && remote_unhashed == 0 {
-            to_delete_local.push(entry);
-        } else if was_previously_synced && remote_unhashed > 0 {
-            log::debug!(
-                "Skipping local delete/upload decision for {} because {} remote album item(s) have no checksum",
-                entry.local.path.display(),
-                remote_unhashed
-            );
+        if was_previously_synced {
+            if remote_unhashed > 0 {
+                log::debug!(
+                    "Skipping local delete decision for {} because {} remote album item(s) have no checksum",
+                    entry.local.path.display(),
+                    remote_unhashed
+                );
+            } else if rules.delete_album_to_folder {
+                to_delete_local.push(entry);
+            }
+            // Else: file was synced and is now absent from the album. Do not
+            // re-upload — the user removed it intentionally.
         } else {
             to_upload.push(entry);
         }
@@ -123,12 +140,24 @@ pub async fn diff_album_vs_folder(
         }
     }
 
+    if !to_upload.is_empty()
+        || !to_download.is_empty()
+        || !to_delete_local.is_empty()
+        || !to_delete_remote.is_empty()
+    {
+        log::info!(
+            "Album sync diff: upload={} download={} trash_local={} trash_remote={}",
+            to_upload.len(),
+            to_download.len(),
+            to_delete_local.len(),
+            to_delete_remote.len()
+        );
+    }
+
     if rules.sync_method == FolderSyncMethod::UploadOnly {
         to_download.clear();
-        to_delete_local.clear();
     } else if rules.sync_method == FolderSyncMethod::DownloadOnly {
         to_upload.clear();
-        to_delete_remote.clear();
     }
 
     Ok(AlbumDiff {
@@ -146,8 +175,7 @@ async fn resolve_local_checksums(ctx: Arc<AppContext>, locals: Vec<LocalAsset>) 
 
     {
         for asset in locals {
-            let path_str = asset.path.to_string_lossy().to_string();
-            match ctx.sync_index.stored_checksum(&path_str) {
+            match ctx.sync_index.fresh_checksum(&asset.path) {
                 Some(c) => out.push(LocalEntry {
                     local: asset,
                     checksum: c,
@@ -173,6 +201,38 @@ async fn resolve_local_checksums(ctx: Arc<AppContext>, locals: Vec<LocalAsset>) 
     }
 
     out
+}
+
+fn migrate_renamed_record(ctx: &Arc<AppContext>, old_path: &str, new_path: &str, checksum: &str) {
+    let target = ctx
+        .sync_index
+        .record_for_path(old_path)
+        .map(|record| SyncTarget {
+            album_name: record.album_name,
+            album_id: record.album_id,
+        })
+        .unwrap_or_else(|| SyncTarget {
+            album_name: None,
+            album_id: None,
+        });
+
+    if let Err(err) = ctx.sync_index.remove_path(old_path) {
+        log::warn!(
+            "Could not migrate sync record from {} during rename: {}",
+            old_path,
+            err
+        );
+        return;
+    }
+    if let Err(err) = ctx.sync_index.record_synced(new_path, checksum, &target) {
+        log::warn!(
+            "Could not record sync entry for renamed file {}: {}",
+            new_path,
+            err
+        );
+        return;
+    }
+    log::debug!("Renamed: {} -> {}", old_path, new_path);
 }
 
 pub async fn execute_uploads(
@@ -221,6 +281,10 @@ pub async fn execute_downloads(
         let safe_name =
             crate::sanitize::safe_filename(&asset.filename).unwrap_or_else(|| asset.id.clone());
         let dest = unique_destination(&watch_path, &safe_name);
+        // Mark before the bytes land so the watcher's Create event finds the
+        // path in the suppression set even if delivery beats our post-download
+        // index write. The live monitor consumes the entry and skips queuing.
+        ctx.expected_self_downloads.mark(&dest.to_string_lossy());
         let progress = album_download_progress(&ctx, asset.id.clone(), asset.filename.clone());
         match ctx
             .api_client
@@ -280,6 +344,10 @@ pub async fn execute_local_deletions(
     let mut failed = 0;
     for entry in entries {
         let path = entry.local.path.clone();
+        // Mark before we trash so the live monitor's deletion event finds the
+        // path in the expected-self-deletions set even if our index cleanup
+        // hasn't run yet. Suppresses the redundant remote-trash propagation.
+        ctx.expected_self_deletions.mark(&path.to_string_lossy());
         match move_to_trash(entry.local.path.clone()).await {
             Ok(()) => {
                 if let Err(err) = ctx.sync_index.remove_path(&path.to_string_lossy()) {
@@ -305,14 +373,168 @@ pub async fn execute_local_deletions(
 }
 
 async fn move_to_trash(path: PathBuf) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
+    // GIO's File::trash uses the Trash portal automatically when sandboxed, but
+    // it fails on some FUSE-backed paths (notably document-portal handles like
+    // /run/user/UID/doc/HANDLE/...) because the kernel-side trash spec can't
+    // find a matching trash directory on that filesystem. Try GIO first for
+    // compatibility, then fall back to invoking the Trash portal directly with
+    // an opened file descriptor — the portal happily accepts portal-managed
+    // files since they were granted R/W by the file-chooser.
+    let gio_path = path.clone();
+    let gio_result = tokio::task::spawn_blocking(move || {
         use gtk::gio::prelude::FileExt;
-        let file = gtk::gio::File::for_path(path);
+        let file = gtk::gio::File::for_path(gio_path);
         file.trash(gtk::gio::Cancellable::NONE)
             .map_err(|err| err.to_string())
     })
     .await
-    .map_err(|err| err.to_string())?
+    .map_err(|err| err.to_string())?;
+
+    if gio_result.is_ok() {
+        return Ok(());
+    }
+    let gio_err = gio_result.err().unwrap_or_default();
+    log::debug!(
+        "GIO trash failed for {} ({}); trying portal",
+        path.display(),
+        gio_err
+    );
+
+    let portal_err = match trash_via_portal(&path).await {
+        Ok(()) => return Ok(()),
+        Err(err) => err,
+    };
+    log::debug!(
+        "Trash portal failed for {} ({}); trying manual XDG trash",
+        path.display(),
+        portal_err
+    );
+
+    trash_via_manual_xdg(&path).await.map_err(|manual_err| {
+        format!(
+            "gio: {}; portal: {}; manual: {}",
+            gio_err, portal_err, manual_err
+        )
+    })
+}
+
+async fn trash_via_portal(path: &Path) -> Result<(), String> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(|err| format!("open for trash: {}", err))?;
+    let proxy = ashpd::desktop::trash::TrashProxy::new()
+        .await
+        .map_err(|err| format!("trash proxy: {}", err))?;
+    proxy
+        .trash_file(&std::os::fd::AsFd::as_fd(&file))
+        .await
+        .map_err(|err| format!("trash_file: {}", err))
+}
+
+/// XDG trash spec implementation as a last-resort fallback. Used when the
+/// source file lives on a FUSE filesystem (typically document-portal mounts)
+/// where g_file_trash gives up because it can't locate a per-filesystem trash
+/// directory. The home-tier trash (~/.local/share/Trash) is writable from the
+/// Flatpak sandbox, and the document portal allows unlinking files it granted
+/// with R/W, so this path succeeds where GIO and the portal call do not.
+async fn trash_via_manual_xdg(path: &Path) -> Result<(), String> {
+    let source = path.to_path_buf();
+    tokio::task::spawn_blocking(move || trash_manual_xdg_blocking(&source))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+fn trash_manual_xdg_blocking(source: &Path) -> Result<(), String> {
+    let data_home = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(dirs::data_dir)
+        .ok_or_else(|| "XDG_DATA_HOME unresolved".to_string())?;
+    let trash_files = data_home.join("Trash").join("files");
+    let trash_info = data_home.join("Trash").join("info");
+    std::fs::create_dir_all(&trash_files).map_err(|err| format!("create Trash/files: {}", err))?;
+    std::fs::create_dir_all(&trash_info).map_err(|err| format!("create Trash/info: {}", err))?;
+
+    let original_name = source
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("trashed-file");
+    let (basename, dest_file, dest_info) =
+        reserve_trash_slot(&trash_files, &trash_info, original_name)?;
+
+    if let Err(err) = std::fs::copy(source, &dest_file) {
+        let _ = std::fs::remove_file(&dest_file);
+        return Err(format!("copy to Trash/files: {}", err));
+    }
+
+    let deletion_date = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    let info_body = format!(
+        "[Trash Info]\nPath={}\nDeletionDate={}\n",
+        encode_path_for_trashinfo(source),
+        deletion_date
+    );
+    if let Err(err) = std::fs::write(&dest_info, info_body) {
+        let _ = std::fs::remove_file(&dest_file);
+        return Err(format!("write Trash/info/{}.trashinfo: {}", basename, err));
+    }
+
+    if let Err(err) = std::fs::remove_file(source) {
+        let _ = std::fs::remove_file(&dest_file);
+        let _ = std::fs::remove_file(&dest_info);
+        return Err(format!("unlink source: {}", err));
+    }
+
+    log::debug!("Trashed via manual XDG fallback: {}", source.display());
+    Ok(())
+}
+
+fn reserve_trash_slot(
+    files_dir: &Path,
+    info_dir: &Path,
+    original_name: &str,
+) -> Result<(String, PathBuf, PathBuf), String> {
+    for n in 0..10_000 {
+        let candidate = if n == 0 {
+            original_name.to_string()
+        } else {
+            let stem = Path::new(original_name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("trash");
+            let ext = Path::new(original_name)
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            if ext.is_empty() {
+                format!("{}.{}", stem, n)
+            } else {
+                format!("{}.{}.{}", stem, n, ext)
+            }
+        };
+        let file_path = files_dir.join(&candidate);
+        let info_path = info_dir.join(format!("{}.trashinfo", candidate));
+        if !file_path.exists() && !info_path.exists() {
+            return Ok((candidate, file_path, info_path));
+        }
+    }
+    Err("could not find unique trash slot after 10000 attempts".to_string())
+}
+
+/// Percent-encode bytes per RFC 3986 for the Path field of a .trashinfo file.
+/// Slashes are preserved (the spec wants the absolute path readable).
+fn encode_path_for_trashinfo(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    let mut out = String::with_capacity(s.len());
+    for byte in s.bytes() {
+        let safe = byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/');
+        if safe {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{:02X}", byte));
+        }
+    }
+    out
 }
 
 fn unique_destination(folder: &Path, filename: &str) -> PathBuf {

@@ -74,7 +74,16 @@ fn handle_album_sync_click(ui: Rc<LibraryWindowUi>) {
         return;
     };
     let watch_path = std::path::PathBuf::from(entry.path());
-    let rules = entry.rules();
+    // Sync from the album view should preview every operation regardless of
+    // per-folder gates — the user gets explicit checkboxes for each direction
+    // in the confirmation dialog and can opt in even when the folder's rules
+    // would otherwise suppress them.
+    let rules = crate::config::FolderRules {
+        delete_folder_to_album: true,
+        delete_album_to_folder: true,
+        sync_method: crate::config::FolderSyncMethod::Full,
+        ..entry.rules()
+    };
 
     let ui_for_async = ui.clone();
     glib::MainContext::default().spawn_local(async move {

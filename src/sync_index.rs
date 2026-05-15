@@ -189,6 +189,24 @@ impl ShardedSyncIndex {
             .map(|record| record.checksum.clone())
     }
 
+    /// Return the cached checksum only if the file's current size + mtime still
+    /// match the stored fingerprint. Returns `None` when the file is missing,
+    /// untracked, or has been modified since the last index update — callers
+    /// must re-hash in that case.
+    pub fn fresh_checksum(&self, path: &Path) -> Option<String> {
+        let metadata = fs::metadata(path).ok()?;
+        let fingerprint = fingerprint_from_metadata(&metadata);
+        let key = path.to_string_lossy();
+        let idx = shard_for(&key);
+        let shard = self.shards[idx].read().unwrap();
+        let record = shard.entries.get(key.as_ref())?;
+        if record.size == fingerprint.0 && record.modified_ms == fingerprint.1 {
+            Some(record.checksum.clone())
+        } else {
+            None
+        }
+    }
+
     /// Return a synced record for a specific path without touching the filesystem.
     pub fn record_for_path(&self, path: &str) -> Option<SyncedFileRecord> {
         let idx = shard_for(path);

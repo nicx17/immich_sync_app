@@ -194,10 +194,7 @@ impl Monitor {
                                 };
                                 let rules = matched_entry.rules();
                                 if is_delete {
-                                    if rules.delete_folder_to_album
-                                        && rules.sync_method != FolderSyncMethod::DownloadOnly
-                                        && !is_temporary_file(&path)
-                                    {
+                                    if rules.delete_folder_to_album && !is_temporary_file(&path) {
                                         log::info!("Deleted file event: {}", path_str);
                                         let _ = tx.blocking_send(MonitorEvent::Deleted {
                                             path: path_str,

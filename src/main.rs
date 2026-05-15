@@ -19,6 +19,7 @@ mod monitor;
 mod notifications;
 mod profile;
 mod queue_manager;
+mod remote_sync;
 mod runtime_env;
 mod sanitize;
 mod settings_window;
@@ -104,10 +105,7 @@ async fn build_local_deletion_request(
     let record = match ctx.sync_index.record_for_path(&path) {
         Some(record) => record,
         None => {
-            log::debug!(
-                "Ignoring deletion for '{}': no synced record was found",
-                path
-            );
+            log::debug!("No sync record for deleted file: {}", path);
             return None;
         }
     };
@@ -116,10 +114,14 @@ async fn build_local_deletion_request(
     let entry = {
         let entries = ctx.live_watch_paths.lock();
         best_matching_watch_entry(path_obj, &entries).cloned()
-    }?;
+    };
+    let Some(entry) = entry else {
+        log::debug!("Deleted file is not under any watch folder: {}", path);
+        return None;
+    };
     let rules = entry.rules();
-    if !rules.delete_folder_to_album || rules.sync_method == config::FolderSyncMethod::DownloadOnly
-    {
+    if !rules.delete_folder_to_album {
+        log::debug!("Folder-to-album deletion disabled for: {}", path);
         return None;
     }
 
@@ -162,11 +164,7 @@ async fn build_local_deletion_request(
             album_name,
         }),
         Ok(None) => {
-            log::debug!(
-                "Ignoring deletion for '{}': no album asset matched checksum {}",
-                path,
-                record.checksum
-            );
+            log::debug!("No matching album asset for deleted file: {}", path);
             None
         }
         Err(err) => {
@@ -232,7 +230,13 @@ async fn main() {
     let log_dir = profile::cache_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp").join(profile::dir_segment()));
 
-    let _logger = Logger::try_with_env_or_str("info")
+    // Named profiles (e.g. MIMICK_PROFILE=dev) default to verbose mimick logs
+    let default_log_spec = if profile::name().is_some() {
+        "mimick=debug,info"
+    } else {
+        "info"
+    };
+    let _logger = Logger::try_with_env_or_str(default_log_spec)
         .expect("Failed to parse log level")
         .log_to_file(
             FileSpec::default()
@@ -413,6 +417,8 @@ async fn main() {
             library_state,
             library_timeline_active: std::sync::atomic::AtomicBool::new(false),
             current_user_id: Arc::new(parking_lot::Mutex::new(None)),
+            expected_self_deletions: Arc::new(app_context::RecentSelfPaths::default()),
+            expected_self_downloads: Arc::new(app_context::RecentSelfPaths::default()),
         });
         let _ = APP_CONTEXT.set(ctx.clone());
 
@@ -423,6 +429,9 @@ async fn main() {
             while let Some(event) = rx.recv().await {
                 match event {
                     MonitorEvent::Ready { path, checksum } => {
+                        if deletion_ctx.expected_self_downloads.consume(&path) {
+                            continue;
+                        }
                         log::info!("Queuing: {} (sha1={})", path, checksum);
 
                         let (album_id, album_name, watch_path) = {
@@ -457,6 +466,9 @@ async fn main() {
                             .await;
                     }
                     MonitorEvent::Deleted { path } => {
+                        if deletion_ctx.expected_self_deletions.consume(&path) {
+                            continue;
+                        }
                         if let Some(request) =
                             build_local_deletion_request(deletion_ctx.clone(), path).await
                         {
@@ -487,6 +499,13 @@ async fn main() {
             });
         } else {
             log::info!("Background sync is disabled; skipping startup catch-up scan");
+        }
+
+        if background_sync_enabled {
+            let reconciler_ctx = ctx.clone();
+            tokio::spawn(async move {
+                remote_sync::run_album_reconciler(reconciler_ctx).await;
+            });
         }
 
         let startup_state = shared_state_startup.clone();

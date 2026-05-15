@@ -78,8 +78,41 @@ pub struct LibraryAsset {
     pub thumbhash: Option<String>,
     pub width: Option<f64>,
     pub height: Option<f64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_checksum_to_hex")]
     pub checksum: Option<String>,
+}
+
+/// Immich returns asset checksums as base64-encoded SHA1, while Mimick computes
+/// and stores them as lowercase hex. Normalize on deserialization so every
+/// comparison site (album diff, deletion lookup, sync index) sees the same
+/// canonical form.
+fn deserialize_checksum_to_hex<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let raw: Option<String> = Option::deserialize(deserializer)?;
+    Ok(raw.as_deref().and_then(normalize_checksum_to_hex))
+}
+
+pub fn normalize_checksum_to_hex(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.len() == 40 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Some(trimmed.to_ascii_lowercase());
+    }
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(trimmed.as_bytes())
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(trimmed.as_bytes()))
+        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(trimmed.as_bytes()))
+        .ok()?;
+    if bytes.len() != 20 {
+        return None;
+    }
+    Some(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
@@ -518,6 +551,52 @@ impl ImmichApiClient {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn normalize_checksum_passes_through_lowercase_hex() {
+        let hex = "823cb0e790d643a90f61f07e5c2bdd588cf8f230";
+        assert_eq!(normalize_checksum_to_hex(hex), Some(hex.to_string()));
+    }
+
+    #[test]
+    fn normalize_checksum_lowercases_uppercase_hex() {
+        let hex_up = "823CB0E790D643A90F61F07E5C2BDD588CF8F230";
+        assert_eq!(
+            normalize_checksum_to_hex(hex_up),
+            Some(hex_up.to_ascii_lowercase())
+        );
+    }
+
+    #[test]
+    fn normalize_checksum_decodes_base64_to_hex() {
+        // Base64 of the 20-byte SHA1 0x82 0x3c ... 0x30
+        let b64 = "gjyw55DWQ6kPYfB+XCvdWIz48jA=";
+        let expected = "823cb0e790d643a90f61f07e5c2bdd588cf8f230";
+        assert_eq!(normalize_checksum_to_hex(b64), Some(expected.to_string()));
+    }
+
+    #[test]
+    fn normalize_checksum_rejects_empty_and_unknown() {
+        assert_eq!(normalize_checksum_to_hex(""), None);
+        assert_eq!(normalize_checksum_to_hex("not-a-checksum"), None);
+    }
+
+    #[test]
+    fn library_asset_deserializes_base64_checksum_as_hex() {
+        let json = serde_json::json!({
+            "id": "asset-1",
+            "originalFileName": "a.png",
+            "originalMimeType": "image/png",
+            "fileCreatedAt": "2024-01-01T00:00:00.000Z",
+            "type": "IMAGE",
+            "checksum": "gjyw55DWQ6kPYfB+XCvdWIz48jA="
+        });
+        let asset: LibraryAsset = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            asset.checksum.as_deref(),
+            Some("823cb0e790d643a90f61f07e5c2bdd588cf8f230")
+        );
+    }
 
     #[test]
     fn test_unix_to_utc_iso8601() {
