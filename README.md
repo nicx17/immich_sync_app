@@ -130,7 +130,7 @@ The UI is fully responsive and automatically adapts its layout for narrow widths
 
 1. **Internal URL** — LAN address (e.g., `http://192.168.1.50:2283`).
 2. **External URL** — WAN/Public address (e.g., `https://photos.example.com`). _At least one must be enabled._
-3. **API Key** — Generate in Immich Web UI under Account Settings > API Keys. Needs **Asset** read/create/update/download permissions and **Album** read/create/update permissions.
+3. **API Key** — Generate in Immich Web UI under Account Settings > API Keys. See [Required API Key permissions](#required-api-key-permissions) below for the minimum scopes and which features unlock with each.
 4. **Watch Paths** — Add folders to monitor with the built-in folder picker. Each folder can be assigned a target Immich album.
 5. **Run on Startup** — Enable this in the **Behavior** section to start Mimick automatically when you log in.
 6. **Folder Rules** — Each watched folder can open a rules dialog to ignore hidden paths, set a max size in MB, or restrict uploads to specific extensions.
@@ -141,6 +141,31 @@ The UI is fully responsive and automatically adapts its layout for narrow widths
 11. **Close / Quit** — `Close` hides the settings window and leaves Mimick running; `Quit` fully exits the app.
 
 The bottom footer keeps **Close**, **Quit**, and **Save Changes** visible even when the page content needs scrolling.
+
+### Required API Key permissions
+
+When generating the API key in Immich (Account Settings → API Keys), grant only what you need:
+
+**Base — required for any sync to work:**
+
+| Permission | Why |
+|---|---|
+| `asset.upload` | Send media to the server |
+| `asset.update` | Apply correct timezone metadata after upload |
+| `album.read` | Look up the target album for a watch folder |
+| `album.create` | Auto-create the target album if it doesn't exist |
+| `album.addAsset` | Link uploaded media to the target album |
+
+**Optional — only required for the features you enable:**
+
+| Feature | Additional permissions |
+|---|---|
+| Library / Explore view (browse photos inside Mimick) | `asset.read`, `asset.view`, `asset.download`, `person.read` |
+| Sync method **Full** or **Download Only** (mirror album → folder) | `asset.read`, `asset.download` |
+| `delete_folder_to_album = on` (mirror local deletion to album) | `asset.delete` *and* `album.removeAsset` (the latter is used when the same asset is referenced by another watch folder, so we just unlink instead of trashing) |
+| `delete_album_to_folder = on` (mirror album deletion to folder) | No additional remote permissions — the album listing is already covered by `album.read`, the trash happens locally |
+
+If you grant `all`, every feature works without further configuration. The granular list above is for users who prefer least-privilege keys.
 
 ### Autostart
 

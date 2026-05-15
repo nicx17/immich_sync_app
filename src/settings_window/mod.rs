@@ -165,11 +165,12 @@ pub fn build_settings_window_with_parent(
     if is_unconfigured {
         let welcome_group = adw::PreferencesGroup::builder()
             .title("Welcome to Mimick!")
-            .description("Start by adding your API key, testing the connection, and choosing at least one folder.")
+            .description("Start by adding your API key, testing the connection, and choosing at least one folder. The key needs Asset (upload, update, read, download, delete) and Album (read, create, addAsset, removeAsset) permissions.")
             .build();
 
         let help_row = adw::ActionRow::builder()
             .title("How to get an API Key")
+            .subtitle("Required permissions: Asset upload/update + Album read/create/addAsset. Add delete + download for full bidirectional sync.")
             .activatable(true)
             .build();
 

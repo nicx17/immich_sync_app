@@ -25,7 +25,7 @@ pub(super) fn classify_http_issue(
     match status {
         401 | 403 => ApiIssue {
             summary: "Immich rejected the API key".to_string(),
-            guidance: "Update the API key in Settings and confirm it still has upload access."
+            guidance: "Update the API key in Settings and confirm it still has the required Asset and Album permissions (see README for the full list)."
                 .to_string(),
         },
         404 if matches!(context, RequestContext::AlbumAssign | RequestContext::AlbumCreate) => {

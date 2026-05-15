@@ -331,10 +331,30 @@ When a watch path is stored as an object, these fields can appear:
 
 ### API Key Security & Required Permissions
 
-When generating an API Key in the Immich Web UI (Account Settings > API Keys), you can restrict its permissions for better security. `mimick` requires the following minimum permissions:
+When generating an API Key in the Immich Web UI (Account Settings → API Keys), you can restrict its permissions for least-privilege use. Mimick maps to Immich's permission scopes as follows.
 
-- **Asset**: `Read` (to check for duplicates), `Create` (to upload new media), `Update` (to reapply final asset timezone metadata after upload), `Download` (for library view downloads)
-- **Album**: `Read` (to list existing albums), `Create` (to create new albums), `Update` (to add uploaded media to albums)
+**Base — required for any sync to work, even Upload Only:**
+
+| Permission | Why |
+|---|---|
+| `asset.upload` | Send media to the server |
+| `asset.update` | Apply correct timezone metadata after upload |
+| `album.read` | Look up the target album for a watch folder |
+| `album.create` | Auto-create the target album if it doesn't exist |
+| `album.addAsset` | Link uploaded media to the target album |
+
+**Feature-specific — grant only if you use that feature:**
+
+| Feature | Additional permissions |
+|---|---|
+| Library / Explore browsing inside Mimick | `asset.read`, `asset.view`, `asset.download`, `person.read` |
+| Sync method **Full** or **Download Only** | `asset.read`, `asset.download` |
+| `delete_folder_to_album = on` | `asset.delete` and `album.removeAsset` (used when the same asset is referenced by another watch folder, so we unlink instead of trashing) |
+| `delete_album_to_folder = on` | No additional remote permissions — `album.read` already lists the album, and the local trash is purely client-side |
+
+If you grant `all`, every feature works without further configuration. The list above is for users who prefer scoped keys.
+
+The bulk-upload-check endpoint Mimick uses for pre-flight dedup is covered by `asset.upload` (same scope as the upload it replaces).
 
 ### Systemd Service Configuration (Native Only)
 

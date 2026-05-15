@@ -32,6 +32,16 @@ flatpak run dev.nicx.mimick
 
 Then re-enter and save your API key from the settings window.
 
+### "Immich rejected the API key" / 401 / 403
+
+The key is valid but missing one or more permissions Mimick uses. Confirm in Immich (Account Settings → API Keys → edit) that the key has at least:
+
+- Base sync: `asset.upload`, `asset.update`, `album.read`, `album.create`, `album.addAsset`
+- Add `asset.read` + `asset.download` if you use Library view or Download Only / Full sync method
+- Add `asset.delete` + `album.removeAsset` if you enabled `delete_folder_to_album`
+
+See Configuration & First Run → "API Key Security & Required Permissions" for the full feature/permission mapping.
+
 ### Keyring Access Issues (Headless Servers)
 If you are running on a server without a desktop session (e.g., via SSH only), the native Keyring might fail to unlock the login keyring.
 - **Solution:** Use `dbus-run-session` or configure `pam_gnome_keyring` to unlock on login.
@@ -56,7 +66,7 @@ If a file seems to be ignored completely, check:
 1. the watch folder was selected through the app
 2. the file extension is supported (Only Immich-compatible image and video formats are recognized)
 3. the file finished writing to disk (temporary files are ignored)
-4. the API key and server URLs are valid
+4. the API key and server URLs are valid, and the key has the required permissions (`asset.upload`, `asset.update`, `album.read`, `album.create`, `album.addAsset` — see Configuration & First Run for the full table)
 5. folder rules are not excluding the file (hidden files, or max-size restrictions)
 
 > **Check the Queue Inspector**
