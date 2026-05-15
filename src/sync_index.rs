@@ -250,6 +250,21 @@ impl ShardedSyncIndex {
         records
     }
 
+    /// All synced paths that share a checksum. Used to detect when an asset
+    /// is referenced from more than one watch folder before trashing it.
+    pub fn paths_for_checksum(&self, checksum: &str) -> Vec<String> {
+        let mut paths = Vec::new();
+        for lock in &self.shards {
+            let shard = lock.read().unwrap();
+            for (path, record) in &shard.entries {
+                if record.checksum == checksum {
+                    paths.push(path.clone());
+                }
+            }
+        }
+        paths
+    }
+
     /// Reverse-lookup a local path by checksum for library sync-state indicators.
     pub fn local_path_for_checksum(&self, checksum: &str) -> Option<String> {
         // The checksum could be in any shard, so we must search all.

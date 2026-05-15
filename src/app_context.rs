@@ -19,11 +19,8 @@ use crate::queue_manager::QueueManager;
 use crate::state_manager::AppState;
 use crate::sync_index::ShardedSyncIndex;
 
-/// TTL'd set of paths that Mimick itself just modified, used to suppress the
-/// filesystem events those modifications cause. Used for two cases:
-/// trashing (`expected_self_deletions`) and downloading from the album
-/// (`expected_self_downloads`). Entries are one-shot — a real later event for
-/// the same path still propagates normally.
+/// TTL'd set of paths Mimick itself just modified, used to suppress the
+/// filesystem events those modifications cause.
 #[derive(Default)]
 pub struct RecentSelfPaths {
     inner: Mutex<HashMap<String, Instant>>,
@@ -45,6 +42,60 @@ impl RecentSelfPaths {
     }
 }
 
+/// Per-album reconcile lock. Prevents the periodic poller and a manual sync
+/// click from racing each other into duplicate downloads / duplicate trash.
+#[derive(Default)]
+pub struct ReconcileLocks {
+    inner: Mutex<std::collections::HashSet<String>>,
+}
+
+impl ReconcileLocks {
+    pub fn try_acquire(self: &Arc<Self>, album_id: String) -> Option<ReconcileGuard> {
+        let mut set = self.inner.lock();
+        if !set.insert(album_id.clone()) {
+            return None;
+        }
+        Some(ReconcileGuard {
+            locks: self.clone(),
+            album_id,
+        })
+    }
+}
+
+pub struct ReconcileGuard {
+    locks: Arc<ReconcileLocks>,
+    album_id: String,
+}
+
+impl Drop for ReconcileGuard {
+    fn drop(&mut self) {
+        self.locks.inner.lock().remove(&self.album_id);
+    }
+}
+
+/// Two-tick deletion confirmation. For mass deletions, require the same
+/// asset to be missing across two consecutive reconciler observations
+/// before trashing — defends against transient server-side stale reads.
+#[derive(Default)]
+pub struct PendingDeletions {
+    inner: Mutex<HashMap<String, u32>>,
+}
+
+impl PendingDeletions {
+    pub const REQUIRED_CONFIRMATIONS: u32 = 2;
+
+    pub fn confirm(&self, key: &str) -> bool {
+        let mut map = self.inner.lock();
+        let entry = map.entry(key.to_string()).or_insert(0);
+        *entry += 1;
+        *entry >= Self::REQUIRED_CONFIRMATIONS
+    }
+
+    pub fn clear(&self, key: &str) {
+        self.inner.lock().remove(key);
+    }
+}
+
 /// Shared application context holding all dependency handles that UI and background
 /// tasks need. Wrapped in `Arc` at construction time so it can be cloned cheaply.
 pub struct AppContext {
@@ -62,4 +113,6 @@ pub struct AppContext {
     pub current_user_id: Arc<Mutex<Option<String>>>,
     pub expected_self_deletions: Arc<RecentSelfPaths>,
     pub expected_self_downloads: Arc<RecentSelfPaths>,
+    pub reconcile_locks: Arc<ReconcileLocks>,
+    pub pending_deletions: Arc<PendingDeletions>,
 }

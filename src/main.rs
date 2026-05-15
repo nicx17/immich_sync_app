@@ -57,6 +57,7 @@ struct LocalDeletionRequest {
     asset_id: String,
     asset_name: String,
     album_name: String,
+    album_id: Option<String>,
 }
 
 fn format_log_location(record: &Record) -> String {
@@ -162,6 +163,7 @@ async fn build_local_deletion_request(
             asset_id: asset.id,
             asset_name: asset.filename,
             album_name,
+            album_id: Some(album_id),
         }),
         Ok(None) => {
             log::debug!("No matching album asset for deleted file: {}", path);
@@ -175,29 +177,49 @@ async fn build_local_deletion_request(
 }
 
 async fn trash_remote_after_local_delete(ctx: Arc<AppContext>, request: LocalDeletionRequest) {
-    let ids = vec![request.asset_id.clone()];
-    match ctx.api_client.delete_assets(&ids).await {
-        Ok(()) => {
-            if let Err(err) = ctx.sync_index.remove_path(&request.local_path) {
-                log::warn!(
-                    "Deleted remote asset but could not remove sync record for '{}': {}",
-                    request.local_path,
-                    err
-                );
-            }
-            log::info!(
-                "Moved '{}' from album '{}' to Immich trash after local deletion",
-                request.asset_name,
-                request.album_name
-            );
+    let asset_ids = vec![request.asset_id.clone()];
+    // Cleanup our own sync record first so the shared-checksum check below
+    // doesn't count the deleted path as "still referenced."
+    let record_checksum = ctx
+        .sync_index
+        .record_for_path(&request.local_path)
+        .map(|r| r.checksum);
+    if let Err(err) = ctx.sync_index.remove_path(&request.local_path) {
+        log::warn!(
+            "Could not remove sync record for '{}': {}",
+            request.local_path,
+            err
+        );
+    }
+    let shared = record_checksum.as_deref().is_some_and(|c| {
+        ctx.sync_index
+            .paths_for_checksum(c)
+            .into_iter()
+            .any(|p| std::path::Path::new(&p).exists())
+    });
+    let result = if shared {
+        if let Some(album_id) = request.album_id.as_deref() {
+            ctx.api_client
+                .remove_assets_from_album(album_id, &asset_ids)
+                .await;
+            Ok(())
+        } else {
+            ctx.api_client.delete_assets(&asset_ids).await
         }
-        Err(err) => {
-            log::warn!(
-                "Could not move '{}' to Immich trash after local deletion: {}",
-                request.asset_name,
-                err
-            );
-        }
+    } else {
+        ctx.api_client.delete_assets(&asset_ids).await
+    };
+    match result {
+        Ok(()) => log::info!(
+            "Mirrored local delete of '{}' to album '{}'",
+            request.asset_name,
+            request.album_name
+        ),
+        Err(err) => log::warn!(
+            "Could not mirror local delete of '{}': {}",
+            request.asset_name,
+            err
+        ),
     }
 }
 
@@ -419,6 +441,8 @@ async fn main() {
             current_user_id: Arc::new(parking_lot::Mutex::new(None)),
             expected_self_deletions: Arc::new(app_context::RecentSelfPaths::default()),
             expected_self_downloads: Arc::new(app_context::RecentSelfPaths::default()),
+            reconcile_locks: Arc::new(app_context::ReconcileLocks::default()),
+            pending_deletions: Arc::new(app_context::PendingDeletions::default()),
         });
         let _ = APP_CONTEXT.set(ctx.clone());
 

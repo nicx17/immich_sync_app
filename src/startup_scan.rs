@@ -421,6 +421,19 @@ pub async fn reconcile_entry(app_ctx: Arc<AppContext>, entry: &WatchPathEntry) {
         return;
     };
 
+    // Per-album lock: drop the reconcile if another instance (periodic or
+    // manual) is already running for this album.
+    let _guard = match app_ctx.reconcile_locks.try_acquire(album_id.clone()) {
+        Some(g) => g,
+        None => {
+            log::debug!(
+                "Reconcile already in progress for album {}, skipping",
+                album_id
+            );
+            return;
+        }
+    };
+
     let diff =
         match album_sync::diff_album_vs_folder(app_ctx.clone(), &album_id, &watch_path, &rules)
             .await
@@ -467,7 +480,8 @@ pub async fn reconcile_entry(app_ctx: Arc<AppContext>, entry: &WatchPathEntry) {
     if !diff.to_delete_remote.is_empty() {
         let count = diff.to_delete_remote.len();
         let trashed =
-            album_sync::execute_remote_deletions(app_ctx.clone(), diff.to_delete_remote).await;
+            album_sync::execute_remote_deletions(app_ctx.clone(), &album_id, diff.to_delete_remote)
+                .await;
         log::info!(
             "Folder-to-album deletion sync for '{}' moved {} of {} remote item(s) to Immich trash",
             album_name,

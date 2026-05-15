@@ -263,6 +263,7 @@ fn present_sync_dialog(
             let remote_deleted = if !to_delete_remote.is_empty() {
                 crate::library::album_sync::execute_remote_deletions(
                     ui.ctx.clone(),
+                    &album_id,
                     to_delete_remote,
                 )
                 .await

@@ -410,4 +410,48 @@ impl ImmichApiClient {
             }
         }
     }
+
+    /// Remove assets from an album without trashing them on the server. Used
+    /// when an asset is referenced from more than one watch folder — we want
+    /// to mirror the local deletion's album side, not destroy the asset.
+    pub async fn remove_assets_from_album(&self, album_id: &str, asset_ids: &[String]) -> bool {
+        if album_id.is_empty() || asset_ids.is_empty() {
+            return false;
+        }
+        let base_url = match self.get_active_url().await {
+            Some(u) => u,
+            None => return false,
+        };
+        let url = format!("{}/api/albums/{}/assets", base_url, album_id);
+        let api_key = self.settings.read().api_key.clone();
+        let body = serde_json::json!({ "ids": asset_ids });
+        match self
+            .client
+            .delete(&url)
+            .header("x-api-key", &api_key)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .json(&body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                log::info!(
+                    "Removed {} asset(s) from album '{}' (asset preserved on server)",
+                    asset_ids.len(),
+                    album_id
+                );
+                true
+            }
+            Ok(resp) => {
+                log::warn!("Remove-from-album returned {}", resp.status());
+                false
+            }
+            Err(err) => {
+                log::warn!("Remove-from-album request failed: {}", err);
+                false
+            }
+        }
+    }
 }
