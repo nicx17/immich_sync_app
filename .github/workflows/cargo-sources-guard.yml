@@ -14,7 +14,7 @@ env:
 jobs:
   verify-vendoring:
     name: Verify cargo-sources.json
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -24,10 +24,10 @@ jobs:
 
       - name: Ensure Cargo lock changes update vendored sources
         shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-
           CHANGED_FILES="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- Cargo.toml Cargo.lock cargo-sources.json)"
 
           if [[ -z "$CHANGED_FILES" ]]; then

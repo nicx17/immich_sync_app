@@ -20,7 +20,7 @@ env:
 
 jobs:
   build-repo:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
       options: --privileged
@@ -48,7 +48,7 @@ jobs:
 
   deploy-pages:
     needs: build-repo
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -21,7 +21,7 @@ jobs:
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       !github.event.pull_request.draft &&
       contains(github.event.pull_request.labels.*.name, 'dependencies')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Enable native auto-merge

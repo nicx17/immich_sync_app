@@ -14,7 +14,7 @@ env:
 
 jobs:
   create-release:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     concurrency:
       group: release-${{ github.ref }}
       cancel-in-progress: true

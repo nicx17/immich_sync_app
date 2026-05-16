@@ -33,7 +33,10 @@ jobs:
 
     steps:
       - name: Install system dependencies
-        run: pacman -Syu --noconfirm --needed gtk4 libadwaita glib2 pkgconf base-devel libsecret git
+        # Full upgrade first, then install — Arch disallows partial upgrades.
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed gtk4 libadwaita glib2 pkgconf base-devel libsecret git
 
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -58,7 +61,7 @@ jobs:
 
   cargo-audit:
     name: Dependency Audit
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
