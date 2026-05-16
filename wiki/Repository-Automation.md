@@ -6,7 +6,6 @@ Mimick uses a small, focused automation stack for repository hygiene and release
 
 - Dependabot for Cargo and GitHub Actions updates
 - CODEOWNERS for default repository ownership
-- Maintainer approval gate for PRs opened by other contributors
 - Cargo vendor guard for `cargo-sources.json`
 - Docs link checking for README, docs, and wiki pages
 - Release Drafter for a rolling draft release page
@@ -28,15 +27,10 @@ The important GitHub-side settings are now in place on `main`:
 5. stale approvals are dismissed on new commits
 6. conversation resolution is required
 
-Because the repo-wide CODEOWNERS entry points to `@nicx17`, PRs from other contributors now need your approval before merging.
-
-Admins are not enforced, so your own PRs remain practical to merge when needed.
-
 ## Key Files
 
 - [`.github/dependabot.yml`](../.github/dependabot.yml)
 - [`.github/CODEOWNERS`](../.github/CODEOWNERS)
-- [`.github/workflows/maintainer-approval.yml`](../.github/workflows/maintainer-approval.yml)
 - [`.github/workflows/cargo-sources-guard.yml`](../.github/workflows/cargo-sources-guard.yml)
 - [`.github/workflows/docs-links.yml`](../.github/workflows/docs-links.yml)
 - [`.github/workflows/release-drafter.yml`](../.github/workflows/release-drafter.yml)
