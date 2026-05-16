@@ -258,8 +258,9 @@ fn show_folder_rules_dialog(
         .build();
     let delete_album_to_folder = adw::SwitchRow::builder()
         .title("Mirror Album Deletions to Folder")
-        .subtitle("When a synced album asset is gone, move the matching local file to trash.")
-        .active(current.delete_album_to_folder)
+        .subtitle("Currently unavailable — waiting on an upstream Flatpak Trash portal fix. The setting stays off until then.")
+        .active(false)
+        .sensitive(false)
         .build();
 
     list_box.append(&sync_method);
@@ -322,6 +323,9 @@ fn show_folder_rules_dialog(
                 .filter(|part| !part.is_empty())
                 .collect::<Vec<_>>();
 
+            // delete_album_to_folder UI is forced off / insensitive while
+            // album-to-folder mirroring is disabled.
+            let stored_delete_album_to_folder = rules_state.borrow().delete_album_to_folder;
             *rules_state.borrow_mut() = FolderRules {
                 ignore_hidden: ignore_hidden.is_active(),
                 max_file_size_mb,
@@ -337,7 +341,7 @@ fn show_folder_rules_dialog(
                     _ => StartupCatchupMode::Full,
                 }),
                 delete_folder_to_album: delete_folder_to_album.is_active(),
-                delete_album_to_folder: delete_album_to_folder.is_active(),
+                delete_album_to_folder: stored_delete_album_to_folder,
             };
             (on_settings_changed)();
             dialog.close();

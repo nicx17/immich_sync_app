@@ -434,20 +434,25 @@ pub async fn reconcile_entry(app_ctx: Arc<AppContext>, entry: &WatchPathEntry) {
         }
     };
 
-    let diff =
-        match album_sync::diff_album_vs_folder(app_ctx.clone(), &album_id, &watch_path, &rules)
-            .await
-        {
-            Ok(diff) => diff,
-            Err(err) => {
-                log::warn!(
-                    "Album-to-folder sync diff failed for '{}': {}",
-                    album_name,
-                    err
-                );
-                return;
-            }
-        };
+    let diff = match album_sync::diff_album_vs_folder(
+        app_ctx.clone(),
+        &album_id,
+        &watch_path,
+        &rules,
+        false,
+    )
+    .await
+    {
+        Ok(diff) => diff,
+        Err(err) => {
+            log::warn!(
+                "Album-to-folder sync diff failed for '{}': {}",
+                album_name,
+                err
+            );
+            return;
+        }
+    };
 
     if !diff.to_download.is_empty() {
         let (downloaded, failed) = album_sync::execute_downloads(

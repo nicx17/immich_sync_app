@@ -13,6 +13,10 @@ use crate::queue_manager::FileTask;
 use crate::state_manager::TransferDirection;
 use crate::sync_index::SyncTarget;
 
+/// Gate album→folder deletion: portal trash currently fails on FUSE
+/// document-portal paths (upstream bug). Flip to `true` when fixed.
+const ALBUM_TO_FOLDER_TRASH_AVAILABLE: bool = false;
+
 #[derive(Debug, Default, Clone)]
 pub struct AlbumDiff {
     pub to_upload: Vec<LocalEntry>,
@@ -33,6 +37,7 @@ pub async fn diff_album_vs_folder(
     album_id: &str,
     watch_path: &Path,
     rules: &FolderRules,
+    manual_sync: bool,
 ) -> Result<AlbumDiff, String> {
     let mut remote = Vec::new();
     let mut page: u32 = 1;
@@ -134,11 +139,13 @@ pub async fn diff_album_vs_folder(
                     entry.local.path.display(),
                     remote_unhashed
                 );
-            } else if rules.delete_album_to_folder {
+            } else if rules.delete_album_to_folder && ALBUM_TO_FOLDER_TRASH_AVAILABLE {
                 to_delete_local.push(entry);
+            } else if manual_sync {
+                // Manual sync only: surface as re-upload candidate so user can
+                // explicitly restore the asset. Automatic context skips this.
+                to_upload.push(entry);
             }
-            // Else: file was synced and is now absent from the album. Do not
-            // re-upload — the user removed it intentionally.
         } else {
             to_upload.push(entry);
         }
@@ -166,14 +173,10 @@ pub async fn diff_album_vs_folder(
         }
     }
 
-    // #8: Skip local trash for assets still present on the server (in some
-    // other album, or just moved). Two-tick confirmation (#7) for mass
-    // deletes — small batches (≤5) trust the single read.
-    if !to_delete_local.is_empty() {
-        let checksums: Vec<String> = to_delete_local.iter().map(|e| e.checksum.clone()).collect();
-        let still_on_server = ctx.api_client.bulk_existing_asset_ids(&checksums).await;
-        to_delete_local.retain(|entry| !still_on_server.contains_key(&entry.checksum));
-    }
+    // Two-tick confirmation (#7) for mass deletes — small batches (≤5) trust
+    // the single read. The previous "still on server" filter was removed
+    // because bulk-upload-check matches even trashed assets, which silently
+    // suppressed the common case of "user trashed asset from album".
     if to_delete_local.len() > 5 {
         let album = album_id.to_string();
         let pending = ctx.pending_deletions.clone();
@@ -405,22 +408,18 @@ pub async fn execute_remote_deletions(
     if assets.is_empty() {
         return 0;
     }
-    // Partition by whether the asset is referenced from another still-existing
-    // local path. If yes, the asset is shared across watch folders — remove
-    // from this album only. If no, the asset is unreachable elsewhere → trash.
+    // Ask the server how many albums each asset is a member of. If >1, the
+    // asset lives in another album somewhere on Immich — unlink only from
+    // this album, don't destroy it. If 1 (just this album) or unknown, trash
+    // the asset. The fallback to trash on lookup failure preserves the prior
+    // behaviour rather than silently doing nothing.
     let mut to_trash: Vec<String> = Vec::new();
     let mut to_unalbum: Vec<String> = Vec::new();
     for asset in &assets {
-        let shared = asset.checksum.as_deref().is_some_and(|c| {
-            ctx.sync_index
-                .paths_for_checksum(c)
-                .into_iter()
-                .any(|p| Path::new(&p).exists())
-        });
-        if shared {
-            to_unalbum.push(asset.id.clone());
-        } else {
-            to_trash.push(asset.id.clone());
+        let album_count = ctx.api_client.count_albums_for_asset(&asset.id).await;
+        match album_count {
+            Some(n) if n > 1 => to_unalbum.push(asset.id.clone()),
+            _ => to_trash.push(asset.id.clone()),
         }
     }
     let mut ok = 0;
@@ -442,92 +441,53 @@ pub async fn execute_remote_deletions(
 }
 
 pub async fn execute_local_deletions(
-    ctx: Arc<AppContext>,
+    _ctx: Arc<AppContext>,
     entries: Vec<LocalEntry>,
 ) -> (usize, usize) {
-    let mut ok = 0;
-    let mut failed = 0;
-    for entry in entries {
-        let path = entry.local.path.clone();
-        // Mark before we trash so the live monitor's deletion event finds the
-        // path in the expected-self-deletions set even if our index cleanup
-        // hasn't run yet. Suppresses the redundant remote-trash propagation.
-        ctx.expected_self_deletions.mark(&path.to_string_lossy());
-        match move_to_trash(entry.local.path.clone()).await {
-            Ok(()) => {
-                if let Err(err) = ctx.sync_index.remove_path(&path.to_string_lossy()) {
-                    log::warn!(
-                        "Local trash succeeded but sync index cleanup failed for {}: {}",
-                        path.display(),
-                        err
-                    );
-                }
-                ok += 1
-            }
-            Err(err) => {
-                log::warn!(
-                    "Local trash operation failed for {}: {}",
-                    entry.local.path.display(),
-                    err
-                );
-                failed += 1;
-            }
-        }
+    // Album-to-folder deletion (Mirror Album Deletions to Folder) is currently
+    // disabled because the only acceptable trash path on Flatpak
+    if !entries.is_empty() {
+        log::warn!(
+            "Album-to-folder deletion currently disabled (Flatpak portal trash limitation). \
+             {} local file(s) left in place; sync_index records kept so a future tick can retry once trash is re-enabled.",
+            entries.len()
+        );
     }
-    (ok, failed)
+    (0, 0)
+
+    // Original implementation kept for reactivation:
+    //
+    // let mut ok = 0;
+    // let mut failed = 0;
+    // for entry in entries {
+    //     let path = entry.local.path.clone();
+    //     _ctx.expected_self_deletions.mark(&path.to_string_lossy());
+    //     match move_to_trash(entry.local.path.clone()).await {
+    //         Ok(()) => {
+    //             if let Err(err) = _ctx.sync_index.remove_path(&path.to_string_lossy()) {
+    //                 log::warn!(
+    //                     "Local trash succeeded but sync index cleanup failed for {}: {}",
+    //                     path.display(), err
+    //                 );
+    //             }
+    //             ok += 1;
+    //         }
+    //         Err(err) => {
+    //             log::warn!("Local trash operation failed for {}: {}", path.display(), err);
+    //             failed += 1;
+    //         }
+    //     }
+    // }
+    // (ok, failed)
 }
 
+/// Portal-only trash. Single implementation, no fallbacks. Currently unused
+#[allow(dead_code)]
 async fn move_to_trash(path: PathBuf) -> Result<(), String> {
-    // GIO's File::trash uses the Trash portal automatically when sandboxed, but
-    // it fails on some FUSE-backed paths (notably document-portal handles like
-    // /run/user/UID/doc/HANDLE/...) because the kernel-side trash spec can't
-    // find a matching trash directory on that filesystem. Try GIO first for
-    // compatibility, then fall back to invoking the Trash portal directly with
-    // an opened file descriptor — the portal happily accepts portal-managed
-    // files since they were granted R/W by the file-chooser.
-    let gio_path = path.clone();
-    let gio_result = tokio::task::spawn_blocking(move || {
-        use gtk::gio::prelude::FileExt;
-        let file = gtk::gio::File::for_path(gio_path);
-        file.trash(gtk::gio::Cancellable::NONE)
-            .map_err(|err| err.to_string())
-    })
-    .await
-    .map_err(|err| err.to_string())?;
-
-    if gio_result.is_ok() {
-        return Ok(());
-    }
-    let gio_err = gio_result.err().unwrap_or_default();
-    log::debug!(
-        "GIO trash failed for {} ({}); trying portal",
-        path.display(),
-        gio_err
-    );
-
-    let portal_err = match trash_via_portal(&path).await {
-        Ok(()) => return Ok(()),
-        Err(err) => err,
-    };
-    log::debug!(
-        "Trash portal failed for {} ({}); trying manual XDG trash",
-        path.display(),
-        portal_err
-    );
-
-    trash_via_manual_xdg(&path).await.map_err(|manual_err| {
-        format!(
-            "gio: {}; portal: {}; manual: {}",
-            gio_err, portal_err, manual_err
-        )
-    })
-}
-
-async fn trash_via_portal(path: &Path) -> Result<(), String> {
     let file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(path)
+        .open(&path)
         .map_err(|err| format!("open for trash: {}", err))?;
     let proxy = ashpd::desktop::trash::TrashProxy::new()
         .await
@@ -536,110 +496,6 @@ async fn trash_via_portal(path: &Path) -> Result<(), String> {
         .trash_file(&std::os::fd::AsFd::as_fd(&file))
         .await
         .map_err(|err| format!("trash_file: {}", err))
-}
-
-/// XDG trash spec implementation as a last-resort fallback. Used when the
-/// source file lives on a FUSE filesystem (typically document-portal mounts)
-/// where g_file_trash gives up because it can't locate a per-filesystem trash
-/// directory. The home-tier trash (~/.local/share/Trash) is writable from the
-/// Flatpak sandbox, and the document portal allows unlinking files it granted
-/// with R/W, so this path succeeds where GIO and the portal call do not.
-async fn trash_via_manual_xdg(path: &Path) -> Result<(), String> {
-    let source = path.to_path_buf();
-    tokio::task::spawn_blocking(move || trash_manual_xdg_blocking(&source))
-        .await
-        .map_err(|err| err.to_string())?
-}
-
-fn trash_manual_xdg_blocking(source: &Path) -> Result<(), String> {
-    let data_home = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(dirs::data_dir)
-        .ok_or_else(|| "XDG_DATA_HOME unresolved".to_string())?;
-    let trash_files = data_home.join("Trash").join("files");
-    let trash_info = data_home.join("Trash").join("info");
-    std::fs::create_dir_all(&trash_files).map_err(|err| format!("create Trash/files: {}", err))?;
-    std::fs::create_dir_all(&trash_info).map_err(|err| format!("create Trash/info: {}", err))?;
-
-    let original_name = source
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("trashed-file");
-    let (basename, dest_file, dest_info) =
-        reserve_trash_slot(&trash_files, &trash_info, original_name)?;
-
-    if let Err(err) = std::fs::copy(source, &dest_file) {
-        let _ = std::fs::remove_file(&dest_file);
-        return Err(format!("copy to Trash/files: {}", err));
-    }
-
-    let deletion_date = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-    let info_body = format!(
-        "[Trash Info]\nPath={}\nDeletionDate={}\n",
-        encode_path_for_trashinfo(source),
-        deletion_date
-    );
-    if let Err(err) = std::fs::write(&dest_info, info_body) {
-        let _ = std::fs::remove_file(&dest_file);
-        return Err(format!("write Trash/info/{}.trashinfo: {}", basename, err));
-    }
-
-    if let Err(err) = std::fs::remove_file(source) {
-        let _ = std::fs::remove_file(&dest_file);
-        let _ = std::fs::remove_file(&dest_info);
-        return Err(format!("unlink source: {}", err));
-    }
-
-    log::debug!("Trashed via manual XDG fallback: {}", source.display());
-    Ok(())
-}
-
-fn reserve_trash_slot(
-    files_dir: &Path,
-    info_dir: &Path,
-    original_name: &str,
-) -> Result<(String, PathBuf, PathBuf), String> {
-    for n in 0..10_000 {
-        let candidate = if n == 0 {
-            original_name.to_string()
-        } else {
-            let stem = Path::new(original_name)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("trash");
-            let ext = Path::new(original_name)
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
-            if ext.is_empty() {
-                format!("{}.{}", stem, n)
-            } else {
-                format!("{}.{}.{}", stem, n, ext)
-            }
-        };
-        let file_path = files_dir.join(&candidate);
-        let info_path = info_dir.join(format!("{}.trashinfo", candidate));
-        if !file_path.exists() && !info_path.exists() {
-            return Ok((candidate, file_path, info_path));
-        }
-    }
-    Err("could not find unique trash slot after 10000 attempts".to_string())
-}
-
-/// Percent-encode bytes per RFC 3986 for the Path field of a .trashinfo file.
-/// Slashes are preserved (the spec wants the absolute path readable).
-fn encode_path_for_trashinfo(path: &Path) -> String {
-    let s = path.to_string_lossy();
-    let mut out = String::with_capacity(s.len());
-    for byte in s.bytes() {
-        let safe = byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/');
-        if safe {
-            out.push(byte as char);
-        } else {
-            out.push_str(&format!("%{:02X}", byte));
-        }
-    }
-    out
 }
 
 fn unique_destination(folder: &Path, filename: &str) -> PathBuf {

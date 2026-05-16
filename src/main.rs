@@ -178,49 +178,57 @@ async fn build_local_deletion_request(
 
 async fn trash_remote_after_local_delete(ctx: Arc<AppContext>, request: LocalDeletionRequest) {
     let asset_ids = vec![request.asset_id.clone()];
-    // Cleanup our own sync record first so the shared-checksum check below
-    // doesn't count the deleted path as "still referenced."
-    let record_checksum = ctx
-        .sync_index
-        .record_for_path(&request.local_path)
-        .map(|r| r.checksum);
+    let album_count = ctx
+        .api_client
+        .count_albums_for_asset(&request.asset_id)
+        .await;
+    let (succeeded, action_log) = match (album_count, request.album_id.as_deref()) {
+        (Some(n), Some(album_id)) if n > 1 => {
+            let ok = ctx
+                .api_client
+                .remove_assets_from_album(album_id, &asset_ids)
+                .await;
+            (
+                ok,
+                format!(
+                    "Unlinked '{}' from album '{}' (asset belongs to {} albums; preserved on server)",
+                    request.asset_name, request.album_name, n
+                ),
+            )
+        }
+        _ => match ctx.api_client.delete_assets(&asset_ids).await {
+            Ok(()) => (
+                true,
+                format!(
+                    "Mirrored local delete of '{}' to album '{}' (asset trashed on server)",
+                    request.asset_name, request.album_name
+                ),
+            ),
+            Err(err) => {
+                log::warn!(
+                    "Could not mirror local delete of '{}': {}; sync record kept for retry",
+                    request.asset_name,
+                    err
+                );
+                return;
+            }
+        },
+    };
+    if !succeeded {
+        log::warn!(
+            "Could not mirror local delete of '{}'; sync record kept for retry",
+            request.asset_name
+        );
+        return;
+    }
     if let Err(err) = ctx.sync_index.remove_path(&request.local_path) {
         log::warn!(
-            "Could not remove sync record for '{}': {}",
+            "Server-side delete succeeded but sync record cleanup failed for '{}': {}",
             request.local_path,
             err
         );
     }
-    let shared = record_checksum.as_deref().is_some_and(|c| {
-        ctx.sync_index
-            .paths_for_checksum(c)
-            .into_iter()
-            .any(|p| std::path::Path::new(&p).exists())
-    });
-    let result = if shared {
-        if let Some(album_id) = request.album_id.as_deref() {
-            ctx.api_client
-                .remove_assets_from_album(album_id, &asset_ids)
-                .await;
-            Ok(())
-        } else {
-            ctx.api_client.delete_assets(&asset_ids).await
-        }
-    } else {
-        ctx.api_client.delete_assets(&asset_ids).await
-    };
-    match result {
-        Ok(()) => log::info!(
-            "Mirrored local delete of '{}' to album '{}'",
-            request.asset_name,
-            request.album_name
-        ),
-        Err(err) => log::warn!(
-            "Could not mirror local delete of '{}': {}",
-            request.asset_name,
-            err
-        ),
-    }
+    log::info!("{}", action_log);
 }
 
 async fn find_album_asset_by_checksum(

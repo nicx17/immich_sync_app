@@ -411,6 +411,42 @@ impl ImmichApiClient {
         }
     }
 
+    /// Count the albums that currently contain the given asset on the
+    /// server. Drives the trash-vs-remove-from-album decision when mirroring
+    /// a local deletion: an asset in multiple albums should only be unlinked
+    /// from the linked album, never destroyed.
+    pub async fn count_albums_for_asset(&self, asset_id: &str) -> Option<usize> {
+        let base_url = self.get_active_url().await?;
+        let url = format!("{}/api/albums?assetId={}", base_url, asset_id);
+        let api_key = self.settings.read().api_key.clone();
+        match self
+            .client
+            .get(&url)
+            .header("x-api-key", &api_key)
+            .header("Accept", "application/json")
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let albums: Vec<serde_json::Value> = resp.json().await.ok()?;
+                Some(albums.len())
+            }
+            Ok(resp) => {
+                log::warn!(
+                    "count_albums_for_asset({}) returned {}",
+                    asset_id,
+                    resp.status()
+                );
+                None
+            }
+            Err(err) => {
+                log::warn!("count_albums_for_asset({}) failed: {}", asset_id, err);
+                None
+            }
+        }
+    }
+
     /// Remove assets from an album without trashing them on the server. Used
     /// when an asset is referenced from more than one watch folder — we want
     /// to mirror the local deletion's album side, not destroy the asset.

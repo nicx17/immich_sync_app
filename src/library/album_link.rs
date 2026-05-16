@@ -92,6 +92,7 @@ fn handle_album_sync_click(ui: Rc<LibraryWindowUi>) {
             &album_id,
             &watch_path,
             &rules,
+            true,
         )
         .await
         {
@@ -186,10 +187,18 @@ fn present_sync_dialog(
         .active(local_delete_count > 0)
         .sensitive(local_delete_count > 0)
         .build();
-    body_box.append(&upload_check);
-    body_box.append(&download_check);
-    body_box.append(&remote_delete_check);
-    body_box.append(&local_delete_check);
+    if upload_count > 0 {
+        body_box.append(&upload_check);
+    }
+    if download_count > 0 {
+        body_box.append(&download_check);
+    }
+    if remote_delete_count > 0 {
+        body_box.append(&remote_delete_check);
+    }
+    if local_delete_count > 0 {
+        body_box.append(&local_delete_check);
+    }
     dialog.set_extra_child(Some(&body_box));
 
     dialog.add_response("cancel", "Cancel");
