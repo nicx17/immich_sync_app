@@ -38,26 +38,38 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: recursive
+          fetch-depth: 0
 
-      - name: Check if non-local manifest changed
-        id: check_manifest
+      - name: Check if non-local manifest version or commit hash changed
+        id: check_version
+        if: matrix.manifest == 'dev.nicx.mimick.yml'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          CHANGED=$(git diff-tree --no-commit-id --name-only -r HEAD)
-
-          echo "Files changed:"
-          echo "$CHANGED"
-
-          if echo "$CHANGED" | grep -q "^dev.nicx.mimick.yml$"; then
-            echo "Manifest was modified."
-            echo "any_changed=true" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            BASE_SHA="$PR_BASE_SHA"
           else
-            echo "Manifest was not modified."
-            echo "any_changed=false" >> "$GITHUB_OUTPUT"
+            BASE_SHA="$PUSH_BEFORE_SHA"
+          fi
+
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            echo "No base SHA available — treating as no version change."
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff "$BASE_SHA" HEAD -- dev.nicx.mimick.yml | grep -Eq '^[+-][[:space:]]+(tag|commit):'; then
+            echo "Non-local manifest tag/commit changed — build will run."
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Non-local manifest tag/commit unchanged — skipping build."
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build Flatpak
-        if: (matrix.manifest == 'dev.nicx.mimick.yml' && steps.check_manifest.outputs.any_changed == 'true') || (matrix.manifest == 'dev.nicx.mimick.local.yml' && steps.check_manifest.outputs.any_changed == 'false')
+        if: matrix.manifest == 'dev.nicx.mimick.local.yml' || steps.check_version.outputs.version_changed == 'true'
         uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb # v6.7
         with:
           bundle: mimick.flatpak
