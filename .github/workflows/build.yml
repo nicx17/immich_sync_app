@@ -21,7 +21,7 @@ jobs:
         # Full upgrade first, then install — Arch disallows partial upgrades.
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed gtk4 libadwaita glib2 pkgconf base-devel libsecret git jre-openjdk-headless unzip
+          pacman -S --noconfirm --needed gtk4 libadwaita glib2 pkgconf base-devel libsecret git jre-openjdk-headless unzip curl
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -41,6 +41,12 @@ jobs:
         continue-on-error: true
 
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_SCANNER_VERSION: 8.1.0.6389
+        run: |
+          curl -sSLo sonar-scanner.zip \
+            "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
+          unzip -q sonar-scanner.zip
+          "./sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64/bin/sonar-scanner"
