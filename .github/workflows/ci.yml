@@ -51,22 +51,6 @@ jobs:
             variant: { arch: aarch64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.variant.runner }}
     steps:
-      - name: Install Sonar dependencies
-        if: matrix.manifest == 'dev.nicx.mimick.local.yml' && matrix.variant.arch == 'x86_64'
-        run: |
-          if command -v apt-get >/dev/null 2>&1; then
-            apt-get update && apt-get install -y default-jre unzip curl
-          elif command -v apk >/dev/null 2>&1; then
-            apk update && apk add --no-cache openjdk17-jre unzip curl
-          elif command -v pacman >/dev/null 2>&1; then
-            pacman -Sy --noconfirm jre-openjdk-headless unzip curl
-          elif command -v dnf >/dev/null 2>&1; then
-            dnf install -y java-17-openjdk-headless unzip curl
-          else
-            echo "No known package manager found"
-            exit 1
-          fi
-
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
