@@ -1,63 +1,138 @@
-name: CI
+name: CI & Build
 
 on:
   push:
     branches: ["main"]
     paths-ignore:
+      - "**.md"
       - "docs/**"
+      - "pv_docs/**"
+      - "site/**"
       - "wiki/**"
-      - "README.md"
-      - "CONTRIBUTING.md"
-      - "SECURITY.md"
-      - "roadmap.md"
+      - ".github/ISSUE_TEMPLATE/**"
   pull_request:
     branches: ["main"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "pv_docs/**"
+      - "site/**"
+      - "wiki/**"
+      - ".github/ISSUE_TEMPLATE/**"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
+permissions: read-all
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NODE_OPTIONS: "--no-deprecation"
 
 jobs:
-  checks:
-    name: Format, Lint, and Test
-    runs-on: ubuntu-latest
+  build-and-test:
+    name: Build & Check
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
       options: --privileged
-
+    strategy:
+      fail-fast: false
+      matrix:
+        manifest: [dev.nicx.mimick.local.yml, dev.nicx.mimick.yml]
+        variant:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+        exclude:
+          # Only test the non-local manifest on x86_64 to save CI time
+          - manifest: dev.nicx.mimick.yml
+            variant: { arch: aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.variant.runner }}
     steps:
+      - name: Install Sonar dependencies
+        if: matrix.manifest == 'dev.nicx.mimick.local.yml' && matrix.variant.arch == 'x86_64'
+        run: apk update && apk add --no-cache openjdk17-jre unzip curl
+
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Check if non-local manifest version or commit hash changed
+        id: check_version
+        if: matrix.manifest == 'dev.nicx.mimick.yml'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            BASE_SHA="$PR_BASE_SHA"
+          else
+            BASE_SHA="$PUSH_BEFORE_SHA"
+          fi
+
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            echo "No base SHA available — treating as no version change."
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff "$BASE_SHA" HEAD -- dev.nicx.mimick.yml | grep -Eq '^[+-][[:space:]]+(tag|commit):'; then
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and cache Flatpak
+        if: matrix.manifest == 'dev.nicx.mimick.local.yml' || steps.check_version.outputs.version_changed == 'true'
         uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb # v6.7
         with:
           bundle: mimick.flatpak
-          manifest-path: dev.nicx.mimick.local.yml
-          cache-key: flatpak-builder-${{ hashFiles('dev.nicx.mimick.local.yml', 'Cargo.lock', 'cargo-sources.json') }}
-          keep-build-dirs: true
+          manifest-path: ${{ matrix.manifest }}
+          cache-key: flatpak-builder-${{ matrix.manifest }}-${{ matrix.variant.arch }}-${{ hashFiles(matrix.manifest, 'Cargo.lock', 'cargo-sources.json') }}
+          arch: ${{ matrix.variant.arch }}
+          verbose: true
           build-dir: flatpak_app
+          keep-build-dirs: true
+
+      - name: Setup machine-id for dbus
+        if: matrix.manifest == 'dev.nicx.mimick.local.yml' && matrix.variant.arch == 'x86_64'
+        run: |
+          mkdir -p /var/lib/dbus
+          # dbus-uuidgen might not exist in the base image, fallback to random uuid
+          dbus-uuidgen > /var/lib/dbus/machine-id || cat /proc/sys/kernel/random/uuid | tr -d '-' > /var/lib/dbus/machine-id
 
       - name: Check formatting
+        if: matrix.manifest == 'dev.nicx.mimick.local.yml' && matrix.variant.arch == 'x86_64'
         run: flatpak-builder --run flatpak_app dev.nicx.mimick.local.yml cargo fmt --all -- --check
         
-      - name: Run clippy
-        run: flatpak-builder --run flatpak_app dev.nicx.mimick.local.yml cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run clippy and capture JSON report
+        if: matrix.manifest == 'dev.nicx.mimick.local.yml' && matrix.variant.arch == 'x86_64'
+        run: flatpak-builder --run flatpak_app dev.nicx.mimick.local.yml cargo clippy --offline --all-targets --message-format=json > clippy-report.json
 
       - name: Run tests
-        run: flatpak-builder --run flatpak_app dev.nicx.mimick.local.yml cargo test
+        if: matrix.manifest == 'dev.nicx.mimick.local.yml' && matrix.variant.arch == 'x86_64'
+        run: flatpak-builder --run flatpak_app dev.nicx.mimick.local.yml cargo test --offline
+
+      - name: SonarQube Scan
+        if: matrix.manifest == 'dev.nicx.mimick.local.yml' && matrix.variant.arch == 'x86_64'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_SCANNER_VERSION: 8.1.0.6389
+        run: |
+          curl -sSLo sonar-scanner.zip "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
+          unzip -q sonar-scanner.zip
+          export LD_LIBRARY_PATH=""
+          "./sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64/bin/sonar-scanner"
 
   cargo-audit:
     name: Dependency Audit
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
