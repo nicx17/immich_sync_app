@@ -29,36 +29,30 @@ jobs:
     name: Format, Lint, and Test
     runs-on: ubuntu-latest
     container:
-      image: archlinux:latest
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
 
     steps:
-      - name: Install system dependencies
-        # Full upgrade first, then install — Arch disallows partial upgrades.
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed gtk4 libadwaita glib2 pkgconf base-devel libsecret git gexiv2
-          ln -sf /usr/lib/pkgconfig/gexiv2-*.pc /usr/lib/pkgconfig/gexiv2.pc
-
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - name: Build and cache Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb # v6.7
         with:
-          toolchain: stable
-          components: rustfmt, clippy
-
-      - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+          bundle: mimick.flatpak
+          manifest-path: dev.nicx.mimick.local.yml
+          cache-key: flatpak-builder-${{ hashFiles('dev.nicx.mimick.local.yml', 'Cargo.lock', 'cargo-sources.json') }}
+          keep-build-dirs: true
+          build-dir: flatpak_app
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
-
+        run: flatpak-builder --run flatpak_app dev.nicx.mimick.local.yml cargo fmt --all -- --check
+        
       - name: Run clippy
-        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+        run: flatpak-builder --run flatpak_app dev.nicx.mimick.local.yml cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run tests
-        run: cargo test --locked
+        run: flatpak-builder --run flatpak_app dev.nicx.mimick.local.yml cargo test
 
   cargo-audit:
     name: Dependency Audit
