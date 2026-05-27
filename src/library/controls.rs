@@ -481,32 +481,33 @@ pub(super) fn sidebar_dispatch(ui: Rc<LibraryWindowUi>, source: LibrarySource) {
 }
 
 pub(super) fn connect_grid_handlers(ui: Rc<LibraryWindowUi>) {
-    ui.grid.view.connect_activate(clone!(
-        #[strong]
-        ui,
-        move |_, position| {
-            let Some(item) = ui.grid.model.item(position).and_downcast::<AssetObject>() else {
-                return;
-            };
-            let asset_id = item.property::<String>("id");
-            let filename = item.property::<String>("filename");
-            let local_path = item.property::<String>("local-path");
-            let asset_type = item.property::<String>("asset-type");
+    let ui_for_activate = ui.clone();
+    ui.grid.canvas.set_activate_handler(move |position| {
+        let Some(item) = ui_for_activate
+            .grid
+            .model
+            .item(position)
+            .and_downcast::<AssetObject>()
+        else {
+            return;
+        };
+        let asset_id = item.property::<String>("id");
+        let filename = item.property::<String>("filename");
+        let local_path = item.property::<String>("local-path");
+        let asset_type = item.property::<String>("asset-type");
 
-            // Videos open in the system default player per spec -- no in-app
-            // playback for v1.
-            if asset_type.eq_ignore_ascii_case("VIDEO") {
-                if !local_path.is_empty() {
-                    open_local_with_default_app(&local_path);
-                } else {
-                    spawn_video_handoff(ui.clone(), asset_id, filename);
-                }
-                return;
+        // Videos open in the system default player.
+        if asset_type.eq_ignore_ascii_case("VIDEO") {
+            if !local_path.is_empty() {
+                open_local_with_default_app(&local_path);
+            } else {
+                spawn_video_handoff(ui_for_activate.clone(), asset_id, filename);
             }
-
-            open_lightbox(ui.clone(), position);
+            return;
         }
-    ));
+
+        open_lightbox(ui_for_activate.clone(), position);
+    });
 
     let scroll_pending = Rc::new(std::cell::Cell::new(false));
     ui.grid.scrolled.vadjustment().connect_value_changed(clone!(

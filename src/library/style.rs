@@ -132,6 +132,10 @@ box.mimick-version-badge {
     background: alpha(@accent_bg_color, 0.12);
 }
 
+.mimick-masonry-canvas {
+    background-color: @view_bg_color;
+}
+
 picture.mimick-grid-thumb {
     min-width: 114px;
     min-height: 85px;

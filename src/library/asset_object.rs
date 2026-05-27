@@ -52,6 +52,15 @@ mod imp {
         /// has been matched to one via checksum); empty string otherwise.
         #[property(get, set)]
         remote_id: RefCell<String>,
+
+        /// Native pixel width of the asset; 0 = unknown (settled later from
+        /// thumbnail decode for sources without EXIF metadata).
+        #[property(get, set)]
+        width: Cell<u32>,
+
+        /// Native pixel height of the asset; 0 = unknown.
+        #[property(get, set)]
+        height: Cell<u32>,
     }
 
     #[glib::object_subclass]
@@ -71,6 +80,8 @@ glib::wrapper! {
 
 impl AssetObject {
     /// Create a new `AssetObject` with all fields populated.
+    /// Pass `width` / `height` as 0 when unknown.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: &str,
         filename: &str,
@@ -79,6 +90,8 @@ impl AssetObject {
         asset_type: &str,
         sync_state: u32,
         thumbhash: Option<&str>,
+        width: u32,
+        height: u32,
     ) -> Self {
         glib::Object::builder()
             .property("id", id)
@@ -90,6 +103,8 @@ impl AssetObject {
             .property("thumbhash", thumbhash)
             .property("local-path", "")
             .property("remote-id", id)
+            .property("width", width)
+            .property("height", height)
             .build()
     }
 
@@ -114,6 +129,8 @@ impl AssetObject {
             .property("thumbhash", None::<String>)
             .property("local-path", local_path)
             .property("remote-id", "")
+            .property("width", 0u32)
+            .property("height", 0u32)
             .build()
     }
 }

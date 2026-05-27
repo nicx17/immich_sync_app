@@ -162,6 +162,8 @@ fn build_asset_objects(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<AssetOb
                 .as_deref()
                 .and_then(|hex| ctx.sync_index.local_path_for_checksum(hex));
             let sync_state = if local_match.is_some() { 2 } else { 0 };
+            let width = asset.width.unwrap_or(0.0).max(0.0) as u32;
+            let height = asset.height.unwrap_or(0.0).max(0.0) as u32;
             let object = AssetObject::new(
                 &asset.id,
                 &asset.filename,
@@ -170,6 +172,8 @@ fn build_asset_objects(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<AssetOb
                 &asset.asset_type,
                 sync_state,
                 asset.thumbhash.as_deref(),
+                width,
+                height,
             );
             if let Some(path) = local_match {
                 object.set_property("local-path", path);

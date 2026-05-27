@@ -1,345 +1,62 @@
-//! Grid view construction, thumbnail binding, and infinite-scroll pagination.
-//!
-//! Sets up a `gtk::GridView` backed by a `gio::ListStore` of `AssetObject`
-//! items. Thumbnails are loaded asynchronously via the thumbnail cache and
-//! bound to picture widgets through a factory. Scroll-to-bottom triggers
-//! automatic next-page fetches.
+//! Photos grid construction. Builds a `MasonryCanvas` inside a
+//! `ScrolledWindow`, returns it alongside the shared model + selection.
 
-use std::cell::Cell;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use gdk4::Texture;
 use gtk::prelude::*;
 
 use crate::app_context::AppContext;
 use crate::library::asset_model::LibraryAssetModel;
-use crate::library::asset_object::AssetObject;
+use crate::library::masonry_canvas::MasonryCanvas;
 
-const POS_DATA_KEY: &str = "mimick-cell-pos";
 pub type AssetContextMenuHandler = Rc<RefCell<Option<Box<dyn Fn(u32, f64, f64)>>>>;
 
-/// Contains references to the model, selection, and scrolled container of the GridView browser.
 pub struct GridViewParts {
     pub model: LibraryAssetModel,
     pub scrolled: gtk::ScrolledWindow,
-    pub view: gtk::GridView,
+    pub canvas: MasonryCanvas,
     pub selection: gtk::MultiSelection,
     pub context_menu_handler: AssetContextMenuHandler,
 }
 
-/// Build and assemble the main GridView interface for library asset browsing.
 pub fn build_grid_view(
     ctx: Arc<AppContext>,
     select_toggle: gtk::ToggleButton,
-    _narrow: Rc<Cell<bool>>,
+    narrow: Rc<Cell<bool>>,
 ) -> GridViewParts {
     let model = LibraryAssetModel::new();
     let selection = gtk::MultiSelection::new(Some(model.clone()));
-    let factory = gtk::SignalListItemFactory::new();
     let context_menu_handler: AssetContextMenuHandler = Rc::new(RefCell::new(None));
 
-    let select_toggle_for_setup = select_toggle.clone();
-    let selection_for_setup = selection.clone();
-    factory.connect_setup(move |_, list_item| {
-        let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
-            return;
-        };
-        let container = gtk::Overlay::builder()
-            .css_classes(vec!["mimick-cell".to_string()])
-            .build();
+    let canvas = MasonryCanvas::new(
+        ctx.thumbnail_cache.clone(),
+        model.clone(),
+        selection.clone(),
+    );
+    canvas.set_narrow(narrow.get());
+    canvas.set_select_mode(select_toggle.is_active());
+    canvas.set_context_menu_handler(context_menu_handler.clone());
 
-        let picture = gtk::Picture::builder()
-            .width_request(114)
-            .height_request(85)
-            .can_shrink(true)
-            .content_fit(gtk::ContentFit::Cover)
-            .css_classes(vec![
-                "mimick-grid-thumb".to_string(),
-                "mimick-thumbnail-loading".to_string(),
-            ])
-            .build();
-
-        let checkbox = gtk::CheckButton::builder()
-            .halign(gtk::Align::Start)
-            .valign(gtk::Align::Start)
-            .margin_top(6)
-            .margin_start(6)
-            .can_focus(false)
-            .css_classes(vec!["mimick-select-checkbox".to_string()])
-            .build();
-        select_toggle_for_setup
-            .bind_property("active", &checkbox, "visible")
-            .sync_create()
-            .build();
-
-        let pos_cell = Rc::new(Cell::new(u32::MAX));
-        let suppress = Rc::new(Cell::new(false));
-        let pos_for_toggle = pos_cell.clone();
-        let suppress_for_toggle = suppress.clone();
-        let selection_for_toggle = selection_for_setup.clone();
-        checkbox.connect_toggled(move |cb| {
-            if suppress_for_toggle.get() {
-                return;
-            }
-            let pos = pos_for_toggle.get();
-            if pos == u32::MAX {
-                return;
-            }
-            if cb.is_active() {
-                selection_for_toggle.select_item(pos, false);
-            } else {
-                selection_for_toggle.unselect_item(pos);
+    {
+        let canvas = canvas.clone();
+        select_toggle.connect_toggled(move |toggle| {
+            canvas.set_select_mode(toggle.is_active());
+        });
+    }
+    {
+        let canvas = canvas.clone();
+        let toggle = select_toggle.clone();
+        canvas.set_select_mode_changer(move |on| {
+            if toggle.is_active() != on {
+                toggle.set_active(on);
             }
         });
-        // SAFETY: glib::ObjectExt::set_data is unsafe because GLib's data store is type-erased.
-        // We guarantee safety by strictly pairing POS_DATA_KEY with the `(Rc<Cell<u32>>, Rc<Cell<bool>>)` type
-        // on both storage and retrieval.
-        unsafe {
-            checkbox.set_data::<(Rc<Cell<u32>>, Rc<Cell<bool>>)>(
-                POS_DATA_KEY,
-                (pos_cell.clone(), suppress.clone()),
-            );
-        }
-
-        let cb_for_selection = checkbox.clone();
-        let pos_for_selection = pos_cell.clone();
-        let suppress_for_selection = suppress.clone();
-        selection_for_setup.connect_selection_changed(move |sel, start, n_items| {
-            let pos = pos_for_selection.get();
-            if pos == u32::MAX || pos < start || pos >= start + n_items {
-                return;
-            }
-            let selected = sel.is_selected(pos);
-            if cb_for_selection.is_active() == selected {
-                return;
-            }
-            suppress_for_selection.set(true);
-            cb_for_selection.set_active(selected);
-            suppress_for_selection.set(false);
-        });
-
-        let status = gtk::Image::builder()
-            .icon_name("checkbox-symbolic")
-            .halign(gtk::Align::End)
-            .valign(gtk::Align::Start)
-            .margin_top(6)
-            .margin_end(6)
-            .pixel_size(14)
-            .css_classes(vec!["mimick-status-badge".to_string()])
-            .build();
-        let video_badge = gtk::Image::builder()
-            .icon_name("mimick-video-symbolic")
-            .halign(gtk::Align::Center)
-            .valign(gtk::Align::Center)
-            .pixel_size(32)
-            .visible(false)
-            .css_classes(vec!["mimick-video-badge".to_string()])
-            .build();
-
-        container.set_child(Some(&picture));
-        container.add_overlay(&checkbox);
-        container.add_overlay(&status);
-        container.add_overlay(&video_badge);
-        // SAFETY: glib::ObjectExt::set_data is unsafe because GLib's data store is type-erased.
-        // We guarantee safety by strictly pairing POS_DATA_KEY with the `Rc<Cell<u32>>` type
-        // on both storage and retrieval for the overlay container.
-        unsafe {
-            container.set_data::<Rc<Cell<u32>>>(POS_DATA_KEY, pos_cell);
-        }
-        list_item.set_child(Some(&container));
-    });
-
-    let selection_for_bind = selection.clone();
-    factory.connect_bind(move |_, list_item| {
-        let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
-            return;
-        };
-        let item = match list_item.item().and_downcast::<AssetObject>() {
-            Some(item) => item,
-            None => return,
-        };
-        let Some(container) = list_item.child().and_downcast::<gtk::Overlay>() else {
-            return;
-        };
-        let Some(picture) = container.child().and_downcast::<gtk::Picture>() else {
-            return;
-        };
-        let Some(status) = find_overlay_image(&container, "mimick-status-badge") else {
-            return;
-        };
-        let Some(video_badge) = find_overlay_image(&container, "mimick-video-badge") else {
-            return;
-        };
-        let checkbox = find_select_checkbox(&container);
-
-        let position = list_item.position();
-        if let Some(cb) = checkbox.as_ref() {
-            sync_checkbox_state(cb, position, selection_for_bind.is_selected(position));
-        }
-
-        let asset_id = item.property::<String>("id");
-        let local_path = item.property::<String>("local-path");
-        let sync_state = item.property::<u32>("sync-state");
-        let thumbhash = item.property::<Option<String>>("thumbhash");
-        let asset_type = item.property::<String>("asset-type");
-        picture.set_tooltip_text(Some(&asset_id));
-        status.set_icon_name(Some(sync_icon_name(sync_state)));
-        status.set_tooltip_text(Some(sync_state_label(sync_state)));
-
-        let in_timeline = ctx
-            .library_timeline_active
-            .load(std::sync::atomic::Ordering::Relaxed);
-        status.set_visible(true);
-        video_badge.set_visible(asset_type.eq_ignore_ascii_case("VIDEO"));
-        set_square_class(&picture, in_timeline);
-
-        let generation = bump_generation(&picture);
-
-        let cache = ctx.thumbnail_cache.clone();
-        if let Some(texture) =
-            cache.get_cached(&asset_id, crate::api_client::ThumbnailSize::Thumbnail)
-        {
-            picture.set_paintable(Some(&texture));
-            set_thumb_state(&picture, ThumbState::Loaded);
-            return;
-        }
-
-        match thumbhash.as_deref().and_then(decode_thumbhash_texture) {
-            Some(placeholder) => {
-                picture.set_paintable(Some(&placeholder));
-                set_thumb_state(&picture, ThumbState::Loaded);
-            }
-            None => {
-                picture.set_paintable(Option::<&Texture>::None);
-                set_thumb_state(&picture, ThumbState::Loading);
-            }
-        }
-
-        schedule_thumbnail_load(
-            ctx.clone(),
-            picture.clone(),
-            asset_id,
-            local_path,
-            generation,
-        );
-
-        prefetch_thumbnails_around(ctx.clone(), &selection_for_bind, position);
-    });
-
-    factory.connect_unbind(|_, list_item| {
-        let Some(list_item) = list_item.downcast_ref::<gtk::ListItem>() else {
-            return;
-        };
-        if let Some(container) = list_item.child().and_downcast::<gtk::Overlay>()
-            && let Some(picture) = container.child().and_downcast::<gtk::Picture>()
-        {
-            bump_generation(&picture);
-            picture.set_tooltip_text(None);
-            picture.set_paintable(Option::<&Texture>::None);
-            set_thumb_state(&picture, ThumbState::Loading);
-        }
-    });
-
-    let view = gtk::GridView::builder()
-        .model(&selection)
-        .factory(&factory)
-        .single_click_activate(!select_toggle.is_active())
-        .enable_rubberband(false)
-        .max_columns(8)
-        .min_columns(2)
-        .build();
-    select_toggle.connect_toggled(clone_view_for_toggle(&view));
-
-    let ctrl_gesture = gtk::GestureClick::builder()
-        .button(gtk::gdk::BUTTON_PRIMARY)
-        .propagation_phase(gtk::PropagationPhase::Capture)
-        .build();
-    let selection_for_gesture = selection.clone();
-    let select_toggle_for_gesture = select_toggle.clone();
-    ctrl_gesture.connect_pressed(move |gesture, _n_press, x, y| {
-        let state = gesture.current_event_state();
-        if !state.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
-            return;
-        }
-        let Some(view) = gesture.widget().and_downcast::<gtk::GridView>() else {
-            return;
-        };
-        let Some(picked) = view.pick(x, y, gtk::PickFlags::DEFAULT) else {
-            return;
-        };
-        let mut node = Some(picked);
-        while let Some(widget) = node {
-            if widget.has_css_class("mimick-cell") {
-                // SAFETY: glib::ObjectExt::data is unsafe because GLib's data store is type-erased.
-                // We guarantee safety because `widget` represents the overlay container ("mimick-cell"),
-                // which is strictly paired with the `Rc<Cell<u32>>` type under POS_DATA_KEY.
-                let pos = unsafe {
-                    widget
-                        .data::<Rc<Cell<u32>>>(POS_DATA_KEY)
-                        .map(|p| p.as_ref().get())
-                };
-                if let Some(pos) = pos
-                    && pos != u32::MAX
-                {
-                    if selection_for_gesture.is_selected(pos) {
-                        selection_for_gesture.unselect_item(pos);
-                    } else {
-                        selection_for_gesture.select_item(pos, false);
-                    }
-                    select_toggle_for_gesture.set_active(true);
-                    gesture.set_state(gtk::EventSequenceState::Claimed);
-                }
-                return;
-            }
-            node = widget.parent();
-        }
-    });
-    view.add_controller(ctrl_gesture);
-    let secondary = gtk::GestureClick::builder()
-        .button(gtk::gdk::BUTTON_SECONDARY)
-        .propagation_phase(gtk::PropagationPhase::Capture)
-        .build();
-    let context_handler = context_menu_handler.clone();
-    secondary.connect_pressed(move |gesture, _, x, y| {
-        let Some(view) = gesture.widget().and_downcast::<gtk::GridView>() else {
-            return;
-        };
-        let Some(picked) = view.pick(x, y, gtk::PickFlags::DEFAULT) else {
-            return;
-        };
-        let mut node = Some(picked);
-        while let Some(widget) = node {
-            if widget.has_css_class("mimick-cell") {
-                // SAFETY: glib::ObjectExt::data is unsafe because GLib's data store is type-erased.
-                // We guarantee safety because `widget` represents the overlay container ("mimick-cell"),
-                // which is strictly paired with the `Rc<Cell<u32>>` type under POS_DATA_KEY.
-                let pos = unsafe {
-                    widget
-                        .data::<Rc<Cell<u32>>>(POS_DATA_KEY)
-                        .map(|p| p.as_ref().get())
-                };
-                if let Some(pos) = pos
-                    && pos != u32::MAX
-                    && let Some(handler) = context_handler.borrow().as_ref()
-                {
-                    handler(pos, x, y);
-                    gesture.set_state(gtk::EventSequenceState::Claimed);
-                }
-                return;
-            }
-            node = widget.parent();
-        }
-    });
-    view.add_controller(secondary);
-    if let Some(layout) = view.layout_manager().and_downcast::<gtk::GridLayout>() {
-        layout.set_column_spacing(0);
-        layout.set_row_spacing(0);
     }
 
     let scrolled = gtk::ScrolledWindow::builder()
-        .child(&view)
+        .child(&canvas)
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .hexpand(true)
@@ -348,273 +65,8 @@ pub fn build_grid_view(
     GridViewParts {
         model,
         scrolled,
-        view,
+        canvas,
         selection,
         context_menu_handler,
     }
-}
-
-/// Construct a click activation toggle closure for the GridView.
-fn clone_view_for_toggle(view: &gtk::GridView) -> impl Fn(&gtk::ToggleButton) + 'static {
-    let view = view.clone();
-    move |toggle| {
-        view.set_single_click_activate(!toggle.is_active());
-    }
-}
-
-/// Locate the checkbox child widget inside an overlay container.
-fn find_select_checkbox(container: &gtk::Overlay) -> Option<gtk::CheckButton> {
-    let mut child = container.first_child();
-    while let Some(c) = child {
-        let next = c.next_sibling();
-        if c.has_css_class("mimick-select-checkbox")
-            && let Ok(cb) = c.downcast::<gtk::CheckButton>()
-        {
-            return Some(cb);
-        }
-        child = next;
-    }
-    None
-}
-
-/// Synchronize the checkbutton state with list selection without triggering loops.
-fn sync_checkbox_state(checkbox: &gtk::CheckButton, position: u32, selected: bool) {
-    // SAFETY: glib::ObjectExt::data is unsafe because GLib's data store is type-erased.
-    // We guarantee safety because `checkbox` is strictly paired with the `(Rc<Cell<u32>>, Rc<Cell<bool>>)`
-    // type under POS_DATA_KEY.
-    let data = unsafe {
-        checkbox
-            .data::<(Rc<Cell<u32>>, Rc<Cell<bool>>)>(POS_DATA_KEY)
-            .map(|p| p.as_ref().clone())
-    };
-    let Some((pos_cell, suppress)) = data else {
-        return;
-    };
-    pos_cell.set(position);
-    suppress.set(true);
-    checkbox.set_active(selected);
-    suppress.set(false);
-}
-
-/// Retrieve a descriptive text label for the specified sync state code.
-fn sync_state_label(sync_state: u32) -> &'static str {
-    match sync_state {
-        2 => "On Immich and locally",
-        1 => "Local only",
-        _ => "On Immich only",
-    }
-}
-
-/// Retrieve an icon name corresponding to the specified sync state code.
-fn sync_icon_name(sync_state: u32) -> &'static str {
-    match sync_state {
-        2 => "mimick-check-circle-symbolic",
-        1 => "mimick-computer-symbolic",
-        _ => "mimick-cloud-symbolic",
-    }
-}
-
-/// Locate a child image matching a specific CSS class inside the overlay container.
-fn find_overlay_image(container: &gtk::Overlay, class_name: &str) -> Option<gtk::Image> {
-    let mut child = container.first_child();
-    while let Some(c) = child {
-        let next = c.next_sibling();
-        if c.has_css_class(class_name)
-            && let Ok(image) = c.downcast::<gtk::Image>()
-        {
-            return Some(image);
-        }
-        child = next;
-    }
-    None
-}
-
-/// Represents the current loading phase status of a thumbnail image.
-#[derive(Clone, Copy)]
-enum ThumbState {
-    Loading,
-    Loaded,
-    Error,
-}
-
-/// Set the appropriate thumbnail state CSS classes on a picture widget.
-fn set_thumb_state(picture: &gtk::Picture, state: ThumbState) {
-    let want = match state {
-        ThumbState::Loading => "mimick-thumbnail-loading",
-        ThumbState::Loaded => "mimick-thumbnail-loaded",
-        ThumbState::Error => "mimick-thumbnail-error",
-    };
-    for cls in [
-        "mimick-thumbnail-loading",
-        "mimick-thumbnail-loaded",
-        "mimick-thumbnail-error",
-    ] {
-        if cls == want {
-            if !picture.has_css_class(cls) {
-                picture.add_css_class(cls);
-            }
-        } else if picture.has_css_class(cls) {
-            picture.remove_css_class(cls);
-        }
-    }
-    if matches!(state, ThumbState::Error) {
-        picture.set_tooltip_text(Some("Thumbnail unavailable"));
-    }
-}
-
-/// Toggle the timeline square shape styling class on a picture widget.
-fn set_square_class(picture: &gtk::Picture, on: bool) {
-    let has = picture.has_css_class("mimick-thumbnail-square");
-    if on && !has {
-        picture.add_css_class("mimick-thumbnail-square");
-    } else if !on && has {
-        picture.remove_css_class("mimick-thumbnail-square");
-    }
-}
-
-/// Asynchronously load and apply a local or remote thumbnail to a picture widget.
-fn schedule_thumbnail_load(
-    ctx: Arc<AppContext>,
-    picture: gtk::Picture,
-    asset_id: String,
-    local_path: String,
-    generation: u64,
-) {
-    let local_path = (!local_path.is_empty()).then(|| std::path::PathBuf::from(local_path));
-    let gen_cell = generation_cell(&picture);
-
-    glib::MainContext::default().spawn_local(async move {
-        if gen_cell.get() != generation {
-            return;
-        }
-        let cancel_cell = gen_cell.clone();
-        let is_cancelled = move || cancel_cell.get() != generation;
-        let cache = ctx.thumbnail_cache.clone();
-        let result = match local_path {
-            Some(path) => {
-                let local_res = cache
-                    .load_local_thumbnail_cancellable(&asset_id, &path, is_cancelled.clone())
-                    .await;
-                if local_res.is_err() && !asset_id.starts_with(crate::library::LOCAL_ID_PREFIX) {
-                    cache
-                        .load_thumbnail_cancellable(
-                            &asset_id,
-                            crate::api_client::ThumbnailSize::Thumbnail,
-                            is_cancelled.clone(),
-                        )
-                        .await
-                } else {
-                    local_res
-                }
-            }
-            None => {
-                cache
-                    .load_thumbnail_cancellable(
-                        &asset_id,
-                        crate::api_client::ThumbnailSize::Thumbnail,
-                        is_cancelled.clone(),
-                    )
-                    .await
-            }
-        };
-        if gen_cell.get() != generation {
-            return;
-        }
-        match result {
-            Ok(texture) => {
-                picture.set_paintable(Some(&texture));
-                set_thumb_state(&picture, ThumbState::Loaded);
-            }
-            Err(_) => set_thumb_state(&picture, ThumbState::Error),
-        }
-    });
-}
-
-const GEN_DATA_KEY: &str = "mimick-cell-gen";
-
-/// Retrieve or initialize the cell generation cell tracking counter.
-fn generation_cell(picture: &gtk::Picture) -> Rc<Cell<u64>> {
-    // SAFETY: glib::ObjectExt::data is unsafe because GLib's data store is type-erased.
-    // We guarantee safety by strictly pairing GEN_DATA_KEY with the `Rc<Cell<u64>>` type on `picture`.
-    let existing = unsafe {
-        picture
-            .data::<Rc<Cell<u64>>>(GEN_DATA_KEY)
-            .map(|p| p.as_ref().clone())
-    };
-    if let Some(cell) = existing {
-        return cell;
-    }
-    let cell = Rc::new(Cell::new(0u64));
-    // SAFETY: glib::ObjectExt::set_data is unsafe because GLib's data store is type-erased.
-    // We guarantee safety by strictly pairing GEN_DATA_KEY with the `Rc<Cell<u64>>` type on `picture`.
-    unsafe {
-        picture.set_data::<Rc<Cell<u64>>>(GEN_DATA_KEY, cell.clone());
-    }
-    cell
-}
-
-/// Increment and retrieve the cell's task generation tracker.
-fn bump_generation(picture: &gtk::Picture) -> u64 {
-    let cell = generation_cell(picture);
-    let next = cell.get().wrapping_add(1);
-    cell.set(next);
-    next
-}
-
-/// Prefetch neighboring thumbnails around the active scrolling viewport index.
-fn prefetch_thumbnails_around(
-    ctx: Arc<AppContext>,
-    model: &impl IsA<gtk::gio::ListModel>,
-    position: u32,
-) {
-    let total = model.n_items();
-    let start = position.saturating_add(5);
-    let end = position.saturating_add(15).min(total);
-    for pos in start..end {
-        let Some(item) = model.item(pos).and_downcast::<AssetObject>() else {
-            continue;
-        };
-        let local_path = item.property::<String>("local-path");
-        if !local_path.is_empty() {
-            continue;
-        }
-        let asset_id = item.property::<String>("id");
-        if asset_id.is_empty() || asset_id.starts_with(super::LOCAL_ID_PREFIX) {
-            continue;
-        }
-        if ctx
-            .thumbnail_cache
-            .get_cached(&asset_id, crate::api_client::ThumbnailSize::Thumbnail)
-            .is_some()
-        {
-            continue;
-        }
-        let cache = ctx.thumbnail_cache.clone();
-        glib::MainContext::default().spawn_local(async move {
-            let _ = cache
-                .load_thumbnail(&asset_id, crate::api_client::ThumbnailSize::Thumbnail)
-                .await;
-        });
-    }
-}
-
-/// Decode a ThumbHash Base64 string and compile it to a standard GDK texture.
-fn decode_thumbhash_texture(thumbhash_b64: &str) -> Option<Texture> {
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(thumbhash_b64)
-        .ok()?;
-    let (w, h, rgba) = thumbhash::thumb_hash_to_rgba(&bytes).ok()?;
-    let stride = w * 4;
-    let pixel_bytes = glib::Bytes::from_owned(rgba);
-    Some(
-        gdk4::MemoryTexture::new(
-            w as i32,
-            h as i32,
-            gdk4::MemoryFormat::R8g8b8a8,
-            &pixel_bytes,
-            stride,
-        )
-        .upcast(),
-    )
 }
