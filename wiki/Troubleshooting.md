@@ -36,9 +36,9 @@ Then re-enter and save your API key from the settings window.
 
 The key is valid but missing one or more permissions Mimick uses. Confirm in Immich (Account Settings → API Keys → edit) that the key has at least:
 
-- Base sync: `asset.upload`, `asset.update`, `album.read`, `album.create`, `album.addAsset`
-- Add `asset.read` + `asset.download` if you use Library view or Download Only / Full sync method
-- Add `asset.delete` + `album.removeAsset` if you enabled **Mirror Folder Deletions to Album** in any folder's rules
+- Base sync: `user.read`, `asset.upload`, `asset.update`, `album.read`, `album.create`, `albumAsset.create`
+- Add `asset.read`, `asset.view`, `asset.download`, and `person.read` if you use Library view or Download Only / Full sync method
+- Add `asset.delete` and `albumAsset.delete` if you enabled **Mirror Folder Deletions to Album** in any folder's rules
 
 See Configuration & First Run → "API Key Security & Required Permissions" for the full feature/permission mapping.
 
@@ -66,7 +66,7 @@ If a file seems to be ignored completely, check:
 1. the watch folder was selected through the app
 2. the file extension is supported (Only Immich-compatible image and video formats are recognized)
 3. the file finished writing to disk (temporary files are ignored)
-4. the API key and server URLs are valid, and the key has the required permissions (`asset.upload`, `asset.update`, `album.read`, `album.create`, `album.addAsset` — see Configuration & First Run for the full table)
+4. the API key and server URLs are valid, and the key has the required permissions (`user.read`, `asset.upload`, `asset.update`, `album.read`, `album.create`, `albumAsset.create` — see Configuration & First Run for the full table)
 5. folder rules are not excluding the file (hidden files, or max-size restrictions)
 
 > **Check the Queue Inspector**

@@ -54,7 +54,7 @@ The window follows your desktop appearance preference, so it can render in eithe
     * Open your Immich Web Interface in a browser.
     * Go to **Account Settings** → **API Keys**.
     * Click **New API Key**, give it a name (like "Linux Desktop"), and click Create.
-    * Make sure the key includes **Asset Read/Create/Update/Download** and **Album Read/Create/Update** permissions.
+    * Make sure the key includes **Asset (Read, View, Download, Upload, Update, Delete)**, **Album (Read, Create, Update)**, **User (Read)**, and **Person (Read)** permissions.
     * Copy the key and paste it into the API Key field in Mimick.
     * *The key is stored securely using the `oo7` crate (encrypted portal file in Flatpak, or D-Bus Secret Service native).*
 
@@ -351,11 +351,12 @@ When generating an API Key in the Immich Web UI (Account Settings → API Keys),
 
 | Permission | Why |
 |---|---|
+| `user.read` | Establish current user session and identity |
 | `asset.upload` | Send media to the server |
 | `asset.update` | Apply correct timezone metadata after upload |
 | `album.read` | Look up the target album for a watch folder |
 | `album.create` | Auto-create the target album if it doesn't exist |
-| `album.addAsset` | Link uploaded media to the target album |
+| `albumAsset.create` | Link uploaded media to the target album |
 
 **Feature-specific — grant only if you use that feature:**
 
@@ -363,7 +364,7 @@ When generating an API Key in the Immich Web UI (Account Settings → API Keys),
 |---|---|
 | Library / Explore browsing inside Mimick | `asset.read`, `asset.view`, `asset.download`, `person.read` |
 | Sync Method set to **Full** or **Download Only** (folder rules) | `asset.read`, `asset.download` |
-| **Mirror Folder Deletions to Album** (folder rules toggle) | `asset.delete` and `album.removeAsset` (used when the same asset is referenced by another watch folder, so we unlink instead of trashing) |
+| **Mirror Folder Deletions to Album** (folder rules toggle) | `asset.delete` and `albumAsset.delete` (used when the same asset is referenced by another watch folder, so we unlink instead of trashing) |
 | **Mirror Album Deletions to Folder** (folder rules toggle) | No additional remote permissions — `album.read` already lists the album, and the local trash is purely client-side |
 
 If you grant `all`, every feature works without further configuration. The list above is for users who prefer scoped keys.

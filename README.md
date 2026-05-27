@@ -166,11 +166,12 @@ When generating the API key in Immich (Account Settings → API Keys), grant onl
 
 | Permission       | Why                                              |
 | ---------------- | ------------------------------------------------ |
+| `user.read`      | Establish current user session and identity      |
 | `asset.upload`   | Send media to the server                         |
 | `asset.update`   | Apply correct timezone metadata after upload     |
 | `album.read`     | Look up the target album for a watch folder      |
 | `album.create`   | Auto-create the target album if it doesn't exist |
-| `album.addAsset` | Link uploaded media to the target album          |
+| `albumAsset.create` | Link uploaded media to the target album          |
 
 **Optional — only required for the features you enable:**
 
@@ -178,7 +179,7 @@ When generating the API key in Immich (Account Settings → API Keys), grant onl
 | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Library / Explore view (browse photos inside Mimick)                | `asset.read`, `asset.view`, `asset.download`, `person.read`                                                                                                    |
 | **Sync Method** set to **Full** or **Download Only** (folder rules) | `asset.read`, `asset.download`                                                                                                                                 |
-| **Mirror Folder Deletions to Album** (folder rules toggle)          | `asset.delete` _and_ `album.removeAsset` (the latter is used when the same asset is referenced by another watch folder, so we just unlink instead of trashing) |
+| **Mirror Folder Deletions to Album** (folder rules toggle)          | `asset.delete` _and_ `albumAsset.delete` (the latter is used when the same asset is referenced by another watch folder, so we just unlink instead of trashing) |
 | **Mirror Album Deletions to Folder** (folder rules toggle)          | No additional remote permissions — the album listing is already covered by `album.read`, the trash happens locally                                             |
 
 If you grant `all`, every feature works without further configuration. The granular list above is for users who prefer least-privilege keys.

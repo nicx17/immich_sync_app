@@ -219,7 +219,7 @@ impl ImmichApiClient {
                     401 | 403 => {
                         self.set_issue(ApiIssue {
                             summary: "Immich rejected the API key".to_string(),
-                            guidance: "Update the API key in Settings and ensure it has the Asset upload + update and Album read/create/addAsset permissions."
+                            guidance: "Update the API key in Settings and ensure it has the Asset upload + update and Album read/create/albumAsset.create permissions."
                                 .to_string(),
                         })
                         .await;
