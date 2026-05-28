@@ -2798,6 +2798,7 @@ fn local_to_library_asset(local: LocalAsset) -> LibraryAsset {
         width: None,
         height: None,
         checksum: None,
+        exif_info: None,
     }
 }
 

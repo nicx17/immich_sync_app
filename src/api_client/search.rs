@@ -383,10 +383,14 @@ impl ImmichApiClient {
     pub(super) async fn fetch_search_assets(
         &self,
         endpoint: &str,
-        body: serde_json::Value,
+        mut body: serde_json::Value,
         context: RequestContext,
         subject: Option<&str>,
     ) -> Result<(Vec<LibraryAsset>, bool), String> {
+        if let Some(obj) = body.as_object_mut() {
+            obj.entry("withExif")
+                .or_insert(serde_json::Value::Bool(true));
+        }
         let base_url = self
             .get_active_url()
             .await

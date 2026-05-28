@@ -33,7 +33,7 @@ pub(super) const GAP: f32 = 0.0;
 pub(super) const CORNER_RADIUS: f32 = 0.0;
 
 /// Row height above which we request the larger Preview thumbnail.
-const PREVIEW_BUCKET_THRESHOLD: f32 = 280.0;
+const PREVIEW_BUCKET_THRESHOLD: f32 = 600.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LaidItem {
@@ -213,8 +213,9 @@ mod imp {
         pub cached_width: Cell<f32>,
         pub layout_h: Cell<f32>,
         pub pending: RefCell<HashSet<String>>,
-        /// Textures retained per asset so re-painting after scroll never has
-        /// to re-fetch when the shared ThumbnailCache LRU evicts.
+        /// Permanently failed ids; skipped to avoid re-queueing every frame.
+        pub failed: RefCell<HashSet<String>>,
+        /// Per-canvas texture retain to survive shared cache eviction.
         pub textures: RefCell<HashMap<String, Texture>>,
         pub vadjustment: RefCell<Option<gtk::Adjustment>>,
         pub activate_handler: RefCell<Option<ActivateHandler>>,
@@ -244,9 +245,13 @@ mod imp {
 
         fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
             match orientation {
-                gtk::Orientation::Horizontal => (0, 0, -1, -1),
+                gtk::Orientation::Horizontal => (200, 200, -1, -1),
                 _ => {
-                    let width = for_size.max(0) as f32;
+                    let width = if for_size > 0 {
+                        for_size as f32
+                    } else {
+                        self.cached_width.get().max(200.0)
+                    };
                     let h = self.layout_for_width(width);
                     let h_i = h.ceil() as i32;
                     (h_i, h_i, -1, -1)
@@ -255,20 +260,24 @@ mod imp {
         }
 
         fn size_allocate(&self, width: i32, _height: i32, _baseline: i32) {
-            let _ = self.layout_for_width(width.max(0) as f32);
+            let w = width.max(0) as f32;
+            if (w - self.cached_width.get()).abs() > 0.5 {
+                self.cached_width.set(-1.0);
+            }
+            let _ = self.layout_for_width(w);
         }
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let widget = self.obj();
             let canvas_w = widget.width() as f32;
+            let canvas_h = widget.height() as f32;
             if canvas_w <= 0.0 {
                 return;
             }
             let _ = self.layout_for_width(canvas_w);
 
             let (scroll_y, viewport_h) = self.viewport();
-            let visible_top = scroll_y;
-            let visible_bottom = scroll_y + viewport_h;
+            let viewport_center = scroll_y + viewport_h * 0.5;
 
             let rows = self.rows.borrow();
             let Some(model) = self.model.get() else {
@@ -278,20 +287,18 @@ mod imp {
                 return;
             };
 
-            let placeholder = gdk4::RGBA::new(0.18, 0.18, 0.18, 1.0);
+            let placeholder = gdk4::RGBA::new(0.24, 0.22, 0.30, 1.0);
             let select_tint = gdk4::RGBA::new(0.30, 0.55, 0.95, 0.35);
             let selection = self.selection.get();
-            let mut needs_load: Vec<(String, ThumbnailSize, String, bool)> = Vec::new();
+            let mut to_load: Vec<(f32, String, ThumbnailSize, String, bool)> = Vec::new();
+            let mut hits = 0usize;
+            let mut misses = 0usize;
+            let mut painted = 0usize;
+            let row_count = rows.len();
+            let last_row_bottom = rows.last().map(|r| r.y + r.h).unwrap_or(0.0);
 
             for row in rows.iter() {
-                if row.y + row.h < visible_top {
-                    continue;
-                }
-                if row.y > visible_bottom {
-                    break;
-                }
                 for it in &row.items {
-                    let rect = Rect::new(it.x, row.y, it.w, row.h);
                     let bucket = bucket_for_row_height(row.h);
                     let Some(asset) = model.item(it.asset_index).and_downcast::<AssetObject>()
                     else {
@@ -309,21 +316,20 @@ mod imp {
                             cache.get_cached(&asset_id, bucket)
                         }
                     });
+
+                    let rect = Rect::new(it.x, row.y, it.w, row.h);
                     let clipped = CORNER_RADIUS > 0.0;
                     if clipped {
                         let corner = Size::new(CORNER_RADIUS, CORNER_RADIUS);
                         let rounded = RoundedRect::new(rect, corner, corner, corner, corner);
                         snapshot.push_rounded_clip(&rounded);
                     }
-                    if let Some(tex) = cached {
-                        snapshot.append_texture(&tex, &rect);
+                    if let Some(tex) = cached.as_ref() {
+                        snapshot.append_texture(tex, &rect);
+                        hits += 1;
                     } else {
                         snapshot.append_color(&placeholder, &rect);
-                        let mut pending = self.pending.borrow_mut();
-                        if !pending.contains(&asset_id) {
-                            pending.insert(asset_id.clone());
-                            needs_load.push((asset_id, bucket, local_path, is_local_only));
-                        }
+                        misses += 1;
                     }
                     let selected = selection
                         .map(|s| s.is_selected(it.asset_index))
@@ -334,11 +340,39 @@ mod imp {
                     if clipped {
                         snapshot.pop();
                     }
+                    painted += 1;
+
+                    if cached.is_none() && !self.failed.borrow().contains(&asset_id) {
+                        let mut pending = self.pending.borrow_mut();
+                        if !pending.contains(&asset_id) {
+                            pending.insert(asset_id.clone());
+                            let cell_center = row.y + row.h * 0.5;
+                            let priority = (cell_center - viewport_center).abs();
+                            to_load.push((priority, asset_id, bucket, local_path, is_local_only));
+                        }
+                    }
                 }
             }
             drop(rows);
+            to_load.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
-            for (asset_id, bucket, local_path, is_local) in needs_load {
+            log::debug!(
+                "masonry snapshot canvas=({:.0}x{:.0}) scroll_y={:.0} viewport_h={:.0} rows={} layout_h={:.0} painted={} hits={} misses={} pending={} textures={} queued={}",
+                canvas_w,
+                canvas_h,
+                scroll_y,
+                viewport_h,
+                row_count,
+                last_row_bottom,
+                painted,
+                hits,
+                misses,
+                self.pending.borrow().len(),
+                self.textures.borrow().len(),
+                to_load.len(),
+            );
+
+            for (_, asset_id, bucket, local_path, is_local) in to_load {
                 self.spawn_load(asset_id, bucket, local_path, is_local);
             }
         }
@@ -420,17 +454,13 @@ mod imp {
             };
             let widget = self.obj().clone();
             let id_for_remove = asset_id.clone();
-            // Off-screen loads cancel by reading the live pending set: each
-            // snapshot drops ids that are no longer visible, so backlogged
-            // loads can release their semaphore permit.
-            let cancel_widget = widget.downgrade();
-            let cancel_id = asset_id.clone();
-            let is_cancelled = move || {
-                let Some(w) = cancel_widget.upgrade() else {
-                    return true;
-                };
-                !w.imp().pending.borrow().contains(&cancel_id)
-            };
+            let is_cancelled = || false;
+            log::debug!(
+                "masonry spawn_load id={} bucket={:?} local={}",
+                asset_id,
+                bucket,
+                is_local
+            );
             glib::MainContext::default().spawn_local(async move {
                 let result = if is_local {
                     let path = std::path::PathBuf::from(&local_path);
@@ -444,9 +474,26 @@ mod imp {
                 };
                 let imp = widget.imp();
                 let mut dims_changed = false;
-                if let Ok(tex) = result {
-                    dims_changed = propagate_dimensions(&model, &asset_id, &tex);
-                    imp.textures.borrow_mut().insert(asset_id.clone(), tex);
+                match &result {
+                    Ok(tex) => {
+                        dims_changed = propagate_dimensions(&model, &asset_id, tex);
+                        imp.textures
+                            .borrow_mut()
+                            .insert(asset_id.clone(), tex.clone());
+                        log::debug!(
+                            "masonry load OK id={} dims=({}x{}) tex_total={}",
+                            asset_id,
+                            tex.width(),
+                            tex.height(),
+                            imp.textures.borrow().len()
+                        );
+                    }
+                    Err(e) => {
+                        if e != "cancelled" {
+                            imp.failed.borrow_mut().insert(asset_id.clone());
+                        }
+                        log::debug!("masonry load ERR id={} err={}", asset_id, e);
+                    }
                 }
                 imp.pending.borrow_mut().remove(&id_for_remove);
                 if dims_changed {
@@ -516,11 +563,8 @@ impl MasonryCanvas {
         let _ = imp.selection.set(selection.clone());
 
         let weak = canvas.downgrade();
-        model.connect_items_changed(move |model, _, _, _| {
+        model.connect_items_changed(move |model, position, removed, added| {
             if let Some(canvas) = weak.upgrade() {
-                // Drop only textures whose asset_id is no longer in the model.
-                // Avoids wiping retained textures on append-pagination that
-                // emits a full-range items_changed (client-sorted modes).
                 let imp = canvas.imp();
                 let n = model.n_items();
                 let mut current_ids: HashSet<String> = HashSet::with_capacity(n as usize);
@@ -529,9 +573,23 @@ impl MasonryCanvas {
                         current_ids.insert(obj.property::<String>("id"));
                     }
                 }
+                let tex_before = imp.textures.borrow().len();
                 imp.textures
                     .borrow_mut()
                     .retain(|id, _| current_ids.contains(id));
+                imp.failed
+                    .borrow_mut()
+                    .retain(|id| current_ids.contains(id));
+                let tex_after = imp.textures.borrow().len();
+                log::debug!(
+                    "masonry items_changed pos={} removed={} added={} model_n={} textures {} -> {}",
+                    position,
+                    removed,
+                    added,
+                    n,
+                    tex_before,
+                    tex_after,
+                );
                 imp.invalidate_layout();
                 canvas.queue_draw();
             }
@@ -777,11 +835,11 @@ mod tests {
             ThumbnailSize::Thumbnail
         ));
         assert!(matches!(
-            bucket_for_row_height(280.0),
+            bucket_for_row_height(PREVIEW_BUCKET_THRESHOLD),
             ThumbnailSize::Thumbnail
         ));
         assert!(matches!(
-            bucket_for_row_height(281.0),
+            bucket_for_row_height(PREVIEW_BUCKET_THRESHOLD + 1.0),
             ThumbnailSize::Preview
         ));
     }

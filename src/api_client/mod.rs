@@ -115,6 +115,9 @@ pub struct LibraryAsset {
     /// Canonical lowercase SHA-1 checksum.
     #[serde(default, deserialize_with = "deserialize_checksum_to_hex")]
     pub checksum: Option<String>,
+    /// EXIF block; Immich keeps pixel dimensions here, not at the top level.
+    #[serde(rename = "exifInfo", default)]
+    pub exif_info: Option<ExifInfo>,
 }
 
 /// Immich returns asset checksums as base64-encoded SHA1, while Mimick computes
@@ -355,7 +358,7 @@ pub struct PlaceItem {
 }
 
 /// Full EXIF metadata schema properties returned by Immich.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExifInfo {
     /// Camera manufacturer name.

@@ -136,6 +136,26 @@ fn build_asset_objects(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<AssetOb
     use super::{LOCAL_ID_PREFIX, immich_checksum_to_hex};
     use crate::library::local_source::local_sync_state;
 
+    let total = assets.len();
+    let with_exif = assets.iter().filter(|a| a.exif_info.is_some()).count();
+    let with_dims = assets
+        .iter()
+        .filter(|a| {
+            a.width.unwrap_or(0.0) > 0.0
+                || a.exif_info
+                    .as_ref()
+                    .and_then(|e| e.exif_image_width)
+                    .unwrap_or(0)
+                    > 0
+        })
+        .count();
+    log::debug!(
+        "build_asset_objects total={} with_exif={} with_dims={}",
+        total,
+        with_exif,
+        with_dims,
+    );
+
     assets
         .iter()
         .map(|asset| {
@@ -162,8 +182,23 @@ fn build_asset_objects(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<AssetOb
                 .as_deref()
                 .and_then(|hex| ctx.sync_index.local_path_for_checksum(hex));
             let sync_state = if local_match.is_some() { 2 } else { 0 };
-            let width = asset.width.unwrap_or(0.0).max(0.0) as u32;
-            let height = asset.height.unwrap_or(0.0).max(0.0) as u32;
+            let (exif_w, exif_h) = asset
+                .exif_info
+                .as_ref()
+                .map(|e| (e.exif_image_width, e.exif_image_height))
+                .unwrap_or((None, None));
+            let width = asset
+                .width
+                .map(|v| v.max(0.0) as u32)
+                .filter(|v| *v > 0)
+                .or(exif_w)
+                .unwrap_or(0);
+            let height = asset
+                .height
+                .map(|v| v.max(0.0) as u32)
+                .filter(|v| *v > 0)
+                .or(exif_h)
+                .unwrap_or(0);
             let object = AssetObject::new(
                 &asset.id,
                 &asset.filename,

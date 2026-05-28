@@ -330,6 +330,7 @@ mod tests {
             width: Some(10.0),
             height: Some(10.0),
             checksum: None,
+            exif_info: None,
         }
     }
 
