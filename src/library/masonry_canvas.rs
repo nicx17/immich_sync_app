@@ -197,6 +197,7 @@ pub enum GridQuality {
     Auto,
     Thumbnail,
     Preview,
+    Fullsize,
 }
 
 impl GridQuality {
@@ -204,6 +205,7 @@ impl GridQuality {
         match s {
             "thumbnail" => Self::Thumbnail,
             "preview" => Self::Preview,
+            "fullsize" => Self::Fullsize,
             _ => Self::Auto,
         }
     }
@@ -213,6 +215,7 @@ fn bucket_for_row_height(h: f32, quality: GridQuality) -> ThumbnailSize {
     match quality {
         GridQuality::Thumbnail => ThumbnailSize::Thumbnail,
         GridQuality::Preview => ThumbnailSize::Preview,
+        GridQuality::Fullsize => ThumbnailSize::Fullsize,
         GridQuality::Auto => {
             if h <= PREVIEW_BUCKET_THRESHOLD {
                 ThumbnailSize::Thumbnail
@@ -220,6 +223,14 @@ fn bucket_for_row_height(h: f32, quality: GridQuality) -> ThumbnailSize {
                 ThumbnailSize::Preview
             }
         }
+    }
+}
+
+/// Smaller size to try when a requested bucket isn't available on the server.
+fn fallback_bucket(size: ThumbnailSize) -> Option<ThumbnailSize> {
+    match size {
+        ThumbnailSize::Fullsize => Some(ThumbnailSize::Preview),
+        ThumbnailSize::Preview | ThumbnailSize::Thumbnail => None,
     }
 }
 
@@ -337,7 +348,10 @@ mod imp {
                     } else {
                         bucket
                     };
-                    let cached = cache.get_cached(&asset_id, lookup_bucket);
+                    let cached = cache.get_cached(&asset_id, lookup_bucket).or_else(|| {
+                        fallback_bucket(lookup_bucket)
+                            .and_then(|fb| cache.get_cached(&asset_id, fb))
+                    });
 
                     let rect = Rect::new(it.x, row.y, it.w, row.h);
                     let clipped = CORNER_RADIUS > 0.0;
@@ -486,12 +500,10 @@ mod imp {
                 let result = if is_local {
                     let path = std::path::PathBuf::from(&local_path);
                     cache
-                        .load_local_thumbnail_cancellable(&asset_id, &path, is_cancelled)
+                        .load_local_thumbnail_cancellable(&asset_id, &path, &is_cancelled)
                         .await
                 } else {
-                    cache
-                        .load_thumbnail_cancellable(&asset_id, bucket, is_cancelled)
-                        .await
+                    load_with_fallback(&cache, &asset_id, bucket, &is_cancelled).await
                 };
                 let imp = widget.imp();
                 let mut dims_changed = false;
@@ -533,6 +545,39 @@ fn collect_dims(model: &LibraryAssetModel) -> Vec<(u32, u32)> {
         }
     }
     out
+}
+
+/// Try requested bucket, then walk `fallback_bucket` chain on 404. Only the
+/// 404 path is retried — auth, network, etc. surface unchanged.
+async fn load_with_fallback<F: Fn() -> bool>(
+    cache: &ThumbnailCache,
+    asset_id: &str,
+    requested: ThumbnailSize,
+    is_cancelled: &F,
+) -> Result<Texture, String> {
+    let mut current = requested;
+    loop {
+        match cache
+            .load_thumbnail_cancellable(asset_id, current, is_cancelled)
+            .await
+        {
+            Ok(tex) => return Ok(tex),
+            Err(e) if e.contains("404") => match fallback_bucket(current) {
+                Some(next) => {
+                    log::debug!(
+                        "masonry fallback id={} {:?} -> {:?} ({})",
+                        asset_id,
+                        current,
+                        next,
+                        e
+                    );
+                    current = next;
+                }
+                None => return Err(e),
+            },
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 /// Returns true if the AssetObject dimensions were filled in (relayout needed).
@@ -859,5 +904,27 @@ mod tests {
             bucket_for_row_height(PREVIEW_BUCKET_THRESHOLD + 1.0, GridQuality::Auto),
             ThumbnailSize::Preview
         ));
+    }
+
+    #[test]
+    fn explicit_quality_overrides_row_height() {
+        assert!(matches!(
+            bucket_for_row_height(2000.0, GridQuality::Thumbnail),
+            ThumbnailSize::Thumbnail
+        ));
+        assert!(matches!(
+            bucket_for_row_height(50.0, GridQuality::Fullsize),
+            ThumbnailSize::Fullsize
+        ));
+    }
+
+    #[test]
+    fn fallback_chain_degrades_fullsize_to_preview() {
+        assert_eq!(
+            fallback_bucket(ThumbnailSize::Fullsize),
+            Some(ThumbnailSize::Preview)
+        );
+        assert_eq!(fallback_bucket(ThumbnailSize::Preview), None);
+        assert_eq!(fallback_bucket(ThumbnailSize::Thumbnail), None);
     }
 }

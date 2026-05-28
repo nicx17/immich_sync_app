@@ -424,12 +424,13 @@ pub struct AssetDetails {
 }
 
 /// Type of asset thumbnails requested.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ThumbnailSize {
-    /// Mapped standard thumbnail preview.
     Thumbnail,
-    /// High-resolution large image preview.
     Preview,
+    /// Server-generated full-resolution copy; only present when the server
+    /// has the "save full-size image" job enabled. 404s otherwise.
+    Fullsize,
 }
 
 impl ThumbnailSize {
@@ -437,6 +438,7 @@ impl ThumbnailSize {
         match self {
             ThumbnailSize::Thumbnail => "thumbnail",
             ThumbnailSize::Preview => "preview",
+            ThumbnailSize::Fullsize => "fullsize",
         }
     }
 }

@@ -589,16 +589,20 @@ pub fn build_settings_window_with_parent(
         }
     });
 
-    let quality_options = gtk::StringList::new(&["Auto (per cell size)", "Thumbnail", "Preview"]);
+    let quality_options =
+        gtk::StringList::new(&["Auto (per cell size)", "Thumbnail", "Preview", "Full Size"]);
     let grid_quality_row = adw::ComboRow::builder()
         .title("Library Thumbnail Quality")
-        .subtitle("Auto picks Thumbnail for small cells and Preview for large ones.")
+        .subtitle(
+            "Auto picks Thumbnail for small cells and Preview for large ones.",
+        )
         .model(&quality_options)
         .build();
     library_group.add(&grid_quality_row);
     let initial_quality_idx = match ctx.config.read().data.library_grid_quality.as_str() {
         "thumbnail" => 1,
         "preview" => 2,
+        "fullsize" => 3,
         _ => 0,
     };
     grid_quality_row.set_selected(initial_quality_idx);
@@ -607,6 +611,7 @@ pub fn build_settings_window_with_parent(
         let value = match row.selected() {
             1 => "thumbnail",
             2 => "preview",
+            3 => "fullsize",
             _ => "auto",
         };
         let mut cfg = ctx_for_quality.config.write();

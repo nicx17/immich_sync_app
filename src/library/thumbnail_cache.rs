@@ -463,6 +463,7 @@ fn cache_key(asset_id: &str, size: ThumbnailSize) -> String {
     match size {
         ThumbnailSize::Thumbnail => format!("thumbnail:{}", asset_id),
         ThumbnailSize::Preview => format!("preview:{}", asset_id),
+        ThumbnailSize::Fullsize => format!("fullsize:{}", asset_id),
     }
 }
 
