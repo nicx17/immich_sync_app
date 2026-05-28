@@ -593,9 +593,7 @@ pub fn build_settings_window_with_parent(
         gtk::StringList::new(&["Auto (per cell size)", "Thumbnail", "Preview", "Full Size"]);
     let grid_quality_row = adw::ComboRow::builder()
         .title("Library Thumbnail Quality")
-        .subtitle(
-            "Auto picks Thumbnail for small cells and Preview for large ones.",
-        )
+        .subtitle("Auto picks Thumbnail for small cells and Preview for large ones.")
         .model(&quality_options)
         .build();
     library_group.add(&grid_quality_row);
