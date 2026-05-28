@@ -589,6 +589,33 @@ pub fn build_settings_window_with_parent(
         }
     });
 
+    let quality_options = gtk::StringList::new(&["Auto (per cell size)", "Thumbnail", "Preview"]);
+    let grid_quality_row = adw::ComboRow::builder()
+        .title("Library Thumbnail Quality")
+        .subtitle("Auto picks Thumbnail for small cells and Preview for large ones.")
+        .model(&quality_options)
+        .build();
+    library_group.add(&grid_quality_row);
+    let initial_quality_idx = match ctx.config.read().data.library_grid_quality.as_str() {
+        "thumbnail" => 1,
+        "preview" => 2,
+        _ => 0,
+    };
+    grid_quality_row.set_selected(initial_quality_idx);
+    let ctx_for_quality = ctx.clone();
+    grid_quality_row.connect_selected_notify(move |row| {
+        let value = match row.selected() {
+            1 => "thumbnail",
+            2 => "preview",
+            _ => "auto",
+        };
+        let mut cfg = ctx_for_quality.config.write();
+        if cfg.data.library_grid_quality != value {
+            cfg.data.library_grid_quality = value.to_string();
+            cfg.save();
+        }
+    });
+
     let raw_full_decode_row = adw::SwitchRow::builder()
         .title("Full RAW Decoding")
         .subtitle(

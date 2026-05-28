@@ -1,7 +1,7 @@
 //! Justified-row masonry layout for the photos grid.
 
 use std::cell::{Cell, OnceCell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -191,11 +191,35 @@ pub(super) fn item_at_x(row: &LaidRow, x: f32) -> Option<&LaidItem> {
     row.items.iter().find(|it| x >= it.x && x < it.x + it.w)
 }
 
-fn bucket_for_row_height(h: f32) -> ThumbnailSize {
-    if h <= PREVIEW_BUCKET_THRESHOLD {
-        ThumbnailSize::Thumbnail
-    } else {
-        ThumbnailSize::Preview
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GridQuality {
+    #[default]
+    Auto,
+    Thumbnail,
+    Preview,
+}
+
+impl GridQuality {
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "thumbnail" => Self::Thumbnail,
+            "preview" => Self::Preview,
+            _ => Self::Auto,
+        }
+    }
+}
+
+fn bucket_for_row_height(h: f32, quality: GridQuality) -> ThumbnailSize {
+    match quality {
+        GridQuality::Thumbnail => ThumbnailSize::Thumbnail,
+        GridQuality::Preview => ThumbnailSize::Preview,
+        GridQuality::Auto => {
+            if h <= PREVIEW_BUCKET_THRESHOLD {
+                ThumbnailSize::Thumbnail
+            } else {
+                ThumbnailSize::Preview
+            }
+        }
     }
 }
 
@@ -209,14 +233,13 @@ mod imp {
         pub selection: OnceCell<gtk::MultiSelection>,
         pub narrow: Cell<bool>,
         pub select_mode: Cell<bool>,
+        pub quality: Cell<GridQuality>,
         pub rows: RefCell<Vec<LaidRow>>,
         pub cached_width: Cell<f32>,
         pub layout_h: Cell<f32>,
         pub pending: RefCell<HashSet<String>>,
         /// Permanently failed ids; skipped to avoid re-queueing every frame.
         pub failed: RefCell<HashSet<String>>,
-        /// Per-canvas texture retain to survive shared cache eviction.
-        pub textures: RefCell<HashMap<String, Texture>>,
         pub vadjustment: RefCell<Option<gtk::Adjustment>>,
         pub activate_handler: RefCell<Option<ActivateHandler>>,
         pub context_menu_handler: RefCell<Option<AssetContextMenuHandler>>,
@@ -299,7 +322,7 @@ mod imp {
 
             for row in rows.iter() {
                 for it in &row.items {
-                    let bucket = bucket_for_row_height(row.h);
+                    let bucket = bucket_for_row_height(row.h, self.quality.get());
                     let Some(asset) = model.item(it.asset_index).and_downcast::<AssetObject>()
                     else {
                         continue;
@@ -309,13 +332,12 @@ mod imp {
                     let is_local_only = !local_path.is_empty()
                         && asset_id.starts_with(crate::library::LOCAL_ID_PREFIX);
 
-                    let cached = self.textures.borrow().get(&asset_id).cloned().or_else(|| {
-                        if is_local_only {
-                            None
-                        } else {
-                            cache.get_cached(&asset_id, bucket)
-                        }
-                    });
+                    let lookup_bucket = if is_local_only {
+                        ThumbnailSize::Thumbnail
+                    } else {
+                        bucket
+                    };
+                    let cached = cache.get_cached(&asset_id, lookup_bucket);
 
                     let rect = Rect::new(it.x, row.y, it.w, row.h);
                     let clipped = CORNER_RADIUS > 0.0;
@@ -357,7 +379,7 @@ mod imp {
             to_load.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
             log::debug!(
-                "masonry snapshot canvas=({:.0}x{:.0}) scroll_y={:.0} viewport_h={:.0} rows={} layout_h={:.0} painted={} hits={} misses={} pending={} textures={} queued={}",
+                "masonry snapshot canvas=({:.0}x{:.0}) scroll_y={:.0} viewport_h={:.0} rows={} layout_h={:.0} painted={} hits={} misses={} pending={} queued={}",
                 canvas_w,
                 canvas_h,
                 scroll_y,
@@ -368,7 +390,6 @@ mod imp {
                 hits,
                 misses,
                 self.pending.borrow().len(),
-                self.textures.borrow().len(),
                 to_load.len(),
             );
 
@@ -477,15 +498,11 @@ mod imp {
                 match &result {
                     Ok(tex) => {
                         dims_changed = propagate_dimensions(&model, &asset_id, tex);
-                        imp.textures
-                            .borrow_mut()
-                            .insert(asset_id.clone(), tex.clone());
                         log::debug!(
-                            "masonry load OK id={} dims=({}x{}) tex_total={}",
+                            "masonry load OK id={} dims=({}x{})",
                             asset_id,
                             tex.width(),
                             tex.height(),
-                            imp.textures.borrow().len()
                         );
                     }
                     Err(e) => {
@@ -573,22 +590,15 @@ impl MasonryCanvas {
                         current_ids.insert(obj.property::<String>("id"));
                     }
                 }
-                let tex_before = imp.textures.borrow().len();
-                imp.textures
-                    .borrow_mut()
-                    .retain(|id, _| current_ids.contains(id));
                 imp.failed
                     .borrow_mut()
                     .retain(|id| current_ids.contains(id));
-                let tex_after = imp.textures.borrow().len();
                 log::debug!(
-                    "masonry items_changed pos={} removed={} added={} model_n={} textures {} -> {}",
+                    "masonry items_changed pos={} removed={} added={} model_n={}",
                     position,
                     removed,
                     added,
                     n,
-                    tex_before,
-                    tex_after,
                 );
                 imp.invalidate_layout();
                 canvas.queue_draw();
@@ -616,6 +626,13 @@ impl MasonryCanvas {
 
     pub fn set_select_mode(&self, on: bool) {
         self.imp().select_mode.set(on);
+    }
+
+    pub fn set_quality(&self, quality: GridQuality) {
+        let imp = self.imp();
+        if imp.quality.replace(quality) != quality {
+            self.queue_draw();
+        }
     }
 
     pub fn set_activate_handler(&self, f: impl Fn(u32) + 'static) {
@@ -831,15 +848,15 @@ mod tests {
     #[test]
     fn bucket_thumbnail_under_threshold() {
         assert!(matches!(
-            bucket_for_row_height(200.0),
+            bucket_for_row_height(200.0, GridQuality::Auto),
             ThumbnailSize::Thumbnail
         ));
         assert!(matches!(
-            bucket_for_row_height(PREVIEW_BUCKET_THRESHOLD),
+            bucket_for_row_height(PREVIEW_BUCKET_THRESHOLD, GridQuality::Auto),
             ThumbnailSize::Thumbnail
         ));
         assert!(matches!(
-            bucket_for_row_height(PREVIEW_BUCKET_THRESHOLD + 1.0),
+            bucket_for_row_height(PREVIEW_BUCKET_THRESHOLD + 1.0, GridQuality::Auto),
             ThumbnailSize::Preview
         ));
     }

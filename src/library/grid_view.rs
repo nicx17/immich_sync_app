@@ -9,7 +9,7 @@ use gtk::prelude::*;
 
 use crate::app_context::AppContext;
 use crate::library::asset_model::LibraryAssetModel;
-use crate::library::masonry_canvas::MasonryCanvas;
+use crate::library::masonry_canvas::{GridQuality, MasonryCanvas};
 
 pub type AssetContextMenuHandler = Rc<RefCell<Option<Box<dyn Fn(u32, f64, f64)>>>>;
 
@@ -38,6 +38,8 @@ pub fn build_grid_view(
     canvas.set_narrow(narrow.get());
     canvas.set_select_mode(select_toggle.is_active());
     canvas.set_context_menu_handler(context_menu_handler.clone());
+    let initial_quality = GridQuality::parse(&ctx.config.read().data.library_grid_quality);
+    canvas.set_quality(initial_quality);
 
     {
         let canvas = canvas.clone();
