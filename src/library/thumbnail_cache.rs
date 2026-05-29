@@ -510,7 +510,7 @@ fn read_meminfo_total_bytes() -> Option<usize> {
     let text = std::fs::read_to_string("/proc/meminfo").ok()?;
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("MemTotal:") {
-            let kb: usize = rest.trim().split_whitespace().next()?.parse().ok()?;
+            let kb: usize = rest.split_whitespace().next()?.parse().ok()?;
             return Some(kb.saturating_mul(1024));
         }
     }
