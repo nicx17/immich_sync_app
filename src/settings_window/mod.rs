@@ -664,10 +664,13 @@ pub fn build_settings_window_with_parent(
         }
     });
 
-    let cache_adj = gtk::Adjustment::new(80.0, 16.0, 1024.0, 16.0, 64.0, 0.0);
+    let cache_adj = gtk::Adjustment::new(0.0, 0.0, 4096.0, 64.0, 256.0, 0.0);
     let cache_size_row = adw::SpinRow::builder()
         .title("Thumbnail Memory Cache (MB)")
-        .subtitle("Approximate cap on decoded thumbnails kept in RAM.")
+        .subtitle(
+            "Cap on decoded thumbnails kept in RAM. 0 = Auto (sized from \
+             system memory, capped at 1.5 GB).",
+        )
         .adjustment(&cache_adj)
         .build();
     library_group.add(&cache_size_row);
@@ -1446,9 +1449,7 @@ pub fn build_settings_window_with_parent(
     raw_cache_row.set_active(config.data.raw_decode_cache_enabled);
     raw_full_decode_row.set_active(config.data.raw_full_decode);
     raw_cache_row.set_sensitive(config.data.raw_full_decode);
-    if config.data.library_thumbnail_cache_mb > 0 {
-        cache_size_row.set_value(config.data.library_thumbnail_cache_mb as f64);
-    }
+    cache_size_row.set_value(config.data.library_thumbnail_cache_mb as f64);
     if config.data.cache_disk_cap_mb > 0 {
         disk_cache_row.set_value(config.data.cache_disk_cap_mb as f64);
     }

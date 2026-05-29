@@ -122,7 +122,14 @@ pub struct ThumbnailCache {
 }
 
 impl ThumbnailCache {
-    const DEFAULT_MAX_BYTES: usize = 80 * 1024 * 1024;
+    /// Floor for the auto-sized RAM budget, so very low-memory systems still
+    /// hold a working set of decoded thumbnails.
+    const AUTO_MIN_BYTES: usize = 128 * 1024 * 1024;
+    /// Ceiling for the auto-sized RAM budget, so big-RAM workstations don't
+    /// crowd out other applications.
+    const AUTO_MAX_BYTES: usize = 1536 * 1024 * 1024;
+    /// Fraction of total system memory used when the user lets us auto-size.
+    const AUTO_FRACTION_PERCENT: usize = 12;
 
     /// Construct a new thumbnail cache manager. Disk pruning is handled
     /// centrally by `cache_manager` at startup, not here.
@@ -132,10 +139,15 @@ impl ThumbnailCache {
             .join("thumbnails");
 
         let max_bytes = if mb == 0 {
-            Self::DEFAULT_MAX_BYTES
+            auto_memory_budget()
         } else {
             (mb as usize).saturating_mul(1024 * 1024)
         };
+        log::info!(
+            "ThumbnailCache memory budget: {} MB ({})",
+            max_bytes / (1024 * 1024),
+            if mb == 0 { "auto" } else { "user-set" }
+        );
 
         Self {
             api_client,
@@ -477,6 +489,32 @@ fn local_cache_key(asset_id: &str) -> String {
 /// Estimate memory byte size occupied by a texture.
 fn estimate_texture_bytes(texture: &Texture) -> usize {
     texture.width().max(1) as usize * texture.height().max(1) as usize * 4
+}
+
+/// Pick a thumbnail-cache RAM budget from `MemTotal` in `/proc/meminfo`,
+/// clamped to `[AUTO_MIN_BYTES, AUTO_MAX_BYTES]`. Falls back to the floor
+/// if the file can't be read.
+fn auto_memory_budget() -> usize {
+    let total = read_meminfo_total_bytes().unwrap_or(0);
+    if total == 0 {
+        return ThumbnailCache::AUTO_MIN_BYTES;
+    }
+    let fraction = total / 100 * ThumbnailCache::AUTO_FRACTION_PERCENT;
+    fraction.clamp(
+        ThumbnailCache::AUTO_MIN_BYTES,
+        ThumbnailCache::AUTO_MAX_BYTES,
+    )
+}
+
+fn read_meminfo_total_bytes() -> Option<usize> {
+    let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("MemTotal:") {
+            let kb: usize = rest.trim().split_whitespace().next()?.parse().ok()?;
+            return Some(kb.saturating_mul(1024));
+        }
+    }
+    None
 }
 
 /// Decode a file through the custom pipeline (RAW / non-pixbuf formats) and
