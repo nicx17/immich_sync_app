@@ -439,39 +439,37 @@ pub fn build_settings_window_with_parent(
 
     let startup_row = adw::SwitchRow::builder()
         .title("Run on Startup")
-        .subtitle("Start Mimick automatically when you log in.")
+        .subtitle("Start Mimick at login.")
         .build();
     behavior_group.add(&startup_row);
 
     let background_sync_row = adw::SwitchRow::builder()
         .title("Background Sync")
-        .subtitle("Automatically watch folders in the background after launch.")
+        .subtitle("Watch folders in the background after launch.")
         .build();
     behavior_group.add(&background_sync_row);
 
     let metered_row = adw::SwitchRow::builder()
         .title("Pause on Metered Network")
-        .subtitle("Defer uploads while the active connection is marked as metered.")
+        .subtitle("Pause uploads on metered connections.")
         .build();
     behavior_group.add(&metered_row);
 
     let battery_row = adw::SwitchRow::builder()
         .title("Pause on Battery Power")
-        .subtitle("Defer uploads while the system appears to be running on battery.")
+        .subtitle("Pause uploads while on battery.")
         .build();
     behavior_group.add(&battery_row);
 
     let notifications_row = adw::SwitchRow::builder()
         .title("Enable Notifications")
-        .subtitle("Show desktop notifications for sync events and connectivity issues.")
+        .subtitle("Desktop notifications for sync events.")
         .build();
     behavior_group.add(&notifications_row);
 
     let library_view_row = adw::SwitchRow::builder()
         .title("Enable Library View")
-        .subtitle(
-            "Turn on the in-app library browser. Restart Mimick to switch which window opens.",
-        )
+        .subtitle("In-app library browser. Requires restart.")
         .build();
     behavior_group.add(&library_view_row);
 
@@ -486,9 +484,9 @@ pub fn build_settings_window_with_parent(
         let active = row.is_active();
         let needs_restart = active != initial_library_view;
         let subtitle = if needs_restart {
-            "Restart Mimick to apply the new window layout."
+            "Restart Mimick to apply."
         } else {
-            "Turn on the in-app library browser. Restart Mimick to switch which window opens."
+            "In-app library browser. Requires restart."
         };
         row.set_subtitle(subtitle);
         let mut cfg = ctx_for_lib_view.config.write();
@@ -501,7 +499,7 @@ pub fn build_settings_window_with_parent(
     let catchup_model = gtk::StringList::new(&["Full Scan", "Recent Only (7d)", "New Files Only"]);
     let catchup_row = adw::ComboRow::builder()
         .title("Default Startup Catch-up Mode")
-        .subtitle("Used by folders that do not have their own startup scan setting.")
+        .subtitle("Used when a folder has no override.")
         .model(&catchup_model)
         .build();
     behavior_group.add(&catchup_row);
@@ -510,21 +508,20 @@ pub fn build_settings_window_with_parent(
     let concurrency_adj = gtk::Adjustment::new(3.0, 1.0, 10.0, 1.0, 1.0, 0.0);
     let concurrency_row = adw::SpinRow::builder()
         .title("Upload Workers")
-        .subtitle("Number of parallel upload workers (1–10). More workers = faster batch uploads.")
+        .subtitle("Parallel uploads. More = faster batches.")
         .adjustment(&concurrency_adj)
         .build();
     behavior_group.add(&concurrency_row);
 
     let xmp_sidecar_row = adw::SwitchRow::builder()
         .title("Upload XMP Sidecars")
-        .subtitle("Attach companion .xmp sidecar files alongside media during upload.")
+        .subtitle("Attach .xmp sidecars with uploads.")
         .build();
     behavior_group.add(&xmp_sidecar_row);
 
-    // Quiet hours — enable switch + two hour spinners
     let quiet_hours_row = adw::SwitchRow::builder()
         .title("Quiet Hours")
-        .subtitle("Pause uploads during a nightly window using your local clock.")
+        .subtitle("Pause uploads on a nightly schedule.")
         .build();
     behavior_group.add(&quiet_hours_row);
 
@@ -559,7 +556,7 @@ pub fn build_settings_window_with_parent(
     // group reveals/hides in step with the `library_view_row` toggle.
     let library_group = adw::PreferencesGroup::builder()
         .title("Library")
-        .description("Settings that affect the in-app library browser.")
+        .description("Library browser settings.")
         .visible(config.data.library_view_enabled)
         .build();
     settings_page.add(&library_group);
@@ -573,9 +570,7 @@ pub fn build_settings_window_with_parent(
 
     let preview_full_row = adw::SwitchRow::builder()
         .title("Open Originals in Lightbox")
-        .subtitle(
-            "When on, the library lightbox loads full-resolution originals instead of the ~1440px preview.",
-        )
+        .subtitle("Use full-resolution instead of the 1440px preview.")
         .build();
     library_group.add(&preview_full_row);
 
@@ -593,7 +588,7 @@ pub fn build_settings_window_with_parent(
         gtk::StringList::new(&["Auto (per cell size)", "Thumbnail", "Preview", "Full Size"]);
     let grid_quality_row = adw::ComboRow::builder()
         .title("Library Thumbnail Quality")
-        .subtitle("Auto picks Thumbnail for small cells and Preview for large ones.")
+        .subtitle("Higher quality uses more memory.")
         .model(&quality_options)
         .build();
     library_group.add(&grid_quality_row);
@@ -621,19 +616,13 @@ pub fn build_settings_window_with_parent(
 
     let raw_full_decode_row = adw::SwitchRow::builder()
         .title("Full RAW Decoding")
-        .subtitle(
-            "Decode high-resolution sensor data instead of using \
-             embedded previews (slower).",
-        )
+        .subtitle("Sensor data instead of embedded previews. Slower.")
         .build();
     library_group.add(&raw_full_decode_row);
 
     let raw_cache_row = adw::SwitchRow::builder()
         .title("Cache Decoded RAW Files")
-        .subtitle(
-            "Store demosaiced RAW images on disk so re-opens are instant. \
-             Disable to save storage.",
-        )
+        .subtitle("Instant re-opens. Uses disk space.")
         .build();
     library_group.add(&raw_cache_row);
 
@@ -664,51 +653,13 @@ pub fn build_settings_window_with_parent(
         }
     });
 
-    let cache_adj = gtk::Adjustment::new(0.0, 0.0, 4096.0, 64.0, 256.0, 0.0);
-    let cache_size_row = adw::SpinRow::builder()
-        .title("Thumbnail Memory Cache (MB)")
-        .subtitle(
-            "Cap on decoded thumbnails kept in RAM. 0 = Auto (sized from \
-             system memory, capped at 1.5 GB).",
-        )
-        .adjustment(&cache_adj)
-        .build();
-    library_group.add(&cache_size_row);
-
     let disk_cache_adj = gtk::Adjustment::new(2000.0, 200.0, 10000.0, 100.0, 500.0, 0.0);
     let disk_cache_row = adw::SpinRow::builder()
         .title("Disk Cache Size (MB)")
-        .subtitle(
-            "Total on-disk cap across thumbnails, decoded RAW previews, EXIF, \
-             video, and preview caches. Pruning runs once at startup.",
-        )
+        .subtitle("Cap across all on-disk caches. Pruned at startup.")
         .adjustment(&disk_cache_adj)
         .build();
     library_group.add(&disk_cache_row);
-
-    // Debounce the spinner save: a held-down arrow fires connect_value_notify
-    // many times per second, and each save takes the config write lock + does
-    // synchronous JSON serialise + atomic_write on the UI thread. We coalesce
-    // bursts by scheduling the save after 400 ms of quiet.
-    let pending_cache_save: Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
-    let ctx_for_cache = ctx.clone();
-    cache_size_row.connect_value_notify(move |row| {
-        let new_value = row.value() as u32;
-        if let Some(id) = pending_cache_save.take() {
-            id.remove();
-        }
-        let ctx_for_save = ctx_for_cache.clone();
-        let pending = pending_cache_save.clone();
-        let id = glib::timeout_add_local_once(Duration::from_millis(400), move || {
-            pending.set(None);
-            let mut cfg = ctx_for_save.config.write();
-            if cfg.data.library_thumbnail_cache_mb != new_value {
-                cfg.data.library_thumbnail_cache_mb = new_value;
-                cfg.save();
-            }
-        });
-        pending_cache_save.set(Some(id));
-    });
 
     let pending_disk_cache_save: Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
     let ctx_for_disk_cache = ctx.clone();
@@ -733,7 +684,7 @@ pub fn build_settings_window_with_parent(
     // --- WATCH FOLDERS GROUP ---
     let folders_group = adw::PreferencesGroup::builder()
         .title("Watch Folders")
-        .description("Add folders with the picker so Mimick can keep access to them.")
+        .description("Pick folders to sync.")
         .build();
     settings_page.add(&folders_group);
 
@@ -772,8 +723,6 @@ pub fn build_settings_window_with_parent(
         raw_full_decode_row,
         #[weak]
         raw_cache_row,
-        #[weak]
-        cache_size_row,
         #[weak]
         disk_cache_row,
         #[weak]
@@ -869,7 +818,6 @@ pub fn build_settings_window_with_parent(
             let library_preview_full_resolution = preview_full_row.is_active();
             let raw_decode_cache_enabled = raw_cache_row.is_active();
             let raw_full_decode = raw_full_decode_row.is_active();
-            let library_thumbnail_cache_mb = cache_size_row.value() as u32;
             let cache_disk_cap_mb = disk_cache_row.value() as u32;
             let upload_concurrency = concurrency_row.value() as u8;
             let quiet_hours_enabled = quiet_hours_row.is_active();
@@ -1001,7 +949,6 @@ pub fn build_settings_window_with_parent(
                         crate::library::set_raw_cache_enabled(raw_decode_cache_enabled);
                         new_config.data.raw_full_decode = raw_full_decode;
                         crate::library::set_raw_full_decode(raw_full_decode);
-                        new_config.data.library_thumbnail_cache_mb = library_thumbnail_cache_mb;
                         new_config.data.cache_disk_cap_mb = cache_disk_cap_mb;
                         new_config.data.startup_catchup_mode = catchup_mode;
                         new_config.data.upload_concurrency = upload_concurrency;
@@ -1449,7 +1396,6 @@ pub fn build_settings_window_with_parent(
     raw_cache_row.set_active(config.data.raw_decode_cache_enabled);
     raw_full_decode_row.set_active(config.data.raw_full_decode);
     raw_cache_row.set_sensitive(config.data.raw_full_decode);
-    cache_size_row.set_value(config.data.library_thumbnail_cache_mb as f64);
     if config.data.cache_disk_cap_mb > 0 {
         disk_cache_row.set_value(config.data.cache_disk_cap_mb as f64);
     }

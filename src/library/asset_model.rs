@@ -15,7 +15,7 @@ use gtk::subclass::prelude::*;
 
 use crate::api_client::LibraryAsset;
 use crate::app_context::AppContext;
-use crate::library::asset_object::AssetObject;
+use crate::library::asset_object::{AssetInit, AssetObject};
 use crate::library::state::LibrarySortMode;
 
 mod imp {
@@ -199,17 +199,17 @@ fn build_asset_objects(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<AssetOb
                 .filter(|v| *v > 0)
                 .or(exif_h)
                 .unwrap_or(0);
-            let object = AssetObject::new(
-                &asset.id,
-                &asset.filename,
-                &asset.mime_type,
-                &asset.created_at,
-                &asset.asset_type,
+            let object = AssetObject::new(AssetInit {
+                id: &asset.id,
+                filename: &asset.filename,
+                mime_type: &asset.mime_type,
+                created_at: &asset.created_at,
+                asset_type: &asset.asset_type,
                 sync_state,
-                asset.thumbhash.as_deref(),
+                thumbhash: asset.thumbhash.as_deref(),
                 width,
                 height,
-            );
+            });
             if let Some(path) = local_match {
                 object.set_property("local-path", path);
             }

@@ -21,11 +21,8 @@ use tokio::sync::{Semaphore, watch};
 
 use crate::api_client::{ImmichApiClient, ThumbnailSize};
 
-/// Fallback when total CPU count probing fails.
 const FALLBACK_CPUS: usize = 4;
-/// Hard ceiling on small (Thumbnail) decode concurrency.
 const SMALL_LOAD_MAX: usize = 16;
-/// Hard ceiling on large (Preview / Fullsize) decode concurrency.
 const LARGE_LOAD_MAX: usize = 6;
 
 type InflightSlot = Option<Result<Texture, String>>;
@@ -149,34 +146,26 @@ pub struct ThumbnailCache {
 impl ThumbnailCache {
     /// Floor for the auto-sized RAM budget, so very low-memory systems still
     /// hold a working set of decoded thumbnails.
-    const AUTO_MIN_BYTES: usize = 128 * 1024 * 1024;
-    /// Ceiling for the auto-sized RAM budget, so big-RAM workstations don't
-    /// crowd out other applications.
-    const AUTO_MAX_BYTES: usize = 1536 * 1024 * 1024;
-    /// Fraction of total system memory used when the user lets us auto-size.
-    const AUTO_FRACTION_PERCENT: usize = 12;
+    const AUTO_MIN_BYTES: usize = 500 * 1024 * 1024;
+    const AUTO_MAX_BYTES: usize = 3 * 1024 * 1024 * 1024;
+    const AUTO_FRACTION_PERCENT: usize = 20;
 
     /// Construct a new thumbnail cache manager. Disk pruning is handled
     /// centrally by `cache_manager` at startup, not here.
-    pub fn with_capacity_mb(api_client: std::sync::Arc<ImmichApiClient>, mb: u32) -> Self {
+    pub fn new(api_client: std::sync::Arc<ImmichApiClient>) -> Self {
         let cache_dir = crate::profile::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp").join(crate::profile::dir_segment()))
             .join("thumbnails");
 
-        let max_bytes = if mb == 0 {
-            auto_memory_budget()
-        } else {
-            (mb as usize).saturating_mul(1024 * 1024)
-        };
+        let max_bytes = auto_memory_budget();
         let cpus = std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(FALLBACK_CPUS);
         let small = SMALL_LOAD_MAX.min(cpus.saturating_mul(2)).max(2);
         let large = LARGE_LOAD_MAX.min(cpus).max(2);
         log::info!(
-            "ThumbnailCache memory budget: {} MB ({}), concurrency small={} large={}",
+            "ThumbnailCache memory budget: {} MB (auto), concurrency small={} large={}",
             max_bytes / (1024 * 1024),
-            if mb == 0 { "auto" } else { "user-set" },
             small,
             large,
         );
@@ -302,7 +291,7 @@ impl ThumbnailCache {
 
         if let Some(bytes) = from_disk {
             let byte_len = bytes.len();
-            let texture = decode_to_scaled_texture(bytes)
+            let texture = decode_to_scaled_texture(bytes, target_dim_for_bucket(size))
                 .await
                 .map_err(|err| err.to_string())?;
             log::debug!(
@@ -330,7 +319,7 @@ impl ThumbnailCache {
             let _ = std::fs::write(&cache_file_for_write, &bytes_for_write);
         })
         .await;
-        let texture = decode_to_scaled_texture(bytes)
+        let texture = decode_to_scaled_texture(bytes, target_dim_for_bucket(size))
             .await
             .map_err(|err| err.to_string())?;
         log::debug!(
@@ -603,14 +592,22 @@ fn custom_decode_to_thumbnail(path: &std::path::Path) -> Result<gtk::gdk_pixbuf:
         .ok_or_else(|| "Failed to scale pixbuf".to_string())
 }
 
+fn target_dim_for_bucket(size: ThumbnailSize) -> i32 {
+    match size {
+        ThumbnailSize::Thumbnail => 256,
+        ThumbnailSize::Preview => 1440,
+        ThumbnailSize::Fullsize => 2560,
+    }
+}
+
 /// Asynchronously decode image bytes into a scaled texture.
-async fn decode_to_scaled_texture(bytes: Vec<u8>) -> Result<Texture, String> {
+async fn decode_to_scaled_texture(bytes: Vec<u8>, max_dim: i32) -> Result<Texture, String> {
     tokio::task::spawn_blocking(move || -> Result<Texture, String> {
         let stream = gtk::gio::MemoryInputStream::from_bytes(&Bytes::from_owned(bytes));
         let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_stream_at_scale(
             &stream,
-            256,
-            256,
+            max_dim,
+            max_dim,
             true,
             gtk::gio::Cancellable::NONE,
         )
