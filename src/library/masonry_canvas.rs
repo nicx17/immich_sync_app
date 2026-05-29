@@ -32,8 +32,9 @@ pub(super) const MAX_ROW_HEIGHT_WIDE: f32 = 360.0;
 pub(super) const GAP: f32 = 0.0;
 pub(super) const CORNER_RADIUS: f32 = 0.0;
 
-/// Row height above which we request the larger Preview thumbnail.
 const PREVIEW_BUCKET_THRESHOLD: f32 = 600.0;
+const VIEWPORTS_BEHIND: f32 = 2.0;
+const VIEWPORTS_AHEAD: f32 = 4.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LaidItem {
@@ -165,6 +166,20 @@ fn scale_to_fit(indices: &[usize], dims: &[(u32, u32)], canvas_w: f32, cfg: Layo
     }
     let scale = ((canvas_w - total_gap) / sum).max(0.0);
     cfg.max_row_height * scale
+}
+
+fn first_row_at_or_after(rows: &[LaidRow], y: f32) -> usize {
+    let mut lo = 0;
+    let mut hi = rows.len();
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        if rows[mid].y + rows[mid].h < y {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
 }
 
 pub(super) fn row_at_y(rows: &[LaidRow], y: f32) -> Option<usize> {
@@ -312,6 +327,10 @@ mod imp {
 
             let (scroll_y, viewport_h) = self.viewport();
             let viewport_center = scroll_y + viewport_h * 0.5;
+            let viewport_top = scroll_y;
+            let viewport_bottom = scroll_y + viewport_h;
+            let band_top = scroll_y - viewport_h * VIEWPORTS_BEHIND;
+            let band_bottom = scroll_y + viewport_h * (1.0 + VIEWPORTS_AHEAD);
 
             let rows = self.rows.borrow();
             let Some(model) = self.model.get() else {
@@ -321,7 +340,7 @@ mod imp {
                 return;
             };
 
-            let placeholder = gdk4::RGBA::new(0.24, 0.22, 0.30, 1.0);
+            let placeholder = gdk4::RGBA::new(1.0, 0.0, 1.0, 1.0);
             let select_tint = gdk4::RGBA::new(0.30, 0.55, 0.95, 0.35);
             let selection = self.selection.get();
             let mut to_load: Vec<(f32, String, ThumbnailSize, String, bool)> = Vec::new();
@@ -330,14 +349,32 @@ mod imp {
             let mut painted = 0usize;
             let row_count = rows.len();
             let last_row_bottom = rows.last().map(|r| r.y + r.h).unwrap_or(0.0);
+            let start_idx = first_row_at_or_after(&rows, band_top);
+            let mut first_painted_y = f32::NAN;
+            let mut last_painted_y = f32::NAN;
+            let mut rows_iterated = 0usize;
 
-            for row in rows.iter() {
+            for row in rows[start_idx..].iter() {
+                if row.y > band_bottom {
+                    break;
+                }
+                let row_in_viewport = row.y + row.h > viewport_top && row.y < viewport_bottom;
+                rows_iterated += 1;
+                if first_painted_y.is_nan() {
+                    first_painted_y = row.y;
+                }
+                last_painted_y = row.y + row.h;
                 for it in &row.items {
                     let bucket = bucket_for_row_height(row.h, self.quality.get());
-                    let Some(asset) = model.item(it.asset_index).and_downcast::<AssetObject>()
-                    else {
+                    let asset = model.item(it.asset_index).and_downcast::<AssetObject>();
+                    if asset.is_none() {
+                        let rect = Rect::new(it.x, row.y, it.w, row.h);
+                        snapshot.append_color(&placeholder, &rect);
+                        misses += 1;
+                        painted += 1;
                         continue;
-                    };
+                    }
+                    let asset = asset.unwrap();
                     let asset_id = asset.property::<String>("id");
                     let local_path = asset.property::<String>("local-path");
                     let is_local_only = !local_path.is_empty()
@@ -348,10 +385,17 @@ mod imp {
                     } else {
                         bucket
                     };
-                    let cached = cache.get_cached(&asset_id, lookup_bucket).or_else(|| {
-                        fallback_bucket(lookup_bucket)
-                            .and_then(|fb| cache.get_cached(&asset_id, fb))
-                    });
+                    let cached = if row_in_viewport {
+                        cache.get_cached(&asset_id, lookup_bucket).or_else(|| {
+                            fallback_bucket(lookup_bucket)
+                                .and_then(|fb| cache.get_cached(&asset_id, fb))
+                        })
+                    } else {
+                        cache.peek_cached(&asset_id, lookup_bucket).or_else(|| {
+                            fallback_bucket(lookup_bucket)
+                                .and_then(|fb| cache.peek_cached(&asset_id, fb))
+                        })
+                    };
 
                     let rect = Rect::new(it.x, row.y, it.w, row.h);
                     let clipped = CORNER_RADIUS > 0.0;
@@ -392,19 +436,44 @@ mod imp {
             drop(rows);
             to_load.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
+            let adj_info = self
+                .vadjustment
+                .borrow()
+                .as_ref()
+                .map(|a| {
+                    format!(
+                        "adj.value={:.0} adj.upper={:.0} adj.page={:.0}",
+                        a.value(),
+                        a.upper(),
+                        a.page_size()
+                    )
+                })
+                .unwrap_or_else(|| "adj=none".to_string());
+            let (cache_n, cache_bytes, cache_max, cache_evicts) = cache.cache_stats();
             log::debug!(
-                "masonry snapshot canvas=({:.0}x{:.0}) scroll_y={:.0} viewport_h={:.0} rows={} layout_h={:.0} painted={} hits={} misses={} pending={} queued={}",
+                "masonry snapshot canvas=({:.0}x{:.0}) scroll_y={:.0} viewport_h={:.0} band=[{:.0},{:.0}] rows={} start_idx={} iterated={} painted_y=[{:.0},{:.0}] layout_h={:.0} painted={} hits={} misses={} pending={} queued={} cache_n={} cache_mb={}/{} evicts={} {}",
                 canvas_w,
                 canvas_h,
                 scroll_y,
                 viewport_h,
+                band_top,
+                band_bottom,
                 row_count,
+                start_idx,
+                rows_iterated,
+                first_painted_y,
+                last_painted_y,
                 last_row_bottom,
                 painted,
                 hits,
                 misses,
                 self.pending.borrow().len(),
                 to_load.len(),
+                cache_n,
+                cache_bytes / (1024 * 1024),
+                cache_max / (1024 * 1024),
+                cache_evicts,
+                adj_info,
             );
 
             for (_, asset_id, bucket, local_path, is_local) in to_load {
@@ -466,6 +535,18 @@ mod imp {
             while let Some(w) = node {
                 if let Some(sw) = w.downcast_ref::<gtk::ScrolledWindow>() {
                     let adj = sw.vadjustment();
+                    let weak = self.obj().downgrade();
+                    adj.connect_value_changed(move |a| {
+                        log::trace!(
+                            "masonry vadjustment value_changed value={:.0} upper={:.0} page={:.0}",
+                            a.value(),
+                            a.upper(),
+                            a.page_size()
+                        );
+                        if let Some(canvas) = weak.upgrade() {
+                            canvas.queue_draw();
+                        }
+                    });
                     *self.vadjustment.borrow_mut() = Some(adj.clone());
                     return Some(adj);
                 }
@@ -645,6 +726,9 @@ impl MasonryCanvas {
                     added,
                     n,
                 );
+                if added == 0 && removed > 0 && n == 0 {
+                    return;
+                }
                 imp.invalidate_layout();
                 canvas.queue_draw();
             }
@@ -916,6 +1000,32 @@ mod tests {
             bucket_for_row_height(50.0, GridQuality::Fullsize),
             ThumbnailSize::Fullsize
         ));
+    }
+
+    #[test]
+    fn first_row_skip_lands_on_intersecting_row() {
+        let rows = vec![
+            LaidRow {
+                y: 0.0,
+                h: 100.0,
+                items: vec![],
+            },
+            LaidRow {
+                y: 100.0,
+                h: 100.0,
+                items: vec![],
+            },
+            LaidRow {
+                y: 200.0,
+                h: 100.0,
+                items: vec![],
+            },
+        ];
+        assert_eq!(first_row_at_or_after(&rows, -50.0), 0);
+        assert_eq!(first_row_at_or_after(&rows, 0.0), 0);
+        assert_eq!(first_row_at_or_after(&rows, 150.0), 1);
+        assert_eq!(first_row_at_or_after(&rows, 250.0), 2);
+        assert_eq!(first_row_at_or_after(&rows, 500.0), 3);
     }
 
     #[test]

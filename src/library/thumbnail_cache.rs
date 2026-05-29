@@ -20,7 +20,13 @@ use lru::LruCache;
 use tokio::sync::{Semaphore, watch};
 
 use crate::api_client::{ImmichApiClient, ThumbnailSize};
-const MAX_CONCURRENT_LOADS: usize = 8;
+
+/// Fallback when total CPU count probing fails.
+const FALLBACK_CPUS: usize = 4;
+/// Hard ceiling on small (Thumbnail) decode concurrency.
+const SMALL_LOAD_MAX: usize = 16;
+/// Hard ceiling on large (Preview / Fullsize) decode concurrency.
+const LARGE_LOAD_MAX: usize = 6;
 
 type InflightSlot = Option<Result<Texture, String>>;
 type InflightRx = watch::Receiver<InflightSlot>;
@@ -66,6 +72,7 @@ struct SizedLruCache {
     inner: LruCache<String, Texture>,
     current_bytes: usize,
     max_bytes: usize,
+    evictions_since_log: usize,
 }
 
 impl SizedLruCache {
@@ -77,12 +84,28 @@ impl SizedLruCache {
             inner: LruCache::new(NonZeroUsize::new(count_cap).unwrap()),
             current_bytes: 0,
             max_bytes,
+            evictions_since_log: 0,
         }
+    }
+
+    fn stats(&mut self) -> (usize, usize, usize, usize) {
+        let evictions = self.evictions_since_log;
+        self.evictions_since_log = 0;
+        (
+            self.inner.len(),
+            self.current_bytes,
+            self.max_bytes,
+            evictions,
+        )
     }
 
     /// Retrieve a texture from the cache if present, updating LRU recency.
     fn get(&mut self, key: &str) -> Option<Texture> {
         self.inner.get(key).cloned()
+    }
+
+    fn peek(&self, key: &str) -> Option<Texture> {
+        self.inner.peek(key).cloned()
     }
 
     /// Insert a texture into the cache, evicting entries to respect the byte budget.
@@ -99,6 +122,7 @@ impl SizedLruCache {
                 self.current_bytes = self
                     .current_bytes
                     .saturating_sub(estimate_texture_bytes(&removed));
+                self.evictions_since_log += 1;
             } else {
                 break;
             }
@@ -117,7 +141,8 @@ pub struct ThumbnailCache {
     api_client: std::sync::Arc<ImmichApiClient>,
     memory: Mutex<SizedLruCache>,
     cache_dir: PathBuf,
-    load_semaphore: Arc<Semaphore>,
+    small_semaphore: Arc<Semaphore>,
+    large_semaphore: Arc<Semaphore>,
     inflight: InflightMap,
 }
 
@@ -143,17 +168,25 @@ impl ThumbnailCache {
         } else {
             (mb as usize).saturating_mul(1024 * 1024)
         };
+        let cpus = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(FALLBACK_CPUS);
+        let small = SMALL_LOAD_MAX.min(cpus.saturating_mul(2)).max(2);
+        let large = LARGE_LOAD_MAX.min(cpus).max(2);
         log::info!(
-            "ThumbnailCache memory budget: {} MB ({})",
+            "ThumbnailCache memory budget: {} MB ({}), concurrency small={} large={}",
             max_bytes / (1024 * 1024),
-            if mb == 0 { "auto" } else { "user-set" }
+            if mb == 0 { "auto" } else { "user-set" },
+            small,
+            large,
         );
 
         Self {
             api_client,
             memory: Mutex::new(SizedLruCache::new(max_bytes)),
             cache_dir,
-            load_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_LOADS)),
+            small_semaphore: Arc::new(Semaphore::new(small)),
+            large_semaphore: Arc::new(Semaphore::new(large)),
             inflight: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -168,15 +201,35 @@ impl ThumbnailCache {
             api_client,
             memory: Mutex::new(SizedLruCache::new(max_bytes)),
             cache_dir,
-            load_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_LOADS)),
+            small_semaphore: Arc::new(Semaphore::new(SMALL_LOAD_MAX)),
+            large_semaphore: Arc::new(Semaphore::new(LARGE_LOAD_MAX)),
             inflight: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    /// Retrieve a thumbnail texture from memory if present.
+    /// Retrieve a thumbnail texture from memory if present, updating LRU recency.
     pub fn get_cached(&self, asset_id: &str, size: ThumbnailSize) -> Option<Texture> {
         let key = cache_key(asset_id, size);
         self.memory.lock().get(&key)
+    }
+
+    /// Same as `get_cached` but does not touch LRU order. Use for read-only
+    /// per-frame paint lookups.
+    pub fn peek_cached(&self, asset_id: &str, size: ThumbnailSize) -> Option<Texture> {
+        let key = cache_key(asset_id, size);
+        self.memory.lock().peek(&key)
+    }
+
+    /// (entries, current_bytes, max_bytes, evictions_since_last_call).
+    pub fn cache_stats(&self) -> (usize, usize, usize, usize) {
+        self.memory.lock().stats()
+    }
+
+    fn semaphore_for(&self, size: ThumbnailSize) -> Arc<Semaphore> {
+        match size {
+            ThumbnailSize::Thumbnail => self.small_semaphore.clone(),
+            ThumbnailSize::Preview | ThumbnailSize::Fullsize => self.large_semaphore.clone(),
+        }
     }
 
     /// Asynchronously fetch a remote thumbnail with default non-cancellable execution.
@@ -227,8 +280,7 @@ impl ThumbnailCache {
             return Err("cancelled".to_string());
         }
         let _permit = self
-            .load_semaphore
-            .clone()
+            .semaphore_for(size)
             .acquire_owned()
             .await
             .map_err(|err| err.to_string())?;
@@ -331,8 +383,7 @@ impl ThumbnailCache {
             return Err("cancelled".to_string());
         }
         let _permit = self
-            .load_semaphore
-            .clone()
+            .semaphore_for(ThumbnailSize::Thumbnail)
             .acquire_owned()
             .await
             .map_err(|err| err.to_string())?;

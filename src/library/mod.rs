@@ -1926,12 +1926,6 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     connect_grid_handlers(ui.clone());
     connect_filters_button(ui.clone(), filters_button);
 
-    let close_ctx = ui.ctx.clone();
-    window.connect_close_request(move |_| {
-        close_ctx.thumbnail_cache.clear_memory();
-        glib::Propagation::Proceed
-    });
-
     bootstrap_window(ui);
     window.present();
 }
