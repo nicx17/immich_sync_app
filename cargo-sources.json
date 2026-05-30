@@ -2693,19 +2693,6 @@
     {
         "type": "archive",
         "archive-type": "tar-gzip",
-        "url": "https://static.crates.io/crates/libraw-rs/libraw-rs-0.0.4.crate",
-        "sha256": "24ec60aab878560c299c6e70a0c6dc2278a2159ac6fe09650917266b8985387f",
-        "dest": "cargo/vendor/libraw-rs-0.0.4"
-    },
-    {
-        "type": "inline",
-        "contents": "{\"package\": \"24ec60aab878560c299c6e70a0c6dc2278a2159ac6fe09650917266b8985387f\", \"files\": {}}",
-        "dest": "cargo/vendor/libraw-rs-0.0.4",
-        "dest-filename": ".cargo-checksum.json"
-    },
-    {
-        "type": "archive",
-        "archive-type": "tar-gzip",
         "url": "https://static.crates.io/crates/libraw-rs-sys/libraw-rs-sys-0.0.4+libraw-0.20.1.crate",
         "sha256": "ba094a3b8b04cc42fdeafaff06f81d3b13a7d01cc7a8eae55b943dae1b65c3cc",
         "dest": "cargo/vendor/libraw-rs-sys-0.0.4+libraw-0.20.1"
@@ -4495,19 +4482,6 @@
         "type": "inline",
         "contents": "{\"package\": \"ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5\", \"files\": {}}",
         "dest": "cargo/vendor/thiserror-impl-2.0.18",
-        "dest-filename": ".cargo-checksum.json"
-    },
-    {
-        "type": "archive",
-        "archive-type": "tar-gzip",
-        "url": "https://static.crates.io/crates/thumbhash/thumbhash-0.1.0.crate",
-        "sha256": "8b7726e0245a7331bd0c9a1fb4fd99fd695bcd478ca569f0eda2ff2cb14e7a00",
-        "dest": "cargo/vendor/thumbhash-0.1.0"
-    },
-    {
-        "type": "inline",
-        "contents": "{\"package\": \"8b7726e0245a7331bd0c9a1fb4fd99fd695bcd478ca569f0eda2ff2cb14e7a00\", \"files\": {}}",
-        "dest": "cargo/vendor/thumbhash-0.1.0",
         "dest-filename": ".cargo-checksum.json"
     },
     {

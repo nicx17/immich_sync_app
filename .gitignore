@@ -59,10 +59,11 @@ test_gobject.sh
 codebase_analysis.md
 test_about.py
 
-
+.flatpak-builder/
 # Added by cargo
 /target
-
+/build-dir
+flatpak-venv
 .codex
 /pv_docs
 workflow_audit.md

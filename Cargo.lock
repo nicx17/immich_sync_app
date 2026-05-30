@@ -2135,15 +2135,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
-name = "libraw-rs"
-version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24ec60aab878560c299c6e70a0c6dc2278a2159ac6fe09650917266b8985387f"
-dependencies = [
- "libraw-rs-sys",
-]
-
-[[package]]
 name = "libraw-rs-sys"
 version = "0.0.4+libraw-0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2277,7 +2268,6 @@ dependencies = [
  "ksni",
  "libadwaita",
  "libheif-rs",
- "libraw-rs",
  "libraw-rs-sys",
  "log",
  "lru",
@@ -2288,7 +2278,6 @@ dependencies = [
  "parking_lot",
  "phf",
  "psd",
- "rawloader",
  "rayon",
  "reqwest",
  "resvg",
@@ -2296,7 +2285,6 @@ dependencies = [
  "serde_json",
  "sha1",
  "tempfile",
- "thumbhash",
  "tokio",
  "tokio-util",
  "turbojpeg",
@@ -3570,12 +3558,6 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "thumbhash"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b7726e0245a7331bd0c9a1fb4fd99fd695bcd478ca569f0eda2ff2cb14e7a00"
 
 [[package]]
 name = "tiff"
