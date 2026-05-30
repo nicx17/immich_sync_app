@@ -19,10 +19,10 @@ use crate::library::albums_view::{
     AlbumClick, AlbumsViewParts, build_albums_view, populate_albums,
 };
 use crate::library::explore_view::{ExploreViewParts, build_explore_view};
-use crate::library::grid_view::{GridViewParts, build_grid_view};
 use crate::library::local_source::{
     LocalAsset, enumerate_local, enumerate_local_for_entry, filter_by_filename,
 };
+use crate::library::masonry::{GridViewParts, build_grid_view};
 use crate::library::sidebar::{SidebarParts, build_sidebar};
 use crate::library::state::{LibraryLoadState, LibrarySource};
 use crate::state_manager::TransferDirection;
@@ -45,11 +45,9 @@ pub mod albums_view;
 pub mod asset_model;
 pub mod asset_object;
 pub mod explore_view;
-pub mod grid_view;
 pub mod local_exif;
 pub mod local_source;
 pub mod masonry;
-pub mod masonry_canvas;
 pub mod sidebar;
 pub mod state;
 pub mod style;

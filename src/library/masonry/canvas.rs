@@ -11,10 +11,10 @@ use gtk::gsk::RoundedRect;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
+use super::grid_view::AssetContextMenuHandler;
 use crate::api_client::ThumbnailSize;
 use crate::library::asset_model::LibraryAssetModel;
 use crate::library::asset_object::AssetObject;
-use crate::library::grid_view::AssetContextMenuHandler;
 use crate::library::thumbnail_cache::ThumbnailCache;
 
 type ActivateHandler = Rc<dyn Fn(u32)>;
@@ -25,11 +25,9 @@ pub(super) const CORNER_RADIUS: f32 = 0.0;
 const VIEWPORTS_BEHIND: f32 = 2.0;
 const VIEWPORTS_AHEAD: f32 = 4.0;
 
-use crate::library::masonry::layout::{
-    LaidRow, LayoutConfig, first_row_at_or_after, item_at_x, pack_rows, row_at_y,
-};
-pub use crate::library::masonry::quality::GridQuality;
-use crate::library::masonry::quality::{bucket_for_row_height, fallback_bucket};
+use super::layout::{LaidRow, LayoutConfig, first_row_at_or_after, item_at_x, pack_rows, row_at_y};
+pub use super::quality::GridQuality;
+use super::quality::{bucket_for_row_height, fallback_bucket};
 
 mod imp {
     use super::*;
@@ -359,7 +357,7 @@ mod imp {
     }
 }
 
-use crate::library::masonry::load::{collect_dims, load_with_fallback, propagate_dimensions};
+use super::load::{collect_dims, load_with_fallback, propagate_dimensions};
 
 glib::wrapper! {
     pub struct MasonryCanvas(ObjectSubclass<imp::MasonryCanvas>)

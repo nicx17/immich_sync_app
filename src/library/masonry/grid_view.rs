@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use gtk::prelude::*;
 
+use super::canvas::{GridQuality, MasonryCanvas};
 use crate::app_context::AppContext;
 use crate::library::asset_model::LibraryAssetModel;
-use crate::library::masonry_canvas::{GridQuality, MasonryCanvas};
 
 pub type AssetContextMenuHandler = Rc<RefCell<Option<Box<dyn Fn(u32, f64, f64)>>>>;
 
