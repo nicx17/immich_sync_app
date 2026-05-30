@@ -136,26 +136,6 @@ fn build_asset_objects(assets: &[LibraryAsset], ctx: &AppContext) -> Vec<AssetOb
     use super::{LOCAL_ID_PREFIX, immich_checksum_to_hex};
     use crate::library::local_source::local_sync_state;
 
-    let total = assets.len();
-    let with_exif = assets.iter().filter(|a| a.exif_info.is_some()).count();
-    let with_dims = assets
-        .iter()
-        .filter(|a| {
-            a.width.unwrap_or(0.0) > 0.0
-                || a.exif_info
-                    .as_ref()
-                    .and_then(|e| e.exif_image_width)
-                    .unwrap_or(0)
-                    > 0
-        })
-        .count();
-    log::debug!(
-        "build_asset_objects total={} with_exif={} with_dims={}",
-        total,
-        with_exif,
-        with_dims,
-    );
-
     assets
         .iter()
         .map(|asset| {

@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use gdk4::Texture;
 use gtk::glib;
 use gtk::graphene::{Rect, Size};
 use gtk::gsk::RoundedRect;
@@ -21,233 +20,16 @@ use crate::library::thumbnail_cache::ThumbnailCache;
 type ActivateHandler = Rc<dyn Fn(u32)>;
 type SelectModeChanger = Rc<dyn Fn(bool)>;
 
-const FALLBACK_W: f32 = 4.0;
-const FALLBACK_H: f32 = 3.0;
-
-pub(super) const MIN_ROW_HEIGHT_NARROW: f32 = 120.0;
-pub(super) const MAX_ROW_HEIGHT_NARROW: f32 = 240.0;
-pub(super) const MIN_ROW_HEIGHT_WIDE: f32 = 180.0;
-pub(super) const MAX_ROW_HEIGHT_WIDE: f32 = 360.0;
-
-pub(super) const GAP: f32 = 0.0;
 pub(super) const CORNER_RADIUS: f32 = 0.0;
 
-const PREVIEW_BUCKET_THRESHOLD: f32 = 600.0;
 const VIEWPORTS_BEHIND: f32 = 2.0;
 const VIEWPORTS_AHEAD: f32 = 4.0;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LaidItem {
-    pub asset_index: u32,
-    pub x: f32,
-    pub w: f32,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LaidRow {
-    pub y: f32,
-    pub h: f32,
-    pub items: Vec<LaidItem>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct LayoutConfig {
-    pub min_row_height: f32,
-    pub max_row_height: f32,
-    pub gap: f32,
-}
-
-impl LayoutConfig {
-    pub(super) fn narrow() -> Self {
-        Self {
-            min_row_height: MIN_ROW_HEIGHT_NARROW,
-            max_row_height: MAX_ROW_HEIGHT_NARROW,
-            gap: GAP,
-        }
-    }
-
-    pub(super) fn wide() -> Self {
-        Self {
-            min_row_height: MIN_ROW_HEIGHT_WIDE,
-            max_row_height: MAX_ROW_HEIGHT_WIDE,
-            gap: GAP,
-        }
-    }
-}
-
-fn aspect(width: u32, height: u32) -> f32 {
-    if width == 0 || height == 0 {
-        FALLBACK_W / FALLBACK_H
-    } else {
-        (width as f32) / (height as f32)
-    }
-}
-
-/// Greedy justified-row pack. `dims[i] = (w, h)` for asset i.
-pub(super) fn pack_rows(
-    dims: &[(u32, u32)],
-    canvas_w: f32,
-    cfg: LayoutConfig,
-) -> (Vec<LaidRow>, f32) {
-    if dims.is_empty() || canvas_w <= 0.0 {
-        return (Vec::new(), 0.0);
-    }
-
-    let mut rows: Vec<LaidRow> = Vec::new();
-    let mut y_cursor = 0.0_f32;
-    let mut i = 0_usize;
-
-    while i < dims.len() {
-        let mut indices: Vec<usize> = Vec::new();
-        let mut summed_w = 0.0_f32;
-        while i < dims.len() {
-            let w_at_max = aspect(dims[i].0, dims[i].1) * cfg.max_row_height;
-            let gap_before = if indices.is_empty() { 0.0 } else { cfg.gap };
-            if !indices.is_empty() && summed_w + gap_before + w_at_max > canvas_w {
-                break;
-            }
-            indices.push(i);
-            summed_w += w_at_max + gap_before;
-            i += 1;
-        }
-        let last_row = i >= dims.len() && summed_w + cfg.gap < canvas_w;
-
-        let mut row_h = scale_to_fit(&indices, dims, canvas_w, cfg);
-
-        // Pop the trailing item if the row is too short — it spills to the next row.
-        if indices.len() > 1 && row_h < cfg.min_row_height {
-            let popped = indices.pop().unwrap();
-            i = popped;
-            row_h = scale_to_fit(&indices, dims, canvas_w, cfg);
-        }
-
-        // Filled rows keep their computed height so the row reaches canvas_w.
-        // Only the underfilled trailing row is clamped.
-        if last_row {
-            row_h = row_h.clamp(cfg.min_row_height, cfg.max_row_height);
-        }
-
-        let mut placed = Vec::with_capacity(indices.len());
-        let mut x_cursor = 0.0_f32;
-        for &idx in &indices {
-            let w = aspect(dims[idx].0, dims[idx].1) * row_h;
-            placed.push(LaidItem {
-                asset_index: idx as u32,
-                x: x_cursor,
-                w,
-            });
-            x_cursor += w + cfg.gap;
-        }
-
-        rows.push(LaidRow {
-            y: y_cursor,
-            h: row_h,
-            items: placed,
-        });
-        y_cursor += row_h + cfg.gap;
-    }
-
-    let total_height = (y_cursor - cfg.gap).max(0.0);
-    (rows, total_height)
-}
-
-fn scale_to_fit(indices: &[usize], dims: &[(u32, u32)], canvas_w: f32, cfg: LayoutConfig) -> f32 {
-    let total_gap = if indices.len() > 1 {
-        cfg.gap * (indices.len() as f32 - 1.0)
-    } else {
-        0.0
-    };
-    let sum: f32 = indices
-        .iter()
-        .map(|&idx| aspect(dims[idx].0, dims[idx].1) * cfg.max_row_height)
-        .sum();
-    if sum <= 0.0 {
-        return cfg.max_row_height;
-    }
-    let scale = ((canvas_w - total_gap) / sum).max(0.0);
-    cfg.max_row_height * scale
-}
-
-fn first_row_at_or_after(rows: &[LaidRow], y: f32) -> usize {
-    let mut lo = 0;
-    let mut hi = rows.len();
-    while lo < hi {
-        let mid = lo + (hi - lo) / 2;
-        if rows[mid].y + rows[mid].h < y {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-    lo
-}
-
-pub(super) fn row_at_y(rows: &[LaidRow], y: f32) -> Option<usize> {
-    if rows.is_empty() {
-        return None;
-    }
-    let mut lo = 0;
-    let mut hi = rows.len();
-    while lo < hi {
-        let mid = lo + (hi - lo) / 2;
-        let r = &rows[mid];
-        if y < r.y {
-            hi = mid;
-        } else if y >= r.y + r.h {
-            lo = mid + 1;
-        } else {
-            return Some(mid);
-        }
-    }
-    None
-}
-
-pub(super) fn item_at_x(row: &LaidRow, x: f32) -> Option<&LaidItem> {
-    row.items.iter().find(|it| x >= it.x && x < it.x + it.w)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum GridQuality {
-    #[default]
-    Auto,
-    Thumbnail,
-    Preview,
-    Fullsize,
-}
-
-impl GridQuality {
-    pub fn parse(s: &str) -> Self {
-        match s {
-            "thumbnail" => Self::Thumbnail,
-            "preview" => Self::Preview,
-            "fullsize" => Self::Fullsize,
-            _ => Self::Auto,
-        }
-    }
-}
-
-fn bucket_for_row_height(h: f32, quality: GridQuality) -> ThumbnailSize {
-    match quality {
-        GridQuality::Thumbnail => ThumbnailSize::Thumbnail,
-        GridQuality::Preview => ThumbnailSize::Preview,
-        GridQuality::Fullsize => ThumbnailSize::Fullsize,
-        GridQuality::Auto => {
-            if h <= PREVIEW_BUCKET_THRESHOLD {
-                ThumbnailSize::Thumbnail
-            } else {
-                ThumbnailSize::Preview
-            }
-        }
-    }
-}
-
-/// Smaller size to try when a requested bucket isn't available on the server.
-fn fallback_bucket(size: ThumbnailSize) -> Option<ThumbnailSize> {
-    match size {
-        ThumbnailSize::Fullsize => Some(ThumbnailSize::Preview),
-        ThumbnailSize::Preview | ThumbnailSize::Thumbnail => None,
-    }
-}
+use crate::library::masonry::layout::{
+    LaidRow, LayoutConfig, first_row_at_or_after, item_at_x, pack_rows, row_at_y,
+};
+pub use crate::library::masonry::quality::GridQuality;
+use crate::library::masonry::quality::{bucket_for_row_height, fallback_bucket};
 
 mod imp {
     use super::*;
@@ -319,7 +101,6 @@ mod imp {
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let widget = self.obj();
             let canvas_w = widget.width() as f32;
-            let canvas_h = widget.height() as f32;
             if canvas_w <= 0.0 {
                 return;
             }
@@ -340,30 +121,24 @@ mod imp {
                 return;
             };
 
-            let placeholder = gdk4::RGBA::new(1.0, 0.0, 1.0, 1.0);
+            let placeholder = if libadwaita::StyleManager::default().is_dark() {
+                gdk4::RGBA::new(0.20, 0.20, 0.22, 1.0)
+            } else {
+                gdk4::RGBA::new(0.90, 0.90, 0.92, 1.0)
+            };
             let select_tint = gdk4::RGBA::new(0.30, 0.55, 0.95, 0.35);
             let selection = self.selection.get();
             let mut to_load: Vec<(f32, String, ThumbnailSize, String, bool)> = Vec::new();
             let mut hits = 0usize;
             let mut misses = 0usize;
             let mut painted = 0usize;
-            let row_count = rows.len();
-            let last_row_bottom = rows.last().map(|r| r.y + r.h).unwrap_or(0.0);
             let start_idx = first_row_at_or_after(&rows, band_top);
-            let mut first_painted_y = f32::NAN;
-            let mut last_painted_y = f32::NAN;
-            let mut rows_iterated = 0usize;
 
             for row in rows[start_idx..].iter() {
                 if row.y > band_bottom {
                     break;
                 }
                 let row_in_viewport = row.y + row.h > viewport_top && row.y < viewport_bottom;
-                rows_iterated += 1;
-                if first_painted_y.is_nan() {
-                    first_painted_y = row.y;
-                }
-                last_painted_y = row.y + row.h;
                 for it in &row.items {
                     let bucket = bucket_for_row_height(row.h, self.quality.get());
                     let asset = model.item(it.asset_index).and_downcast::<AssetObject>();
@@ -436,34 +211,10 @@ mod imp {
             drop(rows);
             to_load.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
-            let adj_info = self
-                .vadjustment
-                .borrow()
-                .as_ref()
-                .map(|a| {
-                    format!(
-                        "adj.value={:.0} adj.upper={:.0} adj.page={:.0}",
-                        a.value(),
-                        a.upper(),
-                        a.page_size()
-                    )
-                })
-                .unwrap_or_else(|| "adj=none".to_string());
             let (cache_n, cache_bytes, cache_max, cache_evicts) = cache.cache_stats();
             log::debug!(
-                "masonry snapshot canvas=({:.0}x{:.0}) scroll_y={:.0} viewport_h={:.0} band=[{:.0},{:.0}] rows={} start_idx={} iterated={} painted_y=[{:.0},{:.0}] layout_h={:.0} painted={} hits={} misses={} pending={} queued={} cache_n={} cache_mb={}/{} evicts={} {}",
-                canvas_w,
-                canvas_h,
+                "masonry snapshot y={:.0} painted={} hits={} misses={} pending={} queued={} cache={}/{}/{}MB evicts={}",
                 scroll_y,
-                viewport_h,
-                band_top,
-                band_bottom,
-                row_count,
-                start_idx,
-                rows_iterated,
-                first_painted_y,
-                last_painted_y,
-                last_row_bottom,
                 painted,
                 hits,
                 misses,
@@ -473,7 +224,6 @@ mod imp {
                 cache_bytes / (1024 * 1024),
                 cache_max / (1024 * 1024),
                 cache_evicts,
-                adj_info,
             );
 
             for (_, asset_id, bucket, local_path, is_local) in to_load {
@@ -536,13 +286,7 @@ mod imp {
                 if let Some(sw) = w.downcast_ref::<gtk::ScrolledWindow>() {
                     let adj = sw.vadjustment();
                     let weak = self.obj().downgrade();
-                    adj.connect_value_changed(move |a| {
-                        log::trace!(
-                            "masonry vadjustment value_changed value={:.0} upper={:.0} page={:.0}",
-                            a.value(),
-                            a.upper(),
-                            a.page_size()
-                        );
+                    adj.connect_value_changed(move |_| {
                         if let Some(canvas) = weak.upgrade() {
                             canvas.queue_draw();
                         }
@@ -571,7 +315,7 @@ mod imp {
             let widget = self.obj().clone();
             let id_for_remove = asset_id.clone();
             let is_cancelled = || false;
-            log::debug!(
+            log::trace!(
                 "masonry spawn_load id={} bucket={:?} local={}",
                 asset_id,
                 bucket,
@@ -591,7 +335,7 @@ mod imp {
                 match &result {
                     Ok(tex) => {
                         dims_changed = propagate_dimensions(&model, &asset_id, tex);
-                        log::debug!(
+                        log::trace!(
                             "masonry load OK id={} dims=({}x{})",
                             asset_id,
                             tex.width(),
@@ -602,7 +346,7 @@ mod imp {
                         if e != "cancelled" {
                             imp.failed.borrow_mut().insert(asset_id.clone());
                         }
-                        log::debug!("masonry load ERR id={} err={}", asset_id, e);
+                        log::warn!("masonry load ERR id={} err={}", asset_id, e);
                     }
                 }
                 imp.pending.borrow_mut().remove(&id_for_remove);
@@ -615,71 +359,7 @@ mod imp {
     }
 }
 
-fn collect_dims(model: &LibraryAssetModel) -> Vec<(u32, u32)> {
-    let n = model.n_items();
-    let mut out = Vec::with_capacity(n as usize);
-    for i in 0..n {
-        if let Some(obj) = model.item(i).and_downcast::<AssetObject>() {
-            out.push((obj.property::<u32>("width"), obj.property::<u32>("height")));
-        } else {
-            out.push((0, 0));
-        }
-    }
-    out
-}
-
-/// Try requested bucket, then walk `fallback_bucket` chain on 404. Only the
-/// 404 path is retried — auth, network, etc. surface unchanged.
-async fn load_with_fallback<F: Fn() -> bool>(
-    cache: &ThumbnailCache,
-    asset_id: &str,
-    requested: ThumbnailSize,
-    is_cancelled: &F,
-) -> Result<Texture, String> {
-    let mut current = requested;
-    loop {
-        match cache
-            .load_thumbnail_cancellable(asset_id, current, is_cancelled)
-            .await
-        {
-            Ok(tex) => return Ok(tex),
-            Err(e) if e.contains("404") => match fallback_bucket(current) {
-                Some(next) => {
-                    log::debug!(
-                        "masonry fallback id={} {:?} -> {:?} ({})",
-                        asset_id,
-                        current,
-                        next,
-                        e
-                    );
-                    current = next;
-                }
-                None => return Err(e),
-            },
-            Err(e) => return Err(e),
-        }
-    }
-}
-
-/// Returns true if the AssetObject dimensions were filled in (relayout needed).
-fn propagate_dimensions(model: &LibraryAssetModel, asset_id: &str, tex: &Texture) -> bool {
-    let n = model.n_items();
-    for i in 0..n {
-        if let Some(obj) = model.item(i).and_downcast::<AssetObject>()
-            && obj.property::<String>("id") == asset_id
-        {
-            let w = obj.property::<u32>("width");
-            let h = obj.property::<u32>("height");
-            if w == 0 || h == 0 {
-                obj.set_property("width", tex.width() as u32);
-                obj.set_property("height", tex.height() as u32);
-                return true;
-            }
-            return false;
-        }
-    }
-    false
-}
+use crate::library::masonry::load::{collect_dims, load_with_fallback, propagate_dimensions};
 
 glib::wrapper! {
     pub struct MasonryCanvas(ObjectSubclass<imp::MasonryCanvas>)
@@ -849,192 +529,5 @@ impl MasonryCanvas {
             }
         });
         self.add_controller(secondary);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn cfg() -> LayoutConfig {
-        LayoutConfig {
-            min_row_height: 100.0,
-            max_row_height: 200.0,
-            gap: 0.0,
-        }
-    }
-
-    #[test]
-    fn empty_input_yields_empty_layout() {
-        let (rows, h) = pack_rows(&[], 1000.0, cfg());
-        assert!(rows.is_empty());
-        assert_eq!(h, 0.0);
-    }
-
-    #[test]
-    fn zero_canvas_width_yields_empty() {
-        let (rows, h) = pack_rows(&[(100, 100)], 0.0, cfg());
-        assert!(rows.is_empty());
-        assert_eq!(h, 0.0);
-    }
-
-    #[test]
-    fn fallback_aspect_when_dimensions_zero() {
-        let (rows, _) = pack_rows(&[(0, 0), (0, 0), (0, 0)], 1200.0, cfg());
-        assert_eq!(rows.len(), 1);
-        assert!((rows[0].h - 200.0).abs() < 0.01);
-    }
-
-    #[test]
-    fn full_row_fills_canvas_width_within_a_pixel() {
-        let dims = &[(1600, 900), (1600, 900), (1600, 900), (1600, 900)];
-        let (rows, _) = pack_rows(dims, 1200.0, cfg());
-        let r1 = &rows[0];
-        let last = r1.items.last().unwrap();
-        let fill = last.x + last.w;
-        assert!((fill - 1200.0).abs() < 1.0);
-    }
-
-    #[test]
-    fn all_items_placed_across_rows() {
-        let dims: Vec<(u32, u32)> = (0..8).map(|_| (3000, 1000)).collect();
-        let (rows, _) = pack_rows(&dims, 1200.0, cfg());
-        let total: usize = rows.iter().map(|r| r.items.len()).sum();
-        assert_eq!(total, 8);
-    }
-
-    #[test]
-    fn last_row_clamped_to_max_height() {
-        let mut dims: Vec<(u32, u32)> = (0..6).map(|_| (4000, 3000)).collect();
-        dims.push((1000, 1500));
-        let (rows, _) = pack_rows(&dims, 1200.0, cfg());
-        let last = rows.last().unwrap();
-        assert!(last.h <= 200.0 + 0.01);
-    }
-
-    #[test]
-    fn binary_search_finds_correct_row() {
-        let rows = vec![
-            LaidRow {
-                y: 0.0,
-                h: 100.0,
-                items: vec![],
-            },
-            LaidRow {
-                y: 100.0,
-                h: 150.0,
-                items: vec![],
-            },
-            LaidRow {
-                y: 250.0,
-                h: 80.0,
-                items: vec![],
-            },
-        ];
-        assert_eq!(row_at_y(&rows, 0.0), Some(0));
-        assert_eq!(row_at_y(&rows, 100.0), Some(1));
-        assert_eq!(row_at_y(&rows, 329.9), Some(2));
-        assert_eq!(row_at_y(&rows, 330.0), None);
-    }
-
-    #[test]
-    fn item_hit_test_within_row() {
-        let row = LaidRow {
-            y: 0.0,
-            h: 100.0,
-            items: vec![
-                LaidItem {
-                    asset_index: 5,
-                    x: 0.0,
-                    w: 50.0,
-                },
-                LaidItem {
-                    asset_index: 6,
-                    x: 50.0,
-                    w: 80.0,
-                },
-                LaidItem {
-                    asset_index: 7,
-                    x: 130.0,
-                    w: 40.0,
-                },
-            ],
-        };
-        assert_eq!(item_at_x(&row, 0.0).map(|i| i.asset_index), Some(5));
-        assert_eq!(item_at_x(&row, 50.0).map(|i| i.asset_index), Some(6));
-        assert_eq!(item_at_x(&row, 130.0).map(|i| i.asset_index), Some(7));
-        assert!(item_at_x(&row, 200.0).is_none());
-    }
-
-    #[test]
-    fn gap_increases_total_layout_height() {
-        let dims = &[(100, 100), (100, 100), (100, 100), (100, 100)];
-        let (_, h0) = pack_rows(dims, 200.0, LayoutConfig { gap: 0.0, ..cfg() });
-        let (_, h1) = pack_rows(dims, 200.0, LayoutConfig { gap: 10.0, ..cfg() });
-        assert!(h1 > h0);
-    }
-
-    #[test]
-    fn bucket_thumbnail_under_threshold() {
-        assert!(matches!(
-            bucket_for_row_height(200.0, GridQuality::Auto),
-            ThumbnailSize::Thumbnail
-        ));
-        assert!(matches!(
-            bucket_for_row_height(PREVIEW_BUCKET_THRESHOLD, GridQuality::Auto),
-            ThumbnailSize::Thumbnail
-        ));
-        assert!(matches!(
-            bucket_for_row_height(PREVIEW_BUCKET_THRESHOLD + 1.0, GridQuality::Auto),
-            ThumbnailSize::Preview
-        ));
-    }
-
-    #[test]
-    fn explicit_quality_overrides_row_height() {
-        assert!(matches!(
-            bucket_for_row_height(2000.0, GridQuality::Thumbnail),
-            ThumbnailSize::Thumbnail
-        ));
-        assert!(matches!(
-            bucket_for_row_height(50.0, GridQuality::Fullsize),
-            ThumbnailSize::Fullsize
-        ));
-    }
-
-    #[test]
-    fn first_row_skip_lands_on_intersecting_row() {
-        let rows = vec![
-            LaidRow {
-                y: 0.0,
-                h: 100.0,
-                items: vec![],
-            },
-            LaidRow {
-                y: 100.0,
-                h: 100.0,
-                items: vec![],
-            },
-            LaidRow {
-                y: 200.0,
-                h: 100.0,
-                items: vec![],
-            },
-        ];
-        assert_eq!(first_row_at_or_after(&rows, -50.0), 0);
-        assert_eq!(first_row_at_or_after(&rows, 0.0), 0);
-        assert_eq!(first_row_at_or_after(&rows, 150.0), 1);
-        assert_eq!(first_row_at_or_after(&rows, 250.0), 2);
-        assert_eq!(first_row_at_or_after(&rows, 500.0), 3);
-    }
-
-    #[test]
-    fn fallback_chain_degrades_fullsize_to_preview() {
-        assert_eq!(
-            fallback_bucket(ThumbnailSize::Fullsize),
-            Some(ThumbnailSize::Preview)
-        );
-        assert_eq!(fallback_bucket(ThumbnailSize::Preview), None);
-        assert_eq!(fallback_bucket(ThumbnailSize::Thumbnail), None);
     }
 }

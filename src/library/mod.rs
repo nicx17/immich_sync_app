@@ -48,6 +48,7 @@ pub mod explore_view;
 pub mod grid_view;
 pub mod local_exif;
 pub mod local_source;
+pub mod masonry;
 pub mod masonry_canvas;
 pub mod sidebar;
 pub mod state;
