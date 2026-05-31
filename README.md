@@ -44,9 +44,9 @@ Mimick is an unofficial Immich desktop client for Linux. It provides a GTK4/liba
 <div align="center">
 
 [![Install Guide](https://img.shields.io/badge/Install-Guide-1F6FEB?style=for-the-badge&labelColor=1F6FEB)](https://github.com/nicx17/mimick/wiki/Installation)
-[![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](wiki/Configuration-and-First-Run.md)
-[![Wiki](https://img.shields.io/badge/Wiki-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](wiki/Home.md)
-[![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Help-CB4B16?style=for-the-badge&labelColor=CB4B16)](wiki/Troubleshooting.md)
+[![User Guide](https://img.shields.io/badge/User-Guide-2E8B57?style=for-the-badge&labelColor=2E8B57)](https://github.com/nicx17/mimick/wiki/Configuration-and-First-Run)
+[![Wiki](https://img.shields.io/badge/Wiki-8A2BE2?style=for-the-badge&labelColor=8A2BE2)](https://github.com/nicx17/mimick/wiki/Home)
+[![Troubleshooting](https://img.shields.io/badge/Troubleshooting-Help-CB4B16?style=for-the-badge&labelColor=CB4B16)](https://github.com/nicx17/mimick/wiki/Troubleshooting)
 [![Project Wiki](https://img.shields.io/badge/Project-Wiki-444444?style=for-the-badge&labelColor=444444)](https://github.com/nicx17/mimick/wiki)
 
 </div>
@@ -63,7 +63,7 @@ Mimick is an unofficial Immich desktop client for Linux. It provides a GTK4/liba
 
 <div align="center">
 
-[![View All Screenshots](https://img.shields.io/badge/View_All-Screenshots-E05D44?style=for-the-badge&labelColor=E05D44)](wiki/Screenshots.md)
+[![View All Screenshots](https://img.shields.io/badge/View_All-Screenshots-E05D44?style=for-the-badge&labelColor=E05D44)](https://github.com/nicx17/mimick/wiki/Screenshots)
 
 </div>
 
@@ -290,7 +290,7 @@ Terminal logs are colorized by level, and file logs rotate automatically.
 
 ## Logging & Notifications
 
-- **Logging**: Mimick now uses a colored console formatter for human-friendly terminal output and a plain file formatter for persistent logs. File logs are rotated automatically (approx. 2 MB per file; 5 files kept). Control verbosity with `RUST_LOG` (for example: `RUST_LOG=debug`). See [wiki/Development.md](wiki/Development.md) for details on the logger configuration.
+- **Logging**: Mimick now uses a colored console formatter for human-friendly terminal output and a plain file formatter for persistent logs. File logs are rotated automatically (approx. 2 MB per file; 5 files kept). Control verbosity with `RUST_LOG` (for example: `RUST_LOG=debug`). See [the Development wiki page](https://github.com/nicx17/mimick/wiki/Development) for details on the logger configuration.
 
 - **Notifications**: To reduce notification spam, Mimick aggregates multiple worker uploads into a single batch summary notification when a sync cycle completes. A separate "Connection Lost" notification is still emitted for connectivity failure events.
 
