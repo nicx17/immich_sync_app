@@ -592,9 +592,6 @@ impl ImmichApiClient {
     pub async fn check_connection(&self) -> bool {
         let _check_guard = self.connection_check_lock.lock().await;
 
-        // Coalesce burst callers: if another caller probed successfully within
-        // the last second, reuse that result. Periodic re-checks (e.g. the 5s
-        // library ping loop) still re-probe because their gap exceeds 1s.
         if self.active_url.lock().await.is_some()
             && let Some(when) = *self.last_successful_check.lock().await
             && when.elapsed() < Duration::from_secs(1)
@@ -606,38 +603,14 @@ impl ImmichApiClient {
         let settings = self.settings.read().clone();
         let was_active = self.active_url.lock().await.clone();
 
-        if self.ping_url(&settings.internal_url).await {
-            let mut active = self.active_url.lock().await;
-            let was_offline = was_active.is_none();
-            *active = Some(settings.internal_url.clone());
-            *self.last_successful_check.lock().await = Some(Instant::now());
-            self.clear_issue().await;
-            if was_offline {
-                log::info!("Connected via LAN: {}", settings.internal_url);
-            } else {
-                log::debug!("Connected via LAN: {}", settings.internal_url);
+        for url in [&settings.internal_url, &settings.external_url] {
+            if self.try_activate_url(url, was_active.is_none()).await {
+                return true;
             }
-            return true;
         }
 
-        if self.ping_url(&settings.external_url).await {
-            let mut active = self.active_url.lock().await;
-            let was_offline = was_active.is_none();
-            *active = Some(settings.external_url.clone());
-            *self.last_successful_check.lock().await = Some(Instant::now());
-            self.clear_issue().await;
-            if was_offline {
-                log::info!("Connected via WAN: {}", settings.external_url);
-            } else {
-                log::debug!("Connected via WAN: {}", settings.external_url);
-            }
-            return true;
-        }
-
-        let mut active = self.active_url.lock().await;
-        let was_online = active.is_some();
-        *active = None;
-        if was_online {
+        *self.active_url.lock().await = None;
+        if was_active.is_some() {
             log::error!("Could not connect to Immich server.");
         } else {
             log::debug!("Server still unreachable.");
@@ -649,6 +622,22 @@ impl ImmichApiClient {
         })
         .await;
         false
+    }
+
+    async fn try_activate_url(&self, url: &str, was_offline: bool) -> bool {
+        if !self.ping_url(url).await {
+            return false;
+        }
+        *self.active_url.lock().await = Some(url.to_string());
+        *self.last_successful_check.lock().await = Some(Instant::now());
+        self.clear_issue().await;
+        let label = self.route_label_for_url(url);
+        if was_offline {
+            log::info!("Connected via {}: {}", label, url);
+        } else {
+            log::debug!("Connected via {}: {}", label, url);
+        }
+        true
     }
 
     /// Ping a specific Immich base URL and validate that it returns a real `pong` response.

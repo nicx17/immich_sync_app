@@ -165,98 +165,106 @@ impl ImmichApiClient {
             .await
         {
             Ok(resp) => {
-                let status = resp.status().as_u16();
-                match status {
-                    200 | 201 => {
-                        if let Ok(json) = resp.json::<serde_json::Value>().await {
-                            let asset_id = json["id"].as_str().map(String::from);
-                            if let Some(callback) = &progress {
-                                callback(file_len, Some(file_len));
-                            }
-                            if let Some(asset_id) = asset_id.as_deref() {
-                                self.schedule_asset_timezone_fixup(
-                                    base_url.clone(),
-                                    asset_id.to_string(),
-                                    desired_time_zone.clone(),
-                                );
-                            }
-                            self.clear_issue().await;
-                            log::info!("Upload OK: {} => {:?}", filename, asset_id);
-                            asset_id
-                        } else {
-                            log::warn!(
-                                "Upload returned {} but body unreadable: {}",
-                                status,
-                                filename
-                            );
-                            None
-                        }
-                    }
-                    409 => {
-                        log::info!("Duplicate (already in Immich): {}", filename);
-                        self.clear_issue().await;
-                        if let Some(callback) = &progress {
-                            callback(file_len, Some(file_len));
-                        }
-                        // Some versions return the ID even on 409
-                        if let Ok(json) = resp.json::<serde_json::Value>().await
-                            && let Some(id) = json["id"].as_str()
-                        {
-                            return Some(id.to_string());
-                        }
-                        Some("DUPLICATE".to_string())
-                    }
-                    413 => {
-                        log::error!("Upload failed (file too large): {}", filename);
-                        self.set_issue(ApiIssue {
-                            summary: "Immich rejected a file as too large".to_string(),
-                            guidance: "Reduce the file size, raise the server's upload limits, or use a folder rule to skip oversized files."
-                                .to_string(),
-                        })
-                        .await;
-                        None
-                    }
-                    401 | 403 => {
-                        self.set_issue(ApiIssue {
-                            summary: "Immich rejected the API key".to_string(),
-                            guidance: "Update the API key in Settings and ensure it has the Asset upload + update and Album read/create/albumAsset.create permissions."
-                                .to_string(),
-                        })
-                        .await;
-                        None
-                    }
-                    502..=504 => {
-                        log::warn!("Server error {}: retrying later for {}", status, filename);
-                        let mut active = self.active_url.lock().await;
-                        *active = None;
-                        self.set_issue(ApiIssue {
-                            summary: "Immich is temporarily unavailable".to_string(),
-                            guidance: "Wait a moment and retry. If it keeps happening, check the server logs and reverse proxy."
-                                .to_string(),
-                        })
-                        .await;
-                        None
-                    }
-                    _ => {
-                        let body = resp.text().await.unwrap_or_default();
-                        log::error!("Upload failed [{}] for {}: {}", status, filename, body);
-                        self.set_issue(classify_http_issue(
-                            RequestContext::Upload,
-                            status,
-                            Some(&filename),
-                        ))
-                        .await;
-                        None
-                    }
-                }
+                self.handle_upload_response(
+                    resp,
+                    &filename,
+                    file_len,
+                    &desired_time_zone,
+                    base_url,
+                    progress.as_ref(),
+                )
+                .await
             }
             Err(e) => {
                 log::error!("Network error uploading {}: {}", filename, e);
-                // Force connection re-check on next upload
-                let mut active = self.active_url.lock().await;
-                *active = None;
+                *self.active_url.lock().await = None;
                 self.set_issue(classify_network_issue(RequestContext::Upload, &e))
                     .await;
+                None
+            }
+        }
+    }
+
+    async fn handle_upload_response(
+        &self,
+        resp: reqwest::Response,
+        filename: &str,
+        file_len: u64,
+        desired_time_zone: &Option<String>,
+        base_url: String,
+        progress: Option<&TransferProgressCallback>,
+    ) -> Option<String> {
+        let status = resp.status().as_u16();
+        match status {
+            200 | 201 => {
+                let json = resp.json::<serde_json::Value>().await.ok()?;
+                let asset_id = json["id"].as_str().map(String::from);
+                if let Some(callback) = progress {
+                    callback(file_len, Some(file_len));
+                }
+                if let Some(asset_id) = asset_id.as_deref() {
+                    self.schedule_asset_timezone_fixup(
+                        base_url,
+                        asset_id.to_string(),
+                        desired_time_zone.clone(),
+                    );
+                }
+                self.clear_issue().await;
+                log::info!("Upload OK: {} => {:?}", filename, asset_id);
+                asset_id
+            }
+            409 => {
+                log::info!("Duplicate (already in Immich): {}", filename);
+                self.clear_issue().await;
+                if let Some(callback) = progress {
+                    callback(file_len, Some(file_len));
+                }
+                if let Ok(json) = resp.json::<serde_json::Value>().await
+                    && let Some(id) = json["id"].as_str()
+                {
+                    return Some(id.to_string());
+                }
+                Some("DUPLICATE".to_string())
+            }
+            413 => {
+                log::error!("Upload failed (file too large): {}", filename);
+                self.set_issue(ApiIssue {
+                    summary: "Immich rejected a file as too large".to_string(),
+                    guidance: "Reduce the file size, raise the server's upload limits, or use a folder rule to skip oversized files."
+                        .to_string(),
+                })
+                .await;
+                None
+            }
+            401 | 403 => {
+                self.set_issue(ApiIssue {
+                    summary: "Immich rejected the API key".to_string(),
+                    guidance: "Update the API key in Settings and ensure it has the Asset upload + update and Album read/create/albumAsset.create permissions."
+                        .to_string(),
+                })
+                .await;
+                None
+            }
+            502..=504 => {
+                log::warn!("Server error {}: retrying later for {}", status, filename);
+                *self.active_url.lock().await = None;
+                self.set_issue(ApiIssue {
+                    summary: "Immich is temporarily unavailable".to_string(),
+                    guidance: "Wait a moment and retry. If it keeps happening, check the server logs and reverse proxy."
+                        .to_string(),
+                })
+                .await;
+                None
+            }
+            _ => {
+                let body = resp.text().await.unwrap_or_default();
+                log::error!("Upload failed [{}] for {}: {}", status, filename, body);
+                self.set_issue(classify_http_issue(
+                    RequestContext::Upload,
+                    status,
+                    Some(filename),
+                ))
+                .await;
                 None
             }
         }
