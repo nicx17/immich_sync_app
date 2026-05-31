@@ -85,67 +85,19 @@ impl Monitor {
         let handle = tokio::runtime::Handle::current();
         let (command_tx, command_rx) = std::sync::mpsc::channel();
 
-        // Worker pool: bounded channel provides backpressure.
         let worker_count = (num_cpus::get() / 2).clamp(1, 4);
         let (work_tx, work_rx) = tokio::sync::mpsc::channel::<String>(32);
-        let work_rx = std::sync::Arc::new(tokio::sync::Mutex::new(work_rx));
 
-        // Track files that are currently waiting for size stability or hashing.
         let active_tasks: std::sync::Arc<parking_lot::Mutex<std::collections::HashSet<String>>> =
             std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashSet::new()));
 
-        // Spawn the worker pool on the tokio runtime.
-        for i in 0..worker_count {
-            let rx = work_rx.clone();
-            let tx_out = tx.clone();
-            let active = active_tasks.clone();
-            handle.spawn(async move {
-                loop {
-                    let path_str = {
-                        let mut guard = rx.lock().await;
-                        match guard.recv().await {
-                            Some(p) => p,
-                            None => break, // channel closed
-                        }
-                    };
-
-                    let is_complete = wait_for_file_completion(&path_str).await;
-
-                    if is_complete {
-                        let p_clone = path_str.clone();
-                        match tokio::task::spawn_blocking(move || compute_sha1_chunked(&p_clone))
-                            .await
-                        {
-                            Ok(Ok(checksum)) => {
-                                let sidecar_path =
-                                    crate::sidecar::find_sidecar(std::path::Path::new(&path_str))
-                                        .map(|p| p.to_string_lossy().into_owned());
-                                log::info!("File ready: {} (sha1={})", path_str, checksum);
-                                let _ = tx_out
-                                    .send(MonitorEvent::Ready {
-                                        path: path_str.clone(),
-                                        checksum,
-                                        sidecar_path,
-                                    })
-                                    .await;
-                            }
-                            Ok(Err(e)) => {
-                                log::error!("Checksum error for {}: {}", path_str, e);
-                            }
-                            Err(e) => {
-                                log::error!("Checksum task panicked for {}: {}", path_str, e);
-                            }
-                        }
-                    } else {
-                        log::warn!("File never stabilised, skipping: {}", path_str);
-                    }
-
-                    // Clear from active tasks so future modifications can be sensed.
-                    active.lock().remove(&path_str);
-                }
-                log::debug!("Hash worker {} exiting", i);
-            });
-        }
+        spawn_hash_workers(
+            &handle,
+            worker_count,
+            work_rx,
+            tx.clone(),
+            active_tasks.clone(),
+        );
         log::info!("Started {} hash worker(s) for file monitor", worker_count);
 
         std::thread::spawn(move || {
@@ -168,7 +120,6 @@ impl Monitor {
                 background_sync_enabled,
             );
 
-            // Debounce map: path -> last seen instant
             let mut debounce_map: HashMap<String, Instant> = HashMap::new();
 
             loop {
@@ -197,80 +148,14 @@ impl Monitor {
                 };
 
                 match res {
-                    Ok(event) => {
-                        let is_upsert =
-                            matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_));
-                        let is_delete = matches!(event.kind, EventKind::Remove(_));
-
-                        if is_upsert || is_delete {
-                            for path in event.paths {
-                                if is_upsert && path.is_dir() {
-                                    continue;
-                                }
-
-                                let ext =
-                                    path.extension().map(|e| e.to_string_lossy().to_lowercase());
-                                let ext_str = ext.as_deref().unwrap_or("");
-
-                                if !media_kinds::is_supported_ext(ext_str) {
-                                    continue;
-                                }
-
-                                let path_str = path.to_string_lossy().into_owned();
-                                let Some(matched_entry) =
-                                    best_matching_watch_entry(&path, &watch_paths)
-                                else {
-                                    continue;
-                                };
-                                let rules = matched_entry.rules();
-                                if is_delete {
-                                    if rules.delete_folder_to_album && !is_temporary_file(&path) {
-                                        log::info!("Deleted file event: {}", path_str);
-                                        let _ = tx.blocking_send(MonitorEvent::Deleted {
-                                            path: path_str,
-                                        });
-                                    }
-                                    continue;
-                                }
-
-                                if rules.sync_method == FolderSyncMethod::DownloadOnly
-                                    || is_temporary_file(&path)
-                                    || !rules.matches(&path)
-                                {
-                                    continue;
-                                }
-
-                                // Bail immediately if we're already waiting on this file.
-                                if active_tasks.lock().contains(&path_str) {
-                                    continue;
-                                }
-
-                                let now = Instant::now();
-                                let debounce_ok = debounce_map
-                                    .get(&path_str)
-                                    .map(|last| now.duration_since(*last) > Duration::from_secs(2))
-                                    .unwrap_or(true);
-
-                                if !debounce_ok {
-                                    continue;
-                                }
-
-                                if debounce_map.len() > 1000 {
-                                    let cutoff = now - Duration::from_secs(60);
-                                    debounce_map.retain(|_, last| *last > cutoff);
-                                }
-
-                                log::info!("New file event: {}", path_str);
-                                debounce_map.insert(path_str.clone(), now);
-                                active_tasks.lock().insert(path_str.clone());
-
-                                // Route to worker pool via bounded channel.
-                                if let Err(err) = work_tx.blocking_send(path_str) {
-                                    log::warn!("Failed to send work to hash pool: {}", err);
-                                }
-                            }
-                        }
-                    }
+                    Ok(event) => handle_notify_event(
+                        event,
+                        &watch_paths,
+                        &tx,
+                        &work_tx,
+                        &active_tasks,
+                        &mut debounce_map,
+                    ),
                     Err(e) => log::error!("Watch error: {:?}", e),
                 }
             }
@@ -279,6 +164,151 @@ impl Monitor {
         });
 
         MonitorHandle { command_tx }
+    }
+}
+
+fn spawn_hash_workers(
+    handle: &tokio::runtime::Handle,
+    worker_count: usize,
+    work_rx: tokio::sync::mpsc::Receiver<String>,
+    tx_out: mpsc::Sender<MonitorEvent>,
+    active_tasks: std::sync::Arc<parking_lot::Mutex<std::collections::HashSet<String>>>,
+) {
+    let work_rx = std::sync::Arc::new(tokio::sync::Mutex::new(work_rx));
+    for i in 0..worker_count {
+        let rx = work_rx.clone();
+        let tx_out = tx_out.clone();
+        let active = active_tasks.clone();
+        handle.spawn(async move {
+            loop {
+                let path_str = {
+                    let mut guard = rx.lock().await;
+                    match guard.recv().await {
+                        Some(p) => p,
+                        None => break,
+                    }
+                };
+
+                if wait_for_file_completion(&path_str).await {
+                    hash_and_emit(&path_str, &tx_out).await;
+                } else {
+                    log::warn!("File never stabilised, skipping: {}", path_str);
+                }
+
+                active.lock().remove(&path_str);
+            }
+            log::debug!("Hash worker {} exiting", i);
+        });
+    }
+}
+
+async fn hash_and_emit(path_str: &str, tx_out: &mpsc::Sender<MonitorEvent>) {
+    let p_clone = path_str.to_owned();
+    match tokio::task::spawn_blocking(move || compute_sha1_chunked(&p_clone)).await {
+        Ok(Ok(checksum)) => {
+            let sidecar_path = crate::sidecar::find_sidecar(std::path::Path::new(path_str))
+                .map(|p| p.to_string_lossy().into_owned());
+            log::info!("File ready: {} (sha1={})", path_str, checksum);
+            let _ = tx_out
+                .send(MonitorEvent::Ready {
+                    path: path_str.to_owned(),
+                    checksum,
+                    sidecar_path,
+                })
+                .await;
+        }
+        Ok(Err(e)) => {
+            log::error!("Checksum error for {}: {}", path_str, e);
+        }
+        Err(e) => {
+            log::error!("Checksum task panicked for {}: {}", path_str, e);
+        }
+    }
+}
+
+fn handle_notify_event(
+    event: notify::Event,
+    watch_paths: &[WatchPathEntry],
+    tx: &mpsc::Sender<MonitorEvent>,
+    work_tx: &tokio::sync::mpsc::Sender<String>,
+    active_tasks: &std::sync::Arc<parking_lot::Mutex<std::collections::HashSet<String>>>,
+    debounce_map: &mut HashMap<String, Instant>,
+) {
+    let is_upsert = matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_));
+    let is_delete = matches!(event.kind, EventKind::Remove(_));
+
+    if !is_upsert && !is_delete {
+        return;
+    }
+
+    for path in event.paths {
+        if is_upsert && path.is_dir() {
+            continue;
+        }
+
+        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
+        if !media_kinds::is_supported_ext(ext.as_deref().unwrap_or("")) {
+            continue;
+        }
+
+        let path_str = path.to_string_lossy().into_owned();
+        let Some(matched_entry) = best_matching_watch_entry(&path, watch_paths) else {
+            continue;
+        };
+        let rules = matched_entry.rules();
+
+        if is_delete {
+            if rules.delete_folder_to_album && !is_temporary_file(&path) {
+                log::info!("Deleted file event: {}", path_str);
+                let _ = tx.blocking_send(MonitorEvent::Deleted { path: path_str });
+            }
+            continue;
+        }
+
+        process_upsert_path(&path, path_str, &rules, active_tasks, debounce_map, work_tx);
+    }
+}
+
+fn process_upsert_path(
+    path: &Path,
+    path_str: String,
+    rules: &crate::config::FolderRules,
+    active_tasks: &std::sync::Arc<parking_lot::Mutex<std::collections::HashSet<String>>>,
+    debounce_map: &mut HashMap<String, Instant>,
+    work_tx: &tokio::sync::mpsc::Sender<String>,
+) {
+    if rules.sync_method == FolderSyncMethod::DownloadOnly
+        || is_temporary_file(path)
+        || !rules.matches(path)
+    {
+        return;
+    }
+
+    if active_tasks.lock().contains(&path_str) {
+        return;
+    }
+
+    let now = Instant::now();
+    let debounce_ok = debounce_map
+        .get(&path_str)
+        .map(|last| now.duration_since(*last) > Duration::from_secs(2))
+        .unwrap_or(true);
+
+    if !debounce_ok {
+        return;
+    }
+
+    if debounce_map.len() > 1000 {
+        let cutoff = now - Duration::from_secs(60);
+        debounce_map.retain(|_, last| *last > cutoff);
+    }
+
+    log::info!("New file event: {}", path_str);
+    debounce_map.insert(path_str.clone(), now);
+    active_tasks.lock().insert(path_str.clone());
+
+    if let Err(err) = work_tx.blocking_send(path_str) {
+        log::warn!("Failed to send work to hash pool: {}", err);
     }
 }
 
