@@ -1,25 +1,5 @@
 pub(super) fn decode_jpegxl_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
-    let file = match std::fs::File::open(path) {
-        Ok(file) => file,
-        Err(err) => {
-            log::warn!("JXL read failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
-    let image = match jxl_oxide::JxlImage::builder().read(file) {
-        Ok(image) => image,
-        Err(err) => {
-            log::warn!("JXL parse failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
-    let render = match image.render_frame(0) {
-        Ok(render) => render,
-        Err(err) => {
-            log::warn!("JXL render failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
+    let render = load_jxl_render(path)?;
     let mut stream = render.stream();
     let width = stream.width();
     let height = stream.height();
@@ -37,6 +17,30 @@ pub(super) fn decode_jpegxl_texture(path: &std::path::Path) -> Option<gdk4::Text
         buf,
         usize::try_from(width).ok()?.checked_mul(bpp)?,
     )
+}
+
+fn load_jxl_render(path: &std::path::Path) -> Option<jxl_oxide::Render> {
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(err) => {
+            log::warn!("JXL read failed for {}: {}", path.display(), err);
+            return None;
+        }
+    };
+    let image = match jxl_oxide::JxlImage::builder().read(file) {
+        Ok(img) => img,
+        Err(err) => {
+            log::warn!("JXL parse failed for {}: {}", path.display(), err);
+            return None;
+        }
+    };
+    match image.render_frame(0) {
+        Ok(render) => Some(render),
+        Err(err) => {
+            log::warn!("JXL render failed for {}: {}", path.display(), err);
+            None
+        }
+    }
 }
 
 pub(super) fn decode_svg_texture(path: &std::path::Path) -> Option<gdk4::Texture> {

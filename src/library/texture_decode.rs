@@ -770,6 +770,18 @@ fn extract_libraw_thumb(path: &std::path::Path) -> Option<gdk4::Texture> {
             return Some(texture);
         }
 
+        unpack_libraw_fallback_thumb(lr, flip, sensor_dims, path)
+    }
+}
+
+/// Unpack and decode the libraw fallback thumbnail (JPEG or bitmap).
+unsafe fn unpack_libraw_fallback_thumb(
+    lr: *mut libraw_sys::libraw_data_t,
+    flip: i32,
+    sensor_dims: (u32, u32),
+    path: &std::path::Path,
+) -> Option<gdk4::Texture> {
+    unsafe {
         if libraw_sys::libraw_unpack_thumb(lr) != 0 {
             log::debug!("No embedded thumbnail in {}", path.display());
             return None;
