@@ -25,12 +25,27 @@ pub(super) const CORNER_RADIUS: f32 = 0.0;
 const VIEWPORTS_BEHIND: f32 = 2.0;
 const VIEWPORTS_AHEAD: f32 = 4.0;
 
-use super::layout::{LaidRow, LayoutConfig, first_row_at_or_after, item_at_x, pack_rows, row_at_y};
+use super::layout::{
+    LaidItem, LaidRow, LayoutConfig, first_row_at_or_after, item_at_x, pack_rows, row_at_y,
+};
 pub use super::quality::GridQuality;
 use super::quality::{bucket_for_row_height, fallback_bucket};
 
 mod imp {
     use super::*;
+
+    enum PaintResult {
+        Hit,
+        Miss,
+    }
+
+    struct SnapshotCtx<'a> {
+        model: &'a LibraryAssetModel,
+        cache: &'a Arc<ThumbnailCache>,
+        placeholder: gdk4::RGBA,
+        select_tint: gdk4::RGBA,
+        selection: Option<&'a gtk::MultiSelection>,
+    }
 
     #[derive(Default)]
     pub struct MasonryCanvas {
@@ -119,13 +134,17 @@ mod imp {
                 return;
             };
 
-            let placeholder = if libadwaita::StyleManager::default().is_dark() {
-                gdk4::RGBA::new(0.20, 0.20, 0.22, 1.0)
-            } else {
-                gdk4::RGBA::new(0.90, 0.90, 0.92, 1.0)
+            let sctx = SnapshotCtx {
+                model,
+                cache,
+                placeholder: if libadwaita::StyleManager::default().is_dark() {
+                    gdk4::RGBA::new(0.20, 0.20, 0.22, 1.0)
+                } else {
+                    gdk4::RGBA::new(0.90, 0.90, 0.92, 1.0)
+                },
+                select_tint: gdk4::RGBA::new(0.30, 0.55, 0.95, 0.35),
+                selection: self.selection.get(),
             };
-            let select_tint = gdk4::RGBA::new(0.30, 0.55, 0.95, 0.35);
-            let selection = self.selection.get();
             let mut to_load: Vec<(f32, String, ThumbnailSize, String, bool)> = Vec::new();
             let mut hits = 0usize;
             let mut misses = 0usize;
@@ -138,72 +157,21 @@ mod imp {
                 }
                 let row_in_viewport = row.y + row.h > viewport_top && row.y < viewport_bottom;
                 for it in &row.items {
-                    let bucket = bucket_for_row_height(row.h, self.quality.get());
-                    let asset = model.item(it.asset_index).and_downcast::<AssetObject>();
-                    if asset.is_none() {
-                        let rect = Rect::new(it.x, row.y, it.w, row.h);
-                        snapshot.append_color(&placeholder, &rect);
-                        misses += 1;
-                        painted += 1;
-                        continue;
-                    }
-                    let asset = asset.unwrap();
-                    let asset_id = asset.property::<String>("id");
-                    let local_path = asset.property::<String>("local-path");
-                    let is_local_only = !local_path.is_empty()
-                        && asset_id.starts_with(crate::library::LOCAL_ID_PREFIX);
-
-                    let lookup_bucket = if is_local_only {
-                        ThumbnailSize::Thumbnail
-                    } else {
-                        bucket
-                    };
-                    let cached = if row_in_viewport {
-                        cache.get_cached(&asset_id, lookup_bucket).or_else(|| {
-                            fallback_bucket(lookup_bucket)
-                                .and_then(|fb| cache.get_cached(&asset_id, fb))
-                        })
-                    } else {
-                        cache.peek_cached(&asset_id, lookup_bucket).or_else(|| {
-                            fallback_bucket(lookup_bucket)
-                                .and_then(|fb| cache.peek_cached(&asset_id, fb))
-                        })
-                    };
-
-                    let rect = Rect::new(it.x, row.y, it.w, row.h);
-                    let clipped = CORNER_RADIUS > 0.0;
-                    if clipped {
-                        let corner = Size::new(CORNER_RADIUS, CORNER_RADIUS);
-                        let rounded = RoundedRect::new(rect, corner, corner, corner, corner);
-                        snapshot.push_rounded_clip(&rounded);
-                    }
-                    if let Some(tex) = cached.as_ref() {
-                        snapshot.append_texture(tex, &rect);
-                        hits += 1;
-                    } else {
-                        snapshot.append_color(&placeholder, &rect);
-                        misses += 1;
-                    }
-                    let selected = selection
-                        .map(|s| s.is_selected(it.asset_index))
-                        .unwrap_or(false);
-                    if selected {
-                        snapshot.append_color(&select_tint, &rect);
-                    }
-                    if clipped {
-                        snapshot.pop();
+                    let item_painted = self.paint_item(snapshot, &sctx, row, it, row_in_viewport);
+                    match item_painted {
+                        PaintResult::Hit => hits += 1,
+                        PaintResult::Miss => misses += 1,
                     }
                     painted += 1;
 
-                    if cached.is_none() && !self.failed.borrow().contains(&asset_id) {
-                        let mut pending = self.pending.borrow_mut();
-                        if !pending.contains(&asset_id) {
-                            pending.insert(asset_id.clone());
-                            let cell_center = row.y + row.h * 0.5;
-                            let priority = (cell_center - viewport_center).abs();
-                            to_load.push((priority, asset_id, bucket, local_path, is_local_only));
-                        }
-                    }
+                    self.queue_load_if_needed(
+                        model,
+                        it,
+                        row,
+                        viewport_center,
+                        bucket_for_row_height(row.h, self.quality.get()),
+                        &mut to_load,
+                    );
                 }
             }
             drop(rows);
@@ -264,6 +232,118 @@ mod imp {
             self.layout_h.set(0.0);
             self.rows.borrow_mut().clear();
             self.obj().queue_resize();
+        }
+
+        fn paint_item(
+            &self,
+            snapshot: &gtk::Snapshot,
+            sctx: &SnapshotCtx<'_>,
+            row: &LaidRow,
+            it: &LaidItem,
+            row_in_viewport: bool,
+        ) -> PaintResult {
+            let bucket = bucket_for_row_height(row.h, self.quality.get());
+            let asset = sctx
+                .model
+                .item(it.asset_index)
+                .and_downcast::<AssetObject>();
+            let rect = Rect::new(it.x, row.y, it.w, row.h);
+
+            let Some(asset) = asset else {
+                snapshot.append_color(&sctx.placeholder, &rect);
+                return PaintResult::Miss;
+            };
+
+            let asset_id = asset.property::<String>("id");
+            let local_path = asset.property::<String>("local-path");
+            let is_local_only =
+                !local_path.is_empty() && asset_id.starts_with(crate::library::LOCAL_ID_PREFIX);
+
+            let lookup_bucket = if is_local_only {
+                ThumbnailSize::Thumbnail
+            } else {
+                bucket
+            };
+            let cached = if row_in_viewport {
+                sctx.cache.get_cached(&asset_id, lookup_bucket).or_else(|| {
+                    fallback_bucket(lookup_bucket)
+                        .and_then(|fb| sctx.cache.get_cached(&asset_id, fb))
+                })
+            } else {
+                sctx.cache
+                    .peek_cached(&asset_id, lookup_bucket)
+                    .or_else(|| {
+                        fallback_bucket(lookup_bucket)
+                            .and_then(|fb| sctx.cache.peek_cached(&asset_id, fb))
+                    })
+            };
+
+            let clipped = CORNER_RADIUS > 0.0;
+            if clipped {
+                let corner = Size::new(CORNER_RADIUS, CORNER_RADIUS);
+                let rounded = RoundedRect::new(rect, corner, corner, corner, corner);
+                snapshot.push_rounded_clip(&rounded);
+            }
+
+            let result = if let Some(tex) = cached.as_ref() {
+                snapshot.append_texture(tex, &rect);
+                PaintResult::Hit
+            } else {
+                snapshot.append_color(&sctx.placeholder, &rect);
+                PaintResult::Miss
+            };
+
+            let selected = sctx
+                .selection
+                .map(|s| s.is_selected(it.asset_index))
+                .unwrap_or(false);
+            if selected {
+                snapshot.append_color(&sctx.select_tint, &rect);
+            }
+            if clipped {
+                snapshot.pop();
+            }
+            result
+        }
+
+        fn queue_load_if_needed(
+            &self,
+            model: &LibraryAssetModel,
+            it: &LaidItem,
+            row: &LaidRow,
+            viewport_center: f32,
+            bucket: ThumbnailSize,
+            to_load: &mut Vec<(f32, String, ThumbnailSize, String, bool)>,
+        ) {
+            let Some(asset) = model.item(it.asset_index).and_downcast::<AssetObject>() else {
+                return;
+            };
+            let asset_id = asset.property::<String>("id");
+            if self.failed.borrow().contains(&asset_id) {
+                return;
+            }
+            let Some(cache) = self.cache.get() else {
+                return;
+            };
+            let local_path = asset.property::<String>("local-path");
+            let is_local_only =
+                !local_path.is_empty() && asset_id.starts_with(crate::library::LOCAL_ID_PREFIX);
+            let lookup_bucket = if is_local_only {
+                ThumbnailSize::Thumbnail
+            } else {
+                bucket
+            };
+            if cache.peek_cached(&asset_id, lookup_bucket).is_some() {
+                return;
+            }
+            let mut pending = self.pending.borrow_mut();
+            if pending.contains(&asset_id) {
+                return;
+            }
+            pending.insert(asset_id.clone());
+            let cell_center = row.y + row.h * 0.5;
+            let priority = (cell_center - viewport_center).abs();
+            to_load.push((priority, asset_id, bucket, local_path, is_local_only));
         }
 
         fn viewport(&self) -> (f32, f32) {
