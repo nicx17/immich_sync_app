@@ -637,64 +637,43 @@ fn enumerate_candidates(
                 };
 
                 for child in read_dir {
-                    match child {
-                        Ok(entry_fs) => {
-                            let path = entry_fs.path();
-                            if path.is_dir() {
-                                stack.push(path);
-                                continue;
-                            }
-
-                            if !is_supported_media_path(&path) {
-                                continue;
-                            }
-                            if is_temporary_file(&path) || !entry.rules().matches(&path) {
-                                continue;
-                            }
-
-                            let path_str = path.to_string_lossy().into_owned();
-
-                            // Apply catchup-mode filtering.
-                            if catchup_mode == StartupCatchupMode::RecentOnly {
-                                if let Ok(meta) = entry_fs.metadata()
-                                    && let Ok(modified) = meta.modified()
-                                    && let Ok(duration) =
-                                        std::time::SystemTime::now().duration_since(modified)
-                                    && duration.as_secs() > 7 * 86400
-                                {
-                                    skipped.fetch_add(1, Ordering::Relaxed);
-                                    continue;
-                                }
-                            } else if catchup_mode == StartupCatchupMode::NewFilesOnly
-                                && let Ok(meta) = entry_fs.metadata()
-                                && let Ok(created) = meta.created().or_else(|_| meta.modified())
-                            {
-                                let created_secs = created
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs_f64();
-                                if created_secs < last_sync {
-                                    skipped.fetch_add(1, Ordering::Relaxed);
-                                    continue;
-                                }
-                            }
-
-                            seen_paths.lock().insert(path_str.clone());
-                            let album_name = effective_album_name(entry, &path);
-                            let sidecar_enabled =
-                                entry.rules().xmp_sidecar_enabled(global_xmp_enabled);
-                            results.push(ScanCandidate {
-                                path: path_str,
-                                watch_path: watch_path_str.clone(),
-                                album_name,
-                                sidecar_enabled,
-                            });
-                        }
+                    let entry_fs = match child {
+                        Ok(e) => e,
                         Err(err) => {
                             errors.fetch_add(1, Ordering::Relaxed);
                             log::warn!("Startup scan directory entry error: {}", err);
+                            continue;
                         }
+                    };
+
+                    let path = entry_fs.path();
+                    if path.is_dir() {
+                        stack.push(path);
+                        continue;
                     }
+
+                    if !is_supported_media_path(&path)
+                        || is_temporary_file(&path)
+                        || !entry.rules().matches(&path)
+                    {
+                        continue;
+                    }
+
+                    if should_skip_for_catchup(&catchup_mode, &entry_fs, last_sync) {
+                        skipped.fetch_add(1, Ordering::Relaxed);
+                        continue;
+                    }
+
+                    let path_str = path.to_string_lossy().into_owned();
+                    seen_paths.lock().insert(path_str.clone());
+                    let album_name = effective_album_name(entry, &path);
+                    let sidecar_enabled = entry.rules().xmp_sidecar_enabled(global_xmp_enabled);
+                    results.push(ScanCandidate {
+                        path: path_str,
+                        watch_path: watch_path_str.clone(),
+                        album_name,
+                        sidecar_enabled,
+                    });
                 }
             }
             results
@@ -707,6 +686,40 @@ fn enumerate_candidates(
         skipped.into_inner(),
         errors.into_inner(),
     )
+}
+
+fn should_skip_for_catchup(
+    mode: &StartupCatchupMode,
+    entry_fs: &std::fs::DirEntry,
+    last_sync: f64,
+) -> bool {
+    let meta = match entry_fs.metadata() {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+
+    match mode {
+        StartupCatchupMode::RecentOnly => {
+            let Ok(modified) = meta.modified() else {
+                return false;
+            };
+            let Ok(duration) = std::time::SystemTime::now().duration_since(modified) else {
+                return false;
+            };
+            duration.as_secs() > 7 * 86400
+        }
+        StartupCatchupMode::NewFilesOnly => {
+            let Ok(created) = meta.created().or_else(|_| meta.modified()) else {
+                return false;
+            };
+            let created_secs = created
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs_f64();
+            created_secs < last_sync
+        }
+        _ => false,
+    }
 }
 
 /// Hash a candidate file and submit it to the upload queue.
