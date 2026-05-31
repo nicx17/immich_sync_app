@@ -115,6 +115,15 @@
   </keywords>
   <content_rating type="oars-1.1" />
   <releases>
+  <release version="9.6.1" date="2026-05-31">
+    <description>
+      <ul>
+        <li>Lightbox drag-to-pan is now smooth when you are zoomed in.</li>
+        <li
+                    >API key permission help was updated to use the correct Immich permission names.</li>
+      </ul>
+    </description>
+  </release>
     <release version="9.6.0" date="2026-05-25">
       <description>
         <ul>

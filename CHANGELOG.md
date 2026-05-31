@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [9.6.1] - 2026-05-31
+
+### Changed
+
+- Revised API key permission guidance across the app, README, and wiki to match Immich's exact scope names. The documentation and in-app messaging now call out `user.read`, `albumAsset.create`, and `albumAsset.delete`, and clarify the extra scopes needed for Library / Explore browsing and deletion mirroring.
+
+### Fixed
+
+- Lightbox mouse drag-pan is now smooth and jitter-free when zoomed in. The drag and pinch gestures now share the scrolled-image coordinate space.
+
 ## [9.6.0] - 2026-05-25
 
 ### Added
