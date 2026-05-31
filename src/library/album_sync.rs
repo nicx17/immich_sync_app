@@ -115,15 +115,18 @@ pub async fn diff_album_vs_folder(
         }
     }
 
+    let classify_ctx = ClassifyContext {
+        album_id,
+        remote_unhashed,
+        rules,
+        manual_sync,
+    };
     let (mut to_upload, mut to_delete_local) = classify_local_entries(
         &ctx,
         local_entries,
         &remote_set,
         &mut orphan_by_checksum,
-        album_id,
-        remote_unhashed,
-        rules,
-        manual_sync,
+        &classify_ctx,
     );
 
     let mut to_delete_remote = Vec::new();
@@ -222,16 +225,19 @@ pub async fn diff_album_vs_folder(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+struct ClassifyContext<'a> {
+    album_id: &'a str,
+    remote_unhashed: usize,
+    rules: &'a FolderRules,
+    manual_sync: bool,
+}
+
 fn classify_local_entries(
     ctx: &Arc<AppContext>,
     local_entries: Vec<LocalEntry>,
     remote_set: &HashSet<String>,
     orphan_by_checksum: &mut std::collections::HashMap<String, String>,
-    album_id: &str,
-    remote_unhashed: usize,
-    rules: &FolderRules,
-    manual_sync: bool,
+    cc: &ClassifyContext<'_>,
 ) -> (Vec<LocalEntry>, Vec<LocalEntry>) {
     let mut to_upload = Vec::new();
     let mut to_delete_local = Vec::new();
@@ -245,20 +251,20 @@ fn classify_local_entries(
             continue;
         }
 
-        if !was_previously_synced_to(ctx, &path_str, &entry.checksum, album_id) {
+        if !was_previously_synced_to(ctx, &path_str, &entry.checksum, cc.album_id) {
             to_upload.push(entry);
             continue;
         }
 
-        if remote_unhashed > 0 {
+        if cc.remote_unhashed > 0 {
             log::debug!(
                 "Skipping local delete decision for {} because {} remote album item(s) have no checksum",
                 entry.local.path.display(),
-                remote_unhashed
+                cc.remote_unhashed
             );
-        } else if rules.delete_album_to_folder && ALBUM_TO_FOLDER_TRASH_AVAILABLE {
+        } else if cc.rules.delete_album_to_folder && ALBUM_TO_FOLDER_TRASH_AVAILABLE {
             to_delete_local.push(entry);
-        } else if manual_sync {
+        } else if cc.manual_sync {
             to_upload.push(entry);
         }
     }

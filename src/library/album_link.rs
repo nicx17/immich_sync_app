@@ -228,83 +228,96 @@ fn present_sync_dialog(
         let album_id = album_id.clone();
         let album_name = album_name.clone();
         let watch_path = watch_path.clone();
-        let to_upload = if do_upload {
-            diff.to_upload.clone()
-        } else {
-            Vec::new()
-        };
-        let to_download = if do_download {
-            diff.to_download.clone()
-        } else {
-            Vec::new()
-        };
-        let to_delete_remote = if do_remote_delete {
-            diff.to_delete_remote.clone()
-        } else {
-            Vec::new()
-        };
-        let to_delete_local = if do_local_delete {
-            diff.to_delete_local.clone()
-        } else {
-            Vec::new()
-        };
-        glib::MainContext::default().spawn_local(async move {
-            let queued = if !to_upload.is_empty() {
-                crate::library::album_sync::execute_uploads(
-                    ui.ctx.clone(),
-                    album_id.clone(),
-                    album_name.clone(),
-                    watch_path.clone(),
-                    to_upload,
-                )
-                .await
+        let filtered = crate::library::album_sync::AlbumDiff {
+            to_upload: if do_upload {
+                diff.to_upload.clone()
             } else {
-                0
-            };
-            let (downloaded, failed) = if !to_download.is_empty() {
-                crate::library::album_sync::execute_downloads(
-                    ui.ctx.clone(),
-                    watch_path,
-                    Some(album_id.clone()),
-                    Some(album_name.clone()),
-                    to_download,
-                )
-                .await
+                Vec::new()
+            },
+            to_download: if do_download {
+                diff.to_download.clone()
             } else {
-                (0, 0)
-            };
-            let remote_deleted = if !to_delete_remote.is_empty() {
-                crate::library::album_sync::execute_remote_deletions(
-                    ui.ctx.clone(),
-                    &album_id,
-                    to_delete_remote,
-                )
-                .await
+                Vec::new()
+            },
+            to_delete_remote: if do_remote_delete {
+                diff.to_delete_remote.clone()
             } else {
-                0
-            };
-            let (local_deleted, local_delete_failed) = if !to_delete_local.is_empty() {
-                crate::library::album_sync::execute_local_deletions(ui.ctx.clone(), to_delete_local)
-                    .await
+                Vec::new()
+            },
+            to_delete_local: if do_local_delete {
+                diff.to_delete_local.clone()
             } else {
-                (0, 0)
-            };
-            log::info!(
-                "Album sync done: {} queued for upload, {} downloaded, {} download failures, {} moved to Immich trash, {} local trashed, {} local trash failures",
-                queued,
-                downloaded,
-                failed,
-                remote_deleted,
-                local_deleted,
-                local_delete_failed
-            );
-            if queued > 0 || downloaded > 0 || remote_deleted > 0 || local_deleted > 0 {
-                super::refresh_library_after_mutation(ui.clone(), true);
-            }
-        });
+                Vec::new()
+            },
+            remote_unhashed: 0,
+        };
+        glib::MainContext::default().spawn_local(execute_sync_selections(
+            ui, album_id, album_name, watch_path, filtered,
+        ));
         dlg.close();
     });
     dialog.present(Some(&ui.window));
+}
+
+async fn execute_sync_selections(
+    ui: Rc<LibraryWindowUi>,
+    album_id: String,
+    album_name: String,
+    watch_path: std::path::PathBuf,
+    diff: crate::library::album_sync::AlbumDiff,
+) {
+    let queued = if !diff.to_upload.is_empty() {
+        crate::library::album_sync::execute_uploads(
+            ui.ctx.clone(),
+            album_id.clone(),
+            album_name.clone(),
+            watch_path.clone(),
+            diff.to_upload,
+        )
+        .await
+    } else {
+        0
+    };
+    let (downloaded, failed) = if !diff.to_download.is_empty() {
+        crate::library::album_sync::execute_downloads(
+            ui.ctx.clone(),
+            watch_path,
+            Some(album_id.clone()),
+            Some(album_name.clone()),
+            diff.to_download,
+        )
+        .await
+    } else {
+        (0, 0)
+    };
+    let remote_deleted = if !diff.to_delete_remote.is_empty() {
+        crate::library::album_sync::execute_remote_deletions(
+            ui.ctx.clone(),
+            &album_id,
+            diff.to_delete_remote,
+        )
+        .await
+    } else {
+        0
+    };
+    let (local_deleted, local_delete_failed) = if !diff.to_delete_local.is_empty() {
+        crate::library::album_sync::execute_local_deletions(ui.ctx.clone(), diff.to_delete_local)
+            .await
+    } else {
+        (0, 0)
+    };
+    log::info!(
+        "Album sync done: {} queued for upload, {} downloaded, {} download failures, {} moved to Immich trash, {} local trashed, {} local trash failures",
+        queued,
+        downloaded,
+        failed,
+        remote_deleted,
+        local_deleted,
+        local_delete_failed
+    );
+    if queued > 0 || downloaded > 0 || remote_deleted > 0 || local_deleted > 0 {
+        super::refresh_library_after_mutation(ui.clone(), true);
+    }
 }
 
 fn handle_album_link_click(ui: Rc<LibraryWindowUi>) {
