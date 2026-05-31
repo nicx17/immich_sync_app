@@ -89,107 +89,15 @@ fn original_preview_cache_path(
 /// DateTimeOriginal — the camera's capture moment) or "Modified" (filesystem
 /// mtime fallback when no capture timestamp exists).
 fn fill_exif_box(container: &gtk::Box, exif: &crate::api_client::ExifInfo, taken_label: &str) {
-    let camera_group = libadwaita::PreferencesGroup::builder()
-        .title("Camera")
-        .build();
-    let mut camera_rows = 0u32;
-    if let Some(c) = format_camera(exif) {
-        camera_group.add(&accent_row(
-            "camera-photo-symbolic",
-            "mimick-accent-camera",
-            "Body",
-            &c,
-        ));
-        camera_rows += 1;
+    if let Some(group) = build_camera_group(exif) {
+        container.append(&group);
     }
-    if let Some(l) = &exif.lens_model
-        && !l.trim().is_empty()
-    {
-        camera_group.add(&accent_row(
-            "view-fullscreen-symbolic",
-            "mimick-accent-camera",
-            "Lens",
-            l,
-        ));
-        camera_rows += 1;
+    if let Some(group) = build_image_group(exif, taken_label) {
+        container.append(&group);
     }
-    if let Some(exposure) = format_exposure(exif) {
-        camera_group.add(&accent_row(
-            "weather-clear-symbolic",
-            "mimick-accent-camera",
-            "Exposure",
-            &exposure,
-        ));
-        camera_rows += 1;
+    if let Some(group) = build_location_group(exif) {
+        container.append(&group);
     }
-
-    let image_group = libadwaita::PreferencesGroup::builder()
-        .title("Image")
-        .build();
-    let mut image_rows = 0u32;
-    if let (Some(w), Some(h)) = (exif.exif_image_width, exif.exif_image_height) {
-        image_group.add(&accent_row(
-            "view-grid-symbolic",
-            "mimick-accent-image",
-            "Dimensions",
-            &format!("{w} × {h}"),
-        ));
-        image_rows += 1;
-    }
-    if let Some(size) = exif.file_size_in_byte {
-        image_group.add(&accent_row(
-            "drive-harddisk-symbolic",
-            "mimick-accent-image",
-            "Size",
-            &format_bytes(size),
-        ));
-        image_rows += 1;
-    }
-    if let Some(dt) = &exif.date_time_original
-        && !dt.trim().is_empty()
-    {
-        image_group.add(&accent_row(
-            "x-office-calendar-symbolic",
-            "mimick-accent-image",
-            taken_label,
-            &format_datetime_display(dt),
-        ));
-        image_rows += 1;
-    }
-
-    let location_group = libadwaita::PreferencesGroup::builder()
-        .title("Location")
-        .build();
-    let mut location_rows = 0u32;
-    if let Some(loc) = format_location(exif) {
-        location_group.add(&accent_row(
-            "mark-location-symbolic",
-            "mimick-accent-location",
-            "Place",
-            &loc,
-        ));
-        location_rows += 1;
-    }
-    if let (Some(lat), Some(lon)) = (exif.latitude, exif.longitude) {
-        location_group.add(&accent_row(
-            "find-location-symbolic",
-            "mimick-accent-location",
-            "Coordinates",
-            &format!("{lat:.5}, {lon:.5}"),
-        ));
-        location_rows += 1;
-    }
-
-    if camera_rows > 0 {
-        container.append(&camera_group);
-    }
-    if image_rows > 0 {
-        container.append(&image_group);
-    }
-    if location_rows > 0 {
-        container.append(&location_group);
-    }
-
     if let Some(desc) = &exif.description
         && !desc.trim().is_empty()
     {
@@ -204,6 +112,111 @@ fn fill_exif_box(container: &gtk::Box, exif: &crate::api_client::ExifInfo, taken
         note_group.add(&row);
         container.append(&note_group);
     }
+}
+
+fn build_camera_group(exif: &crate::api_client::ExifInfo) -> Option<libadwaita::PreferencesGroup> {
+    let group = libadwaita::PreferencesGroup::builder()
+        .title("Camera")
+        .build();
+    let mut rows = 0u32;
+    if let Some(c) = format_camera(exif) {
+        group.add(&accent_row(
+            "camera-photo-symbolic",
+            "mimick-accent-camera",
+            "Body",
+            &c,
+        ));
+        rows += 1;
+    }
+    if let Some(l) = &exif.lens_model
+        && !l.trim().is_empty()
+    {
+        group.add(&accent_row(
+            "view-fullscreen-symbolic",
+            "mimick-accent-camera",
+            "Lens",
+            l,
+        ));
+        rows += 1;
+    }
+    if let Some(exposure) = format_exposure(exif) {
+        group.add(&accent_row(
+            "weather-clear-symbolic",
+            "mimick-accent-camera",
+            "Exposure",
+            &exposure,
+        ));
+        rows += 1;
+    }
+    (rows > 0).then_some(group)
+}
+
+fn build_image_group(
+    exif: &crate::api_client::ExifInfo,
+    taken_label: &str,
+) -> Option<libadwaita::PreferencesGroup> {
+    let group = libadwaita::PreferencesGroup::builder()
+        .title("Image")
+        .build();
+    let mut rows = 0u32;
+    if let (Some(w), Some(h)) = (exif.exif_image_width, exif.exif_image_height) {
+        group.add(&accent_row(
+            "view-grid-symbolic",
+            "mimick-accent-image",
+            "Dimensions",
+            &format!("{w} × {h}"),
+        ));
+        rows += 1;
+    }
+    if let Some(size) = exif.file_size_in_byte {
+        group.add(&accent_row(
+            "drive-harddisk-symbolic",
+            "mimick-accent-image",
+            "Size",
+            &format_bytes(size),
+        ));
+        rows += 1;
+    }
+    if let Some(dt) = &exif.date_time_original
+        && !dt.trim().is_empty()
+    {
+        group.add(&accent_row(
+            "x-office-calendar-symbolic",
+            "mimick-accent-image",
+            taken_label,
+            &format_datetime_display(dt),
+        ));
+        rows += 1;
+    }
+    (rows > 0).then_some(group)
+}
+
+fn build_location_group(
+    exif: &crate::api_client::ExifInfo,
+) -> Option<libadwaita::PreferencesGroup> {
+    let group = libadwaita::PreferencesGroup::builder()
+        .title("Location")
+        .build();
+    let mut rows = 0u32;
+    if let Some(loc) = format_location(exif) {
+        group.add(&accent_row(
+            "mark-location-symbolic",
+            "mimick-accent-location",
+            "Place",
+            &loc,
+        ));
+        rows += 1;
+    }
+    if let (Some(lat), Some(lon)) = (exif.latitude, exif.longitude) {
+        group.add(&accent_row(
+            "find-location-symbolic",
+            "mimick-accent-location",
+            "Coordinates",
+            &format!("{lat:.5}, {lon:.5}"),
+        ));
+        rows += 1;
+    }
+    (rows > 0).then_some(group)
 }
 
 fn accent_row(icon: &str, accent_class: &str, title: &str, value: &str) -> libadwaita::ActionRow {
