@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Masonry grid scrolling and thumbnail loading are now more stable. Items close to the visible area load first, and the layout no longer shifts as much while images are coming in.
 - Large cells can now request higher-quality preview and full-size thumbnail buckets correctly, with automatic fallback when a higher bucket is unavailable on the server.
 
+### Refactored
+
+- Decomposed high-complexity functions across the codebase to bring cognitive complexity under 15 and cyclomatic complexity under 8, enforced via `clippy::cognitive_complexity` at warn level. Affected modules: `monitor`, `startup_scan`, `api_client`, `album_sync`, `album_link`, `canvas`, `lightbox`, `queue_manager`, `settings_window`, `main`, and `texture_decode`.
+- Extracted `texture_decode` into a directory module with a dedicated `codecs` submodule for JXL, SVG, JP2, and PSD decoders.
+- Split JPEG marker parsing (`is_lossless_jpeg`, `find_jpeg_end`) into smaller helpers (`classify_jpeg_marker`, `skip_segment`, `seek_marker`, `scan_sos_entropy`).
+- Extracted libraw FFI helpers (`init_libraw`, `configure_libraw_full_decode`, `run_libraw_full_decode`, `unpack_libraw_fallback_thumb`) from monolithic unsafe blocks.
+- Split masonry layout packing into `collect_row_indices` and `build_row`; gesture handling into `handle_primary_click`, `handle_secondary_click`, and `toggle_selection`.
+- Decomposed `build_settings_window_with_parent` into per-section UI builders and extracted `build_behavior_group` sub-builders (`add_core_rows`, `add_quiet_hours_rows`).
+- Split `finalize_upload_progress` into `apply_idle_state`, `apply_active_state`, and `check_batch_notification`.
+
 ## [9.6.1] - 2026-05-31
 
 ### Changed
