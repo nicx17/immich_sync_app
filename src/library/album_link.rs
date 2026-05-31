@@ -266,46 +266,15 @@ async fn execute_sync_selections(
     watch_path: std::path::PathBuf,
     diff: crate::library::album_sync::AlbumDiff,
 ) {
-    let queued = if !diff.to_upload.is_empty() {
-        crate::library::album_sync::execute_uploads(
-            ui.ctx.clone(),
-            album_id.clone(),
-            album_name.clone(),
-            watch_path.clone(),
-            diff.to_upload,
-        )
-        .await
-    } else {
-        0
-    };
-    let (downloaded, failed) = if !diff.to_download.is_empty() {
-        crate::library::album_sync::execute_downloads(
-            ui.ctx.clone(),
-            watch_path,
-            Some(album_id.clone()),
-            Some(album_name.clone()),
-            diff.to_download,
-        )
-        .await
-    } else {
-        (0, 0)
-    };
-    let remote_deleted = if !diff.to_delete_remote.is_empty() {
-        crate::library::album_sync::execute_remote_deletions(
-            ui.ctx.clone(),
-            &album_id,
-            diff.to_delete_remote,
-        )
-        .await
-    } else {
-        0
-    };
-    let (local_deleted, local_delete_failed) = if !diff.to_delete_local.is_empty() {
-        crate::library::album_sync::execute_local_deletions(ui.ctx.clone(), diff.to_delete_local)
-            .await
-    } else {
-        (0, 0)
-    };
+    let queued =
+        execute_selected_uploads(&ui, &album_id, &album_name, &watch_path, diff.to_upload).await;
+    let (downloaded, failed) =
+        execute_selected_downloads(&ui, &album_id, &album_name, watch_path, diff.to_download).await;
+    let remote_deleted =
+        execute_selected_remote_deletes(&ui, &album_id, diff.to_delete_remote).await;
+    let (local_deleted, local_delete_failed) =
+        execute_selected_local_deletes(&ui, diff.to_delete_local).await;
+
     log::info!(
         "Album sync done: {} queued for upload, {} downloaded, {} download failures, {} moved to Immich trash, {} local trashed, {} local trash failures",
         queued,
@@ -318,6 +287,67 @@ async fn execute_sync_selections(
     if queued > 0 || downloaded > 0 || remote_deleted > 0 || local_deleted > 0 {
         super::refresh_library_after_mutation(ui.clone(), true);
     }
+}
+
+async fn execute_selected_uploads(
+    ui: &Rc<LibraryWindowUi>,
+    album_id: &str,
+    album_name: &str,
+    watch_path: &std::path::Path,
+    assets: Vec<crate::library::album_sync::LocalEntry>,
+) -> usize {
+    if assets.is_empty() {
+        return 0;
+    }
+    crate::library::album_sync::execute_uploads(
+        ui.ctx.clone(),
+        album_id.to_string(),
+        album_name.to_string(),
+        watch_path.to_path_buf(),
+        assets,
+    )
+    .await
+}
+
+async fn execute_selected_downloads(
+    ui: &Rc<LibraryWindowUi>,
+    album_id: &str,
+    album_name: &str,
+    watch_path: std::path::PathBuf,
+    assets: Vec<crate::api_client::LibraryAsset>,
+) -> (usize, usize) {
+    if assets.is_empty() {
+        return (0, 0);
+    }
+    crate::library::album_sync::execute_downloads(
+        ui.ctx.clone(),
+        watch_path,
+        Some(album_id.to_string()),
+        Some(album_name.to_string()),
+        assets,
+    )
+    .await
+}
+
+async fn execute_selected_remote_deletes(
+    ui: &Rc<LibraryWindowUi>,
+    album_id: &str,
+    assets: Vec<crate::api_client::LibraryAsset>,
+) -> usize {
+    if assets.is_empty() {
+        return 0;
+    }
+    crate::library::album_sync::execute_remote_deletions(ui.ctx.clone(), album_id, assets).await
+}
+
+async fn execute_selected_local_deletes(
+    ui: &Rc<LibraryWindowUi>,
+    assets: Vec<crate::library::album_sync::LocalEntry>,
+) -> (usize, usize) {
+    if assets.is_empty() {
+        return (0, 0);
+    }
+    crate::library::album_sync::execute_local_deletions(ui.ctx.clone(), assets).await
 }
 
 fn handle_album_link_click(ui: Rc<LibraryWindowUi>) {

@@ -413,8 +413,9 @@ impl ThumbnailCache {
                     }
                 }
             };
-            let _ = std::fs::create_dir_all(&cache_dir);
-            let _ = pixbuf.savev(&cache_file, "png", &[]);
+            std::fs::create_dir_all(&cache_dir).map_err(|err| err.to_string())?;
+            let encoded = pixbuf_png_bytes(&pixbuf)?;
+            std::fs::write(&cache_file, encoded).map_err(|err| err.to_string())?;
             let format = if pixbuf.has_alpha() {
                 gdk4::MemoryFormat::R8g8b8a8
             } else {
@@ -566,6 +567,42 @@ fn custom_decode_to_thumbnail(path: &std::path::Path) -> Result<gtk::gdk_pixbuf:
     full_pixbuf
         .scale_simple(tw, th, gtk::gdk_pixbuf::InterpType::Bilinear)
         .ok_or_else(|| "Failed to scale pixbuf".to_string())
+}
+
+fn pixbuf_png_bytes(pixbuf: &gtk::gdk_pixbuf::Pixbuf) -> Result<Vec<u8>, String> {
+    use image::ImageEncoder;
+
+    let width = pixbuf.width().max(1) as usize;
+    let height = pixbuf.height().max(1) as usize;
+    let channels = if pixbuf.has_alpha() { 4 } else { 3 };
+    let rowstride = pixbuf.rowstride() as usize;
+    let bytes = pixbuf.read_pixel_bytes();
+    let src = bytes.as_ref();
+    let mut packed = Vec::with_capacity(width * height * channels);
+
+    for row in 0..height {
+        let start = row
+            .checked_mul(rowstride)
+            .ok_or_else(|| "pixbuf row offset overflow".to_string())?;
+        let end = start
+            .checked_add(width * channels)
+            .ok_or_else(|| "pixbuf row end overflow".to_string())?;
+        let row_bytes = src
+            .get(start..end)
+            .ok_or_else(|| "pixbuf row outside buffer".to_string())?;
+        packed.extend_from_slice(row_bytes);
+    }
+
+    let mut encoded = Vec::new();
+    let color = if pixbuf.has_alpha() {
+        image::ColorType::Rgba8
+    } else {
+        image::ColorType::Rgb8
+    };
+    image::codecs::png::PngEncoder::new(&mut encoded)
+        .write_image(&packed, width as u32, height as u32, color.into())
+        .map_err(|err| err.to_string())?;
+    Ok(encoded)
 }
 
 fn target_dim_for_bucket(size: ThumbnailSize) -> i32 {

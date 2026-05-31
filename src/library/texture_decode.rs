@@ -6,6 +6,8 @@
 
 use gtk::prelude::*;
 
+mod codecs;
+
 /// Runtime flag controlling the on-disk RAW decode cache.
 /// Initialised from config at startup; toggled live from the settings UI.
 static RAW_CACHE_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -40,41 +42,57 @@ enum TextureDecoder {
 pub(super) fn load_texture_blocking(path: &std::path::Path) -> Option<gdk4::Texture> {
     let started = std::time::Instant::now();
     let decoder = texture_decoder_for_path(path);
-    let mut winning_route = decoder;
-    let texture = match decoder {
+    let (result, winning_route) = decode_with_fallbacks(path, decoder);
+    log_decode_result(
+        path,
+        decoder,
+        winning_route,
+        started.elapsed().as_millis(),
+        &result,
+    );
+    result
+}
+
+fn decode_with_fallbacks(
+    path: &std::path::Path,
+    decoder: TextureDecoder,
+) -> (Option<gdk4::Texture>, TextureDecoder) {
+    if let Some(texture) = decode_with_route(path, decoder) {
+        return (Some(texture), decoder);
+    }
+    if decoder != TextureDecoder::Pixbuf
+        && let Some(texture) = decode_pixbuf_texture(path)
+    {
+        return (Some(texture), TextureDecoder::Pixbuf);
+    }
+    if let Some(texture) = decode_image_texture(path) {
+        return (Some(texture), TextureDecoder::ImageFallback);
+    }
+    (None, decoder)
+}
+
+fn decode_with_route(path: &std::path::Path, decoder: TextureDecoder) -> Option<gdk4::Texture> {
+    match decoder {
         TextureDecoder::Raw => decode_raw_texture(path),
         TextureDecoder::Heif => decode_heif_texture(path),
-        TextureDecoder::JpegXl => decode_jpegxl_texture(path),
-        TextureDecoder::Svg => decode_svg_texture(path),
+        TextureDecoder::JpegXl => codecs::decode_jpegxl_texture(path),
+        TextureDecoder::Svg => codecs::decode_svg_texture(path),
         TextureDecoder::Jpeg => decode_jpeg_texture(path),
         TextureDecoder::Webp => decode_webp_texture(path),
-        TextureDecoder::Jpeg2k => decode_jpeg2k_texture(path),
+        TextureDecoder::Jpeg2k => codecs::decode_jpeg2k_texture(path),
         TextureDecoder::Psd => decode_psd_texture(path),
         TextureDecoder::Pixbuf => decode_pixbuf_texture(path),
         TextureDecoder::ImageFallback => None,
-    };
+    }
+}
 
-    let result = texture
-        .or_else(|| {
-            if decoder != TextureDecoder::Pixbuf {
-                let fallback = decode_pixbuf_texture(path);
-                if fallback.is_some() {
-                    winning_route = TextureDecoder::Pixbuf;
-                }
-                fallback
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
-            let fallback = decode_image_texture(path);
-            if fallback.is_some() {
-                winning_route = TextureDecoder::ImageFallback;
-            }
-            fallback
-        });
-
-    let elapsed_ms = started.elapsed().as_millis();
+fn log_decode_result(
+    path: &std::path::Path,
+    decoder: TextureDecoder,
+    winning_route: TextureDecoder,
+    elapsed_ms: u128,
+    result: &Option<gdk4::Texture>,
+) {
     match &result {
         Some(texture) => {
             if winning_route == decoder {
@@ -105,7 +123,6 @@ pub(super) fn load_texture_blocking(path: &std::path::Path) -> Option<gdk4::Text
             elapsed_ms,
         ),
     }
-    result
 }
 
 fn texture_decoder_for_path(path: &std::path::Path) -> TextureDecoder {
@@ -192,51 +209,55 @@ pub(super) fn decode_raw_thumbnail_texture(path: &std::path::Path) -> Option<gdk
 fn decode_raw_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
     let full_decode = RAW_FULL_DECODE.load(std::sync::atomic::Ordering::Relaxed);
     if full_decode {
-        // Full demosaic via libraw (slow, highest quality) with optional cache.
-        if let Some(texture) = decode_libraw_texture(path) {
-            return Some(texture);
-        }
-        // imagepipe pure-Rust fallback — wrapped in catch_unwind because
-        // rawloader panics on OOB slice access for some malformed inputs.
-        let path_for_panic = path.to_path_buf();
-        let imagepipe_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            imagepipe::simple_decode_8bit(path, RAW_MAX_DIMENSION, RAW_MAX_DIMENSION)
-        }));
-        match imagepipe_result {
-            Ok(Ok(image)) => memory_texture(
-                image.width.try_into().ok()?,
-                image.height.try_into().ok()?,
-                gdk4::MemoryFormat::R8g8b8,
-                image.data,
-                image.width.checked_mul(3)?,
-            ),
-            Ok(Err(err)) => {
-                log::debug!(
-                    "imagepipe RAW fallback also failed for {}: {}",
-                    path.display(),
-                    err
-                );
-                None
-            }
-            Err(_) => {
-                log::warn!(
-                    "imagepipe RAW fallback panicked for {}",
-                    path_for_panic.display()
-                );
-                None
-            }
-        }
+        decode_full_raw_texture(path)
     } else {
-        // Fast path: extract the embedded camera JPEG preview.
-        if let Some(texture) = extract_libraw_thumb(path) {
-            return Some(texture);
+        decode_raw_preview_or_fallback(path)
+    }
+}
+
+fn decode_full_raw_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
+    decode_libraw_texture(path).or_else(|| decode_imagepipe_raw_fallback(path))
+}
+
+fn decode_raw_preview_or_fallback(path: &std::path::Path) -> Option<gdk4::Texture> {
+    if let Some(texture) = extract_libraw_thumb(path) {
+        return Some(texture);
+    }
+    log::debug!(
+        "No embedded preview in {}; falling back to full decode",
+        path.display()
+    );
+    decode_libraw_texture(path)
+}
+
+fn decode_imagepipe_raw_fallback(path: &std::path::Path) -> Option<gdk4::Texture> {
+    let path_for_panic = path.to_path_buf();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        imagepipe::simple_decode_8bit(path, RAW_MAX_DIMENSION, RAW_MAX_DIMENSION)
+    }));
+    match result {
+        Ok(Ok(image)) => memory_texture(
+            image.width.try_into().ok()?,
+            image.height.try_into().ok()?,
+            gdk4::MemoryFormat::R8g8b8,
+            image.data,
+            image.width.checked_mul(3)?,
+        ),
+        Ok(Err(err)) => {
+            log::debug!(
+                "imagepipe RAW fallback also failed for {}: {}",
+                path.display(),
+                err
+            );
+            None
         }
-        // Fallback to full decode if no embedded thumbnail is available.
-        log::debug!(
-            "No embedded preview in {}; falling back to full decode",
-            path.display()
-        );
-        decode_libraw_texture(path)
+        Err(_) => {
+            log::warn!(
+                "imagepipe RAW fallback panicked for {}",
+                path_for_panic.display()
+            );
+            None
+        }
     }
 }
 
@@ -394,28 +415,39 @@ fn extract_largest_embedded_jpeg(path: &std::path::Path) -> Option<Vec<u8>> {
     let mut i = 0;
 
     while i + 3 < len {
-        // Look for SOI: FF D8 FF xx (xx != 00).
-        if bytes[i] == 0xFF && bytes[i + 1] == 0xD8 && bytes[i + 2] == 0xFF && bytes[i + 3] != 0x00
-        {
-            if let Some(end) = find_jpeg_end(&bytes, i) {
-                let payload_len = end - i;
-                if payload_len >= MIN_EMBEDDED_JPEG_SIZE
-                    && !is_lossless_jpeg(&bytes, i, end)
-                    && best.is_none_or(|(_, l)| payload_len > l)
-                {
-                    best = Some((i, payload_len));
-                }
-                i = end;
-                continue;
-            }
-            // No end found at all -- skip past this SOI.
-            i += 2;
+        if !is_embedded_jpeg_start(&bytes, i) {
+            i += 1;
             continue;
         }
-        i += 1;
+        if let Some(end) = find_jpeg_end(&bytes, i) {
+            best = choose_best_embedded_jpeg(&bytes, best, i, end);
+            i = end;
+        } else {
+            i += 2;
+        }
     }
 
     best.map(|(start, l)| bytes[start..start + l].to_vec())
+}
+
+fn is_embedded_jpeg_start(bytes: &[u8], i: usize) -> bool {
+    bytes[i] == 0xFF && bytes[i + 1] == 0xD8 && bytes[i + 2] == 0xFF && bytes[i + 3] != 0x00
+}
+
+fn choose_best_embedded_jpeg(
+    bytes: &[u8],
+    best: Option<(usize, usize)>,
+    start: usize,
+    end: usize,
+) -> Option<(usize, usize)> {
+    let payload_len = end - start;
+    let candidate_ok =
+        payload_len >= MIN_EMBEDDED_JPEG_SIZE && !is_lossless_jpeg(bytes, start, end);
+    if candidate_ok && best.is_none_or(|(_, len)| payload_len > len) {
+        Some((start, payload_len))
+    } else {
+        best
+    }
 }
 
 /// Walk the JPEG marker structure starting at the SOI at `bytes[start]` and
@@ -511,7 +543,7 @@ fn skip_or_accept(bytes: &[u8], pos: usize) -> Option<usize> {
 /// Hand-rolled because `Pixbuf::apply_embedded_orientation` silently drops
 /// EXIF on some RAW-embedded JPEGs (truncated/oversize APP1 segments).
 fn read_jpeg_exif_orientation(bytes: &[u8]) -> Option<u8> {
-    if bytes.len() < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8 {
+    if !has_jpeg_soi(bytes) {
         return None;
     }
     let mut i = 2;
@@ -520,21 +552,37 @@ fn read_jpeg_exif_orientation(bytes: &[u8]) -> Option<u8> {
             return None;
         }
         let marker = bytes[i + 1];
-        if marker == 0xD8 || marker == 0xD9 || marker == 0x01 || (0xD0..=0xD7).contains(&marker) {
+        if is_standalone_jpeg_marker(marker) {
             i += 2;
             continue;
         }
-        let seg_len = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]) as usize;
-        if seg_len < 2 || i + 2 + seg_len > bytes.len() {
-            return None;
-        }
-        let seg = &bytes[i + 4..i + 2 + seg_len];
-        if marker == 0xE1 && seg.len() >= 6 && &seg[..6] == b"Exif\0\0" {
+        let (seg, next) = jpeg_segment(bytes, i)?;
+        if marker == 0xE1 && is_exif_segment(seg) {
             return parse_tiff_orientation(&seg[6..]);
         }
-        i += 2 + seg_len;
+        i = next;
     }
     None
+}
+
+fn has_jpeg_soi(bytes: &[u8]) -> bool {
+    bytes.len() >= 4 && bytes[0] == 0xFF && bytes[1] == 0xD8
+}
+
+fn is_standalone_jpeg_marker(marker: u8) -> bool {
+    marker == 0xD8 || marker == 0xD9 || marker == 0x01 || (0xD0..=0xD7).contains(&marker)
+}
+
+fn jpeg_segment(bytes: &[u8], i: usize) -> Option<(&[u8], usize)> {
+    let seg_len = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]) as usize;
+    if seg_len < 2 || i + 2 + seg_len > bytes.len() {
+        return None;
+    }
+    Some((&bytes[i + 4..i + 2 + seg_len], i + 2 + seg_len))
+}
+
+fn is_exif_segment(seg: &[u8]) -> bool {
+    seg.len() >= 6 && &seg[..6] == b"Exif\0\0"
 }
 
 /// Parse TIFF IFD0 starting at the TIFF header, return orientation if present.
@@ -542,44 +590,54 @@ fn parse_tiff_orientation(tiff: &[u8]) -> Option<u8> {
     if tiff.len() < 8 {
         return None;
     }
-    let little = match &tiff[..2] {
-        b"II" => true,
-        b"MM" => false,
-        _ => return None,
-    };
-    let read_u16 = |p: &[u8]| -> u16 {
-        if little {
-            u16::from_le_bytes([p[0], p[1]])
-        } else {
-            u16::from_be_bytes([p[0], p[1]])
-        }
-    };
-    let read_u32 = |p: &[u8]| -> u32 {
-        if little {
-            u32::from_le_bytes([p[0], p[1], p[2], p[3]])
-        } else {
-            u32::from_be_bytes([p[0], p[1], p[2], p[3]])
-        }
-    };
-    if read_u16(&tiff[2..4]) != 0x002A {
+    let endian = TiffEndian::from_header(tiff)?;
+    if endian.u16(&tiff[2..4]) != 0x002A {
         return None;
     }
-    let ifd0 = read_u32(&tiff[4..8]) as usize;
+    let ifd0 = endian.u32(&tiff[4..8]) as usize;
     if ifd0 + 2 > tiff.len() {
         return None;
     }
-    let count = read_u16(&tiff[ifd0..ifd0 + 2]) as usize;
+    let count = endian.u16(&tiff[ifd0..ifd0 + 2]) as usize;
     for n in 0..count {
         let off = ifd0 + 2 + n * 12;
-        if off + 12 > tiff.len() {
-            return None;
-        }
-        if read_u16(&tiff[off..off + 2]) == 0x0112 {
-            let v = read_u16(&tiff[off + 8..off + 10]) as u8;
+        let entry = tiff.get(off..off + 12)?;
+        if endian.u16(&entry[..2]) == 0x0112 {
+            let v = endian.u16(&entry[8..10]) as u8;
             return (1..=8).contains(&v).then_some(v);
         }
     }
     None
+}
+
+#[derive(Clone, Copy)]
+enum TiffEndian {
+    Little,
+    Big,
+}
+
+impl TiffEndian {
+    fn from_header(tiff: &[u8]) -> Option<Self> {
+        match &tiff[..2] {
+            b"II" => Some(Self::Little),
+            b"MM" => Some(Self::Big),
+            _ => None,
+        }
+    }
+
+    fn u16(self, p: &[u8]) -> u16 {
+        match self {
+            Self::Little => u16::from_le_bytes([p[0], p[1]]),
+            Self::Big => u16::from_be_bytes([p[0], p[1]]),
+        }
+    }
+
+    fn u32(self, p: &[u8]) -> u32 {
+        match self {
+            Self::Little => u32::from_le_bytes([p[0], p[1], p[2], p[3]]),
+            Self::Big => u32::from_be_bytes([p[0], p[1], p[2], p[3]]),
+        }
+    }
 }
 
 /// Apply EXIF orientation (1..=8) to a Pixbuf via rotate + optional flip.
@@ -700,13 +758,6 @@ fn extract_libraw_thumb(path: &std::path::Path) -> Option<gdk4::Texture> {
         if lr.is_null() {
             return None;
         }
-        struct LibrawHandle(*mut libraw_sys::libraw_data_t);
-        impl Drop for LibrawHandle {
-            fn drop(&mut self) {
-                // SAFETY: The handle is verified to be non-null and is safe to close.
-                unsafe { libraw_sys::libraw_close(self.0) };
-            }
-        }
         let _guard = LibrawHandle(lr);
         if libraw_sys::libraw_open_file(lr, c_path.as_ptr()) != 0 {
             return None;
@@ -732,13 +783,6 @@ fn extract_libraw_thumb(path: &std::path::Path) -> Option<gdk4::Texture> {
                 path.display()
             );
             return None;
-        }
-        struct MemImage(*mut libraw_sys::libraw_processed_image_t);
-        impl Drop for MemImage {
-            fn drop(&mut self) {
-                // SAFETY: The image buffer is verified to be non-null and is safe to clear.
-                unsafe { libraw_sys::libraw_dcraw_clear_mem(self.0) };
-            }
         }
         let _img_guard = MemImage(img);
         let data_size = (*img).data_size as usize;
@@ -881,106 +925,151 @@ fn decode_libraw_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
     if cache_enabled && let Some(texture) = read_raw_decode_cache(path) {
         return Some(texture);
     }
+    let texture = decode_libraw_uncached(path);
+    if let Some(ref tex) = texture
+        && cache_enabled
+    {
+        write_raw_decode_cache_async(path, tex);
+    }
+    texture
+}
+
+fn decode_libraw_uncached(path: &std::path::Path) -> Option<gdk4::Texture> {
     use std::os::unix::ffi::OsStrExt;
     let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
-    // SAFETY: Interfacing with the external LibRaw C API via FFI bindings.
-    // We check that the context is initialized successfully (non-null),
-    // and wrap the raw pointers in custom RAII guards (LibrawHandle, MemImage)
-    // to guarantee that resources are cleaned up correctly when they go out of scope.
     unsafe {
-        let lr = libraw_sys::libraw_init(0);
-        if lr.is_null() {
-            log::debug!("libraw_init returned null for {}", path.display());
+        let lr = init_libraw(path)?;
+        let _guard = LibrawHandle(lr);
+        configure_libraw_full_decode(lr);
+        if !run_libraw_full_decode(lr, c_path.as_ptr(), path) {
             return None;
         }
-        struct LibrawHandle(*mut libraw_sys::libraw_data_t);
-        impl Drop for LibrawHandle {
-            fn drop(&mut self) {
-                // SAFETY: The handle is verified to be non-null and is safe to close.
-                unsafe { libraw_sys::libraw_close(self.0) };
-            }
-        }
-        let _guard = LibrawHandle(lr);
+        let img = make_libraw_image(lr, path)?;
+        let _img_guard = MemImage(img);
+        libraw_image_to_texture(img, path)
+    }
+}
+
+struct LibrawHandle(*mut libraw_sys::libraw_data_t);
+
+impl Drop for LibrawHandle {
+    fn drop(&mut self) {
+        unsafe { libraw_sys::libraw_close(self.0) };
+    }
+}
+
+struct MemImage(*mut libraw_sys::libraw_processed_image_t);
+
+impl Drop for MemImage {
+    fn drop(&mut self) {
+        unsafe { libraw_sys::libraw_dcraw_clear_mem(self.0) };
+    }
+}
+
+unsafe fn init_libraw(path: &std::path::Path) -> Option<*mut libraw_sys::libraw_data_t> {
+    let lr = unsafe { libraw_sys::libraw_init(0) };
+    if lr.is_null() {
+        log::debug!("libraw_init returned null for {}", path.display());
+        None
+    } else {
+        Some(lr)
+    }
+}
+
+unsafe fn configure_libraw_full_decode(lr: *mut libraw_sys::libraw_data_t) {
+    unsafe {
         (*lr).params.use_camera_wb = 1;
         (*lr).params.output_bps = 8;
-        (*lr).params.output_color = 1; // sRGB
-        (*lr).params.user_qual = 3; // AHD demosaic (highest quality)
-        let rc = libraw_sys::libraw_open_file(lr, c_path.as_ptr());
-        if rc != 0 {
-            log::debug!("libraw_open_file failed ({}) for {}", rc, path.display());
-            return None;
-        }
-        let rc = libraw_sys::libraw_unpack(lr);
-        if rc != 0 {
-            log::debug!("libraw_unpack failed ({}) for {}", rc, path.display());
-            return None;
-        }
-        let rc = libraw_sys::libraw_dcraw_process(lr);
-        if rc != 0 {
-            log::debug!(
-                "libraw_dcraw_process failed ({}) for {}",
-                rc,
-                path.display()
-            );
-            return None;
-        }
-        let mut errcode = 0i32;
-        let img = libraw_sys::libraw_dcraw_make_mem_image(lr, &mut errcode);
-        if img.is_null() || errcode != 0 {
-            log::debug!(
-                "libraw_dcraw_make_mem_image failed ({}) for {}",
-                errcode,
-                path.display()
-            );
-            return None;
-        }
-        struct MemImage(*mut libraw_sys::libraw_processed_image_t);
-        impl Drop for MemImage {
-            fn drop(&mut self) {
-                // SAFETY: The image buffer is verified to be non-null and is safe to clear.
-                unsafe { libraw_sys::libraw_dcraw_clear_mem(self.0) };
-            }
-        }
-        let _img_guard = MemImage(img);
-        let width = (*img).width as u32;
-        let height = (*img).height as u32;
-        let colors = (*img).colors;
-        let data_size = (*img).data_size as usize;
-        if colors != 3 {
-            log::debug!(
-                "libraw produced {}-channel output for {} — skipping",
-                colors,
-                path.display()
-            );
-            return None;
-        }
-        // SAFETY: The image buffer is owned by the `img` memory structure, and its layout is
-        // guaranteed to have at least `data_size` bytes. The slice does not outlive its owner
-        // (as it is dropped prior to `_img_guard` and its contents are immediately copied).
-        let pixels = std::slice::from_raw_parts((*img).data.as_ptr(), data_size).to_vec();
-        let texture = memory_texture(
-            width,
-            height,
-            gdk4::MemoryFormat::R8g8b8,
-            pixels,
-            usize::try_from(width).ok()?.checked_mul(3)?,
+        (*lr).params.output_color = 1;
+        (*lr).params.user_qual = 3;
+    }
+}
+
+unsafe fn run_libraw_full_decode(
+    lr: *mut libraw_sys::libraw_data_t,
+    c_path: *const std::ffi::c_char,
+    path: &std::path::Path,
+) -> bool {
+    unsafe {
+        libraw_step(lr, path, "libraw_open_file", || {
+            libraw_sys::libraw_open_file(lr, c_path)
+        }) && libraw_step(lr, path, "libraw_unpack", || libraw_sys::libraw_unpack(lr))
+            && libraw_step(lr, path, "libraw_dcraw_process", || {
+                libraw_sys::libraw_dcraw_process(lr)
+            })
+    }
+}
+
+unsafe fn libraw_step(
+    _lr: *mut libraw_sys::libraw_data_t,
+    path: &std::path::Path,
+    label: &str,
+    f: impl FnOnce() -> i32,
+) -> bool {
+    let rc = f();
+    if rc != 0 {
+        log::debug!("{} failed ({}) for {}", label, rc, path.display());
+        false
+    } else {
+        true
+    }
+}
+
+unsafe fn make_libraw_image(
+    lr: *mut libraw_sys::libraw_data_t,
+    path: &std::path::Path,
+) -> Option<*mut libraw_sys::libraw_processed_image_t> {
+    let mut errcode = 0i32;
+    let img = unsafe { libraw_sys::libraw_dcraw_make_mem_image(lr, &mut errcode) };
+    if img.is_null() || errcode != 0 {
+        log::debug!(
+            "libraw_dcraw_make_mem_image failed ({}) for {}",
+            errcode,
+            path.display()
         );
-        if let Some(ref tex) = texture
-            && cache_enabled
-        {
-            let path_clone = path.to_path_buf();
-            let tex_clone = tex.clone();
-            if tokio::runtime::Handle::try_current().is_ok() {
-                tokio::task::spawn_blocking(move || {
-                    write_raw_decode_cache(&path_clone, &tex_clone);
-                });
-            } else {
-                std::thread::spawn(move || {
-                    write_raw_decode_cache(&path_clone, &tex_clone);
-                });
-            }
-        }
-        texture
+        None
+    } else {
+        Some(img)
+    }
+}
+
+unsafe fn libraw_image_to_texture(
+    img: *mut libraw_sys::libraw_processed_image_t,
+    path: &std::path::Path,
+) -> Option<gdk4::Texture> {
+    let width = unsafe { (*img).width as u32 };
+    let colors = unsafe { (*img).colors };
+    if colors != 3 {
+        log::debug!(
+            "libraw produced {}-channel output for {} -- skipping",
+            colors,
+            path.display()
+        );
+        return None;
+    }
+    let height = unsafe { (*img).height as u32 };
+    let data_size = unsafe { (*img).data_size as usize };
+    let pixels = unsafe { std::slice::from_raw_parts((*img).data.as_ptr(), data_size) }.to_vec();
+    memory_texture(
+        width,
+        height,
+        gdk4::MemoryFormat::R8g8b8,
+        pixels,
+        usize::try_from(width).ok()?.checked_mul(3)?,
+    )
+}
+
+fn write_raw_decode_cache_async(path: &std::path::Path, texture: &gdk4::Texture) {
+    let path_clone = path.to_path_buf();
+    let tex_clone = texture.clone();
+    if tokio::runtime::Handle::try_current().is_ok() {
+        tokio::task::spawn_blocking(move || {
+            write_raw_decode_cache(&path_clone, &tex_clone);
+        });
+    } else {
+        std::thread::spawn(move || {
+            write_raw_decode_cache(&path_clone, &tex_clone);
+        });
     }
 }
 
@@ -1001,74 +1090,6 @@ fn decode_heif_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
         gdk4::MemoryFormat::R8g8b8a8,
         plane.data.to_vec(),
         plane.stride,
-    )
-}
-
-fn decode_jpegxl_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
-    let file = match std::fs::File::open(path) {
-        Ok(file) => file,
-        Err(err) => {
-            log::warn!("JXL read failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
-    let image = match jxl_oxide::JxlImage::builder().read(file) {
-        Ok(image) => image,
-        Err(err) => {
-            log::warn!("JXL parse failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
-    let render = match image.render_frame(0) {
-        Ok(render) => render,
-        Err(err) => {
-            log::warn!("JXL render failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
-    let mut stream = render.stream();
-    let width = stream.width();
-    let height = stream.height();
-    let channels = stream.channels();
-    let pixel_count = usize::try_from(width)
-        .ok()?
-        .checked_mul(usize::try_from(height).ok()?)?;
-    let mut buf = vec![0u8; pixel_count.checked_mul(channels as usize)?];
-    stream.write_to_buffer::<u8>(&mut buf);
-    // 1 = grayscale, 2 = grayscale + alpha — expand to RGB/RGBA so GDK can
-    // upload the texture (GDK doesn't have a 1-channel grayscale format).
-    let (format, bpp, buf) = match channels {
-        1 => {
-            let mut rgb = Vec::with_capacity(pixel_count.checked_mul(3)?);
-            for v in buf {
-                rgb.extend_from_slice(&[v, v, v]);
-            }
-            (gdk4::MemoryFormat::R8g8b8, 3usize, rgb)
-        }
-        2 => {
-            let mut rgba = Vec::with_capacity(pixel_count.checked_mul(4)?);
-            for chunk in buf.chunks_exact(2) {
-                rgba.extend_from_slice(&[chunk[0], chunk[0], chunk[0], chunk[1]]);
-            }
-            (gdk4::MemoryFormat::R8g8b8a8, 4usize, rgba)
-        }
-        3 => (gdk4::MemoryFormat::R8g8b8, 3usize, buf),
-        4 => (gdk4::MemoryFormat::R8g8b8a8, 4usize, buf),
-        _ => {
-            log::warn!(
-                "JXL unsupported channel count {} for {}",
-                channels,
-                path.display()
-            );
-            return None;
-        }
-    };
-    memory_texture(
-        width,
-        height,
-        format,
-        buf,
-        usize::try_from(width).ok()?.checked_mul(bpp)?,
     )
 }
 
@@ -1135,47 +1156,6 @@ fn decode_pixbuf_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
         pixbuf.rowstride() as usize,
     );
     Some(texture.upcast::<gdk4::Texture>())
-}
-
-/// Maximum SVG raster dimension; SVGs are vector and could otherwise render at
-/// any size. 4096 matches the RAW cap and keeps memory bounded.
-const SVG_MAX_DIMENSION: u32 = 4096;
-
-fn decode_svg_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(err) => {
-            log::warn!("SVG read failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
-    let opt = resvg::usvg::Options::default();
-    let prepared = inject_missing_xmlns(&bytes);
-    let tree = match resvg::usvg::Tree::from_data(&prepared, &opt) {
-        Ok(tree) => tree,
-        Err(err) => {
-            log::warn!("SVG parse failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
-    let svg_size = tree.size();
-    let svg_w = svg_size.width().max(1.0);
-    let svg_h = svg_size.height().max(1.0);
-    let scale = (SVG_MAX_DIMENSION as f32 / svg_w)
-        .min(SVG_MAX_DIMENSION as f32 / svg_h)
-        .min(1.0);
-    let width = (svg_w * scale).ceil() as u32;
-    let height = (svg_h * scale).ceil() as u32;
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)?;
-    let transform = resvg::tiny_skia::Transform::from_scale(scale, scale);
-    resvg::render(&tree, transform, &mut pixmap.as_mut());
-    memory_texture(
-        width,
-        height,
-        gdk4::MemoryFormat::R8g8b8a8,
-        pixmap.take(),
-        usize::try_from(width).ok()?.checked_mul(4)?,
-    )
 }
 
 fn decode_jpeg_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
@@ -1246,60 +1226,6 @@ fn decode_webp_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
     )
 }
 
-fn decode_jpeg2k_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(err) => {
-            log::warn!("JP2 read failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
-    let image = match jpeg2k::Image::from_bytes(&bytes) {
-        Ok(image) => image,
-        Err(err) => {
-            log::warn!("JP2 parse failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
-    let pixels = match image.get_pixels(Some(255)) {
-        Ok(pixels) => pixels,
-        Err(err) => {
-            log::warn!("JP2 pixel extract failed for {}: {}", path.display(), err);
-            return None;
-        }
-    };
-    use jpeg2k::ImagePixelData;
-    let (format, bytes, bpp) = match pixels.data {
-        ImagePixelData::Rgb8(data) => (gdk4::MemoryFormat::R8g8b8, data, 3),
-        ImagePixelData::Rgba8(data) => (gdk4::MemoryFormat::R8g8b8a8, data, 4),
-        ImagePixelData::L8(data) => {
-            let mut rgb = Vec::with_capacity(data.len() * 3);
-            for v in data {
-                rgb.extend_from_slice(&[v, v, v]);
-            }
-            (gdk4::MemoryFormat::R8g8b8, rgb, 3)
-        }
-        ImagePixelData::La8(data) => {
-            let mut rgba = Vec::with_capacity(data.len() * 2);
-            for chunk in data.chunks_exact(2) {
-                rgba.extend_from_slice(&[chunk[0], chunk[0], chunk[0], chunk[1]]);
-            }
-            (gdk4::MemoryFormat::R8g8b8a8, rgba, 4)
-        }
-        _ => {
-            log::warn!("JP2 unsupported 16-bit pixel layout for {}", path.display());
-            return None;
-        }
-    };
-    memory_texture(
-        pixels.width,
-        pixels.height,
-        format,
-        bytes,
-        usize::try_from(pixels.width).ok()?.checked_mul(bpp)?,
-    )
-}
-
 fn decode_psd_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
     let bytes = std::fs::read(path)
         .map_err(|err| log::warn!("PSD read failed for {}: {}", path.display(), err))
@@ -1316,110 +1242,6 @@ fn decode_psd_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
         psd.rgba(),
         usize::try_from(width).ok()?.checked_mul(4)?,
     )
-}
-
-/// Inject placeholder `xmlns:` declarations for any prefix used but not
-/// declared (e.g. `c2pa:` in C2PA-signed SVGs) so usvg's strict XML
-/// parser accepts the document.
-fn inject_missing_xmlns(bytes: &[u8]) -> Vec<u8> {
-    let Ok(text) = std::str::from_utf8(bytes) else {
-        return bytes.to_vec();
-    };
-    let declared = scan_declared_prefixes(text);
-    let used = scan_used_prefixes(text, &declared);
-    if used.is_empty() {
-        return bytes.to_vec();
-    }
-    let Some(svg_tag) = text.find("<svg") else {
-        return bytes.to_vec();
-    };
-    let insert_at = svg_tag + 4;
-    let mut decls = String::new();
-    for prefix in &used {
-        decls.push_str(&format!(
-            " xmlns:{prefix}=\"urn:mimick:placeholder:{prefix}\""
-        ));
-    }
-    let mut out = Vec::with_capacity(bytes.len() + decls.len());
-    out.extend_from_slice(&bytes[..insert_at]);
-    out.extend_from_slice(decls.as_bytes());
-    out.extend_from_slice(&bytes[insert_at..]);
-    out
-}
-
-/// Collect namespace prefixes that already have `xmlns:` declarations.
-fn scan_declared_prefixes(text: &str) -> std::collections::HashSet<String> {
-    let mut declared: std::collections::HashSet<String> = ["xml", "xmlns", "xlink"]
-        .into_iter()
-        .map(String::from)
-        .collect();
-    let bytes_str = text.as_bytes();
-    let mut i = 0;
-    while let Some(rel) = text[i..].find("xmlns:") {
-        let start = i + rel + 6;
-        let mut end = start;
-        while end < bytes_str.len() {
-            let b = bytes_str[end];
-            if b == b'=' || b == b' ' || b == b'\t' || b == b'\n' || b == b'/' || b == b'>' {
-                break;
-            }
-            end += 1;
-        }
-        if end > start {
-            declared.insert(text[start..end].to_string());
-        }
-        i = end;
-    }
-    declared
-}
-
-/// Find namespace prefixes referenced in elements/attributes but missing a declaration.
-fn scan_used_prefixes(
-    text: &str,
-    declared: &std::collections::HashSet<String>,
-) -> std::collections::HashSet<String> {
-    let bytes_str = text.as_bytes();
-    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut j = 0;
-    while j < bytes_str.len() {
-        let b = bytes_str[j];
-        if b == b'<' || b == b' ' || b == b'\t' || b == b'\n' {
-            if let Some((prefix, next)) = extract_prefix_at(bytes_str, text, j) {
-                if !declared.contains(prefix) {
-                    used.insert(prefix.to_string());
-                }
-                j = next;
-            } else {
-                j += 1;
-            }
-        } else {
-            j += 1;
-        }
-    }
-    used
-}
-
-/// Try to read a `prefix:` token starting after position `j`.
-/// Returns `(prefix_str, next_scan_position)` on success.
-fn extract_prefix_at<'a>(bytes_str: &[u8], text: &'a str, j: usize) -> Option<(&'a str, usize)> {
-    let mut k = j + 1;
-    if k < bytes_str.len() && bytes_str[k] == b'/' {
-        k += 1;
-    }
-    let ident_start = k;
-    while k < bytes_str.len() {
-        let c = bytes_str[k];
-        if c.is_ascii_alphanumeric() || c == b'_' || c == b'-' {
-            k += 1;
-        } else {
-            break;
-        }
-    }
-    if k > ident_start && k < bytes_str.len() && bytes_str[k] == b':' {
-        Some((&text[ident_start..k], k))
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]

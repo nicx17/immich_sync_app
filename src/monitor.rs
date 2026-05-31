@@ -234,20 +234,12 @@ fn handle_notify_event(
     active_tasks: &std::sync::Arc<parking_lot::Mutex<std::collections::HashSet<String>>>,
     debounce_map: &mut HashMap<String, Instant>,
 ) {
-    let is_upsert = matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_));
-    let is_delete = matches!(event.kind, EventKind::Remove(_));
-
-    if !is_upsert && !is_delete {
+    let Some(kind) = monitor_event_kind(&event.kind) else {
         return;
-    }
+    };
 
     for path in event.paths {
-        if is_upsert && path.is_dir() {
-            continue;
-        }
-
-        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
-        if !media_kinds::is_supported_ext(ext.as_deref().unwrap_or("")) {
+        if should_skip_path(&path, kind) {
             continue;
         }
 
@@ -257,15 +249,44 @@ fn handle_notify_event(
         };
         let rules = matched_entry.rules();
 
-        if is_delete {
-            if rules.delete_folder_to_album && !is_temporary_file(&path) {
-                log::info!("Deleted file event: {}", path_str);
-                let _ = tx.blocking_send(MonitorEvent::Deleted { path: path_str });
+        match kind {
+            MonitorFsEvent::Delete => process_delete_path(&path, path_str, &rules, tx),
+            MonitorFsEvent::Upsert => {
+                process_upsert_path(&path, path_str, &rules, active_tasks, debounce_map, work_tx)
             }
-            continue;
         }
+    }
+}
 
-        process_upsert_path(&path, path_str, &rules, active_tasks, debounce_map, work_tx);
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MonitorFsEvent {
+    Upsert,
+    Delete,
+}
+
+fn monitor_event_kind(kind: &EventKind) -> Option<MonitorFsEvent> {
+    if matches!(kind, EventKind::Create(_) | EventKind::Modify(_)) {
+        Some(MonitorFsEvent::Upsert)
+    } else if matches!(kind, EventKind::Remove(_)) {
+        Some(MonitorFsEvent::Delete)
+    } else {
+        None
+    }
+}
+
+fn should_skip_path(path: &std::path::Path, kind: MonitorFsEvent) -> bool {
+    (kind == MonitorFsEvent::Upsert && path.is_dir()) || !is_supported_media_path(path)
+}
+
+fn process_delete_path(
+    path: &std::path::Path,
+    path_str: String,
+    rules: &crate::config::FolderRules,
+    tx: &mpsc::Sender<MonitorEvent>,
+) {
+    if rules.delete_folder_to_album && !is_temporary_file(path) {
+        log::info!("Deleted file event: {}", path_str);
+        let _ = tx.blocking_send(MonitorEvent::Deleted { path: path_str });
     }
 }
 
@@ -448,7 +469,11 @@ pub(crate) fn compute_sha1_chunked(path: &str) -> io::Result<String> {
 
 /// Return whether a path points to a supported media file rather than a directory.
 pub(crate) fn is_supported_media_path(path: &Path) -> bool {
-    media_kinds::is_supported_path(path)
+    if media_kinds::is_supported_path(path) {
+        return true;
+    }
+    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
+    media_kinds::is_supported_ext(ext.as_deref().unwrap_or(""))
 }
 
 pub(crate) fn is_temporary_file(path: &Path) -> bool {

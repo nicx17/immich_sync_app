@@ -827,36 +827,52 @@ fn schedule_batch_notification(
 ) {
     tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-        let summary = {
-            let s = state_ref.lock();
-            let mut batch_state = batch_notify_ref.lock();
-            let total_handled = s.processed_count + s.failed_count;
-            let queue_idle = total_handled >= s.total_queued && s.active_workers == 0;
-            if batch_state.active
-                && batch_state.notify_scheduled
-                && batch_state.current_batch_id == batch_id
-                && batch_state.current_batch_id != batch_state.last_notified_batch_id
-                && queue_idle
-            {
-                let succeeded = s
-                    .processed_count
-                    .saturating_sub(batch_state.start_processed);
-                let failed = s.failed_count.saturating_sub(batch_state.start_failed);
-                batch_state.last_notified_batch_id = batch_id;
-                batch_state.notify_scheduled = false;
-                batch_state.active = false;
-                Some((succeeded, failed))
-            } else {
-                if batch_state.current_batch_id == batch_id {
-                    batch_state.notify_scheduled = false;
-                }
-                None
-            }
-        };
+        let summary = batch_notification_summary(&state_ref, &batch_notify_ref, batch_id);
         if let Some((succeeded, failed)) = summary {
             notifications::send_sync_summary(succeeded, failed);
         }
     });
+}
+
+fn batch_notification_summary(
+    state_ref: &Arc<parking_lot::Mutex<AppState>>,
+    batch_notify_ref: &Arc<parking_lot::Mutex<BatchNotifyState>>,
+    batch_id: u64,
+) -> Option<(usize, usize)> {
+    let s = state_ref.lock();
+    let mut batch_state = batch_notify_ref.lock();
+    if !batch_is_ready_to_notify(&s, &batch_state, batch_id) {
+        clear_stale_batch_schedule(&mut batch_state, batch_id);
+        return None;
+    }
+    let succeeded = s
+        .processed_count
+        .saturating_sub(batch_state.start_processed);
+    let failed = s.failed_count.saturating_sub(batch_state.start_failed);
+    batch_state.last_notified_batch_id = batch_id;
+    batch_state.notify_scheduled = false;
+    batch_state.active = false;
+    Some((succeeded, failed))
+}
+
+fn batch_is_ready_to_notify(
+    state: &AppState,
+    batch_state: &BatchNotifyState,
+    batch_id: u64,
+) -> bool {
+    let total_handled = state.processed_count + state.failed_count;
+    let queue_idle = total_handled >= state.total_queued && state.active_workers == 0;
+    batch_state.active
+        && batch_state.notify_scheduled
+        && batch_state.current_batch_id == batch_id
+        && batch_state.current_batch_id != batch_state.last_notified_batch_id
+        && queue_idle
+}
+
+fn clear_stale_batch_schedule(batch_state: &mut BatchNotifyState, batch_id: u64) {
+    if batch_state.current_batch_id == batch_id {
+        batch_state.notify_scheduled = false;
+    }
 }
 
 fn activate_batch_if_needed(batch_state: &mut BatchNotifyState, state: &AppState) {

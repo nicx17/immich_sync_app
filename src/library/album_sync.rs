@@ -163,33 +163,66 @@ fn classify_local_entries(
     let mut to_delete_local = Vec::new();
 
     for entry in local_entries {
-        let path_str = entry.local.path.to_string_lossy().to_string();
-        if remote_set.contains(&entry.checksum) {
-            if let Some(old_path) = orphan_by_checksum.remove(&entry.checksum) {
-                migrate_renamed_record(ctx, &old_path, &path_str, &entry.checksum);
-            }
-            continue;
-        }
-
-        if !was_previously_synced_to(ctx, &path_str, &entry.checksum, cc.album_id) {
-            to_upload.push(entry);
-            continue;
-        }
-
-        if cc.remote_unhashed > 0 {
-            log::debug!(
-                "Skipping local delete decision for {} because {} remote album item(s) have no checksum",
-                entry.local.path.display(),
-                cc.remote_unhashed
-            );
-        } else if cc.rules.delete_album_to_folder && ALBUM_TO_FOLDER_TRASH_AVAILABLE {
-            to_delete_local.push(entry);
-        } else if cc.manual_sync {
-            to_upload.push(entry);
+        match classify_local_entry(ctx, entry, remote_set, orphan_by_checksum, cc) {
+            LocalDecision::Upload(entry) => to_upload.push(entry),
+            LocalDecision::Delete(entry) => to_delete_local.push(entry),
+            LocalDecision::Ignore => {}
         }
     }
 
     (to_upload, to_delete_local)
+}
+
+enum LocalDecision {
+    Upload(LocalEntry),
+    Delete(LocalEntry),
+    Ignore,
+}
+
+fn classify_local_entry(
+    ctx: &Arc<AppContext>,
+    entry: LocalEntry,
+    remote_set: &HashSet<String>,
+    orphan_by_checksum: &mut std::collections::HashMap<String, String>,
+    cc: &ClassifyContext<'_>,
+) -> LocalDecision {
+    let path_str = entry.local.path.to_string_lossy().to_string();
+    if remote_set.contains(&entry.checksum) {
+        migrate_orphan_if_needed(ctx, orphan_by_checksum, &entry, &path_str);
+        return LocalDecision::Ignore;
+    }
+    if !was_previously_synced_to(ctx, &path_str, &entry.checksum, cc.album_id) {
+        return LocalDecision::Upload(entry);
+    }
+    synced_entry_decision(entry, cc)
+}
+
+fn migrate_orphan_if_needed(
+    ctx: &Arc<AppContext>,
+    orphan_by_checksum: &mut std::collections::HashMap<String, String>,
+    entry: &LocalEntry,
+    path_str: &str,
+) {
+    if let Some(old_path) = orphan_by_checksum.remove(&entry.checksum) {
+        migrate_renamed_record(ctx, &old_path, path_str, &entry.checksum);
+    }
+}
+
+fn synced_entry_decision(entry: LocalEntry, cc: &ClassifyContext<'_>) -> LocalDecision {
+    if cc.remote_unhashed > 0 {
+        log::debug!(
+            "Skipping local delete decision for {} because {} remote album item(s) have no checksum",
+            entry.local.path.display(),
+            cc.remote_unhashed
+        );
+        LocalDecision::Ignore
+    } else if cc.rules.delete_album_to_folder && ALBUM_TO_FOLDER_TRASH_AVAILABLE {
+        LocalDecision::Delete(entry)
+    } else if cc.manual_sync {
+        LocalDecision::Upload(entry)
+    } else {
+        LocalDecision::Ignore
+    }
 }
 
 fn was_previously_synced_to(

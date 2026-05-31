@@ -127,32 +127,17 @@ impl ImmichApiClient {
             }
             413 => {
                 log::error!("Upload failed (file too large): {}", filename);
-                self.set_issue(ApiIssue {
-                    summary: "Immich rejected a file as too large".to_string(),
-                    guidance: "Reduce the file size, raise the server's upload limits, or use a folder rule to skip oversized files."
-                        .to_string(),
-                })
-                .await;
+                self.set_upload_issue(file_too_large_issue()).await;
                 None
             }
             401 | 403 => {
-                self.set_issue(ApiIssue {
-                    summary: "Immich rejected the API key".to_string(),
-                    guidance: "Update the API key in Settings and ensure it has the Asset upload + update and Album read/create/albumAsset.create permissions."
-                        .to_string(),
-                })
-                .await;
+                self.set_upload_issue(upload_auth_issue()).await;
                 None
             }
             502..=504 => {
                 log::warn!("Server error {}: retrying later for {}", status, filename);
                 *self.active_url.lock().await = None;
-                self.set_issue(ApiIssue {
-                    summary: "Immich is temporarily unavailable".to_string(),
-                    guidance: "Wait a moment and retry. If it keeps happening, check the server logs and reverse proxy."
-                        .to_string(),
-                })
-                .await;
+                self.set_upload_issue(temporary_server_issue()).await;
                 None
             }
             _ => {
@@ -167,6 +152,10 @@ impl ImmichApiClient {
                 None
             }
         }
+    }
+
+    async fn set_upload_issue(&self, issue: ApiIssue) {
+        self.set_issue(issue).await;
     }
 
     // --------------- Album Management ---------------
@@ -376,5 +365,29 @@ impl ImmichApiClient {
                 None
             }
         }
+    }
+}
+
+fn file_too_large_issue() -> ApiIssue {
+    ApiIssue {
+        summary: "Immich rejected a file as too large".to_string(),
+        guidance: "Reduce the file size, raise the server's upload limits, or use a folder rule to skip oversized files."
+            .to_string(),
+    }
+}
+
+fn upload_auth_issue() -> ApiIssue {
+    ApiIssue {
+        summary: "Immich rejected the API key".to_string(),
+        guidance: "Update the API key in Settings and ensure it has the Asset upload + update and Album read/create/albumAsset.create permissions."
+            .to_string(),
+    }
+}
+
+fn temporary_server_issue() -> ApiIssue {
+    ApiIssue {
+        summary: "Immich is temporarily unavailable".to_string(),
+        guidance: "Wait a moment and retry. If it keeps happening, check the server logs and reverse proxy."
+            .to_string(),
     }
 }

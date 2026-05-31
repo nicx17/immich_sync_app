@@ -16,80 +16,27 @@ pub fn build_connectivity_group(
     settings_page: &adw::PreferencesPage,
     window: &adw::ApplicationWindow,
 ) -> ConnectivityWidgets {
-    // --- CONNECTIVITY GROUP ---
     let conn_group = adw::PreferencesGroup::builder()
         .title("Connectivity")
         .build();
     settings_page.add(&conn_group);
 
-    // Internal URL
-    let internal_row = adw::ActionRow::builder()
-        .title("Internal URL (LAN)")
-        .title_lines(1)
-        .build();
-    let internal_switch = Switch::builder().valign(gtk::Align::Center).build();
-    let internal_entry = Entry::builder()
-        .placeholder_text("http://…")
-        .valign(gtk::Align::Center)
-        .width_request(140)
-        .max_width_chars(16)
-        .hexpand(true)
-        .build();
-    internal_row.add_prefix(&internal_switch);
-    internal_row.add_suffix(&internal_entry);
-    conn_group.add(&internal_row);
+    let (internal_row, internal_switch, internal_entry) =
+        add_url_row(&conn_group, "Internal URL (LAN)", "http://...");
+    let (external_row, external_switch, external_entry) =
+        add_url_row(&conn_group, "External URL (WAN)", "https://...");
+    let api_key_entry = add_api_key_row(&conn_group);
+    let test_btn = add_group_button(&conn_group, "Test Connection", None, 12);
+    let save_btn = add_group_button(&conn_group, "Save Credentials", Some("suggested-action"), 6);
 
-    // External URL
-    let external_row = adw::ActionRow::builder()
-        .title("External URL (WAN)")
-        .title_lines(1)
-        .build();
-    let external_switch = Switch::builder().valign(gtk::Align::Center).build();
-    let external_entry = Entry::builder()
-        .placeholder_text("https://…")
-        .valign(gtk::Align::Center)
-        .width_request(140)
-        .max_width_chars(16)
-        .hexpand(true)
-        .build();
-    external_row.add_prefix(&external_switch);
-    external_row.add_suffix(&external_entry);
-    conn_group.add(&external_row);
-
-    // API Key
-    let api_key_row = adw::ActionRow::builder().title("API Key").build();
-    let api_key_entry = PasswordEntry::builder()
-        .valign(gtk::Align::Center)
-        .width_request(140)
-        .max_width_chars(16)
-        .hexpand(true)
-        .build();
-    api_key_row.add_suffix(&api_key_entry);
-    conn_group.add(&api_key_row);
-
-    // Test Connection Button
-    let test_btn = Button::builder()
-        .label("Test Connection")
-        .margin_top(12)
-        .build();
-    conn_group.add(&test_btn);
-
-    let save_btn = Button::builder()
-        .label("Save Credentials")
-        .css_classes(vec!["suggested-action".to_string()])
-        .margin_top(6)
-        .build();
-    conn_group.add(&save_btn);
-
-    let settings_breakpoint = adw::Breakpoint::new(
-        adw::BreakpointCondition::parse("max-width: 500sp").expect("valid breakpoint condition"),
+    add_connectivity_breakpoint(
+        window,
+        &internal_row,
+        &external_row,
+        &internal_entry,
+        &external_entry,
+        &api_key_entry,
     );
-    settings_breakpoint.add_setter(&internal_row, "title", Some(&"LAN URL".to_value()));
-    settings_breakpoint.add_setter(&external_row, "title", Some(&"WAN URL".to_value()));
-    settings_breakpoint.add_setter(&internal_entry, "width-request", Some(&140i32.to_value()));
-    settings_breakpoint.add_setter(&external_entry, "width-request", Some(&140i32.to_value()));
-    settings_breakpoint.add_setter(&api_key_entry, "width-request", Some(&140i32.to_value()));
-    window.add_breakpoint(settings_breakpoint);
 
     ConnectivityWidgets {
         internal_switch,
@@ -100,4 +47,78 @@ pub fn build_connectivity_group(
         test_btn,
         save_btn,
     }
+}
+
+fn add_url_row(
+    group: &adw::PreferencesGroup,
+    title: &str,
+    placeholder: &str,
+) -> (adw::ActionRow, Switch, Entry) {
+    let row = adw::ActionRow::builder()
+        .title(title)
+        .title_lines(1)
+        .build();
+    let switch = Switch::builder().valign(gtk::Align::Center).build();
+    let entry = text_entry(placeholder);
+    row.add_prefix(&switch);
+    row.add_suffix(&entry);
+    group.add(&row);
+    (row, switch, entry)
+}
+
+fn add_api_key_row(group: &adw::PreferencesGroup) -> PasswordEntry {
+    let row = adw::ActionRow::builder().title("API Key").build();
+    let entry = PasswordEntry::builder()
+        .valign(gtk::Align::Center)
+        .width_request(140)
+        .max_width_chars(16)
+        .hexpand(true)
+        .build();
+    row.add_suffix(&entry);
+    group.add(&row);
+    entry
+}
+
+fn text_entry(placeholder: &str) -> Entry {
+    Entry::builder()
+        .placeholder_text(placeholder)
+        .valign(gtk::Align::Center)
+        .width_request(140)
+        .max_width_chars(16)
+        .hexpand(true)
+        .build()
+}
+
+fn add_group_button(
+    group: &adw::PreferencesGroup,
+    label: &str,
+    css_class: Option<&str>,
+    margin_top: i32,
+) -> Button {
+    let mut builder = Button::builder().label(label).margin_top(margin_top);
+    if let Some(css_class) = css_class {
+        builder = builder.css_classes(vec![css_class.to_string()]);
+    }
+    let button = builder.build();
+    group.add(&button);
+    button
+}
+
+fn add_connectivity_breakpoint(
+    window: &adw::ApplicationWindow,
+    internal_row: &adw::ActionRow,
+    external_row: &adw::ActionRow,
+    internal_entry: &Entry,
+    external_entry: &Entry,
+    api_key_entry: &PasswordEntry,
+) {
+    let breakpoint = adw::Breakpoint::new(
+        adw::BreakpointCondition::parse("max-width: 500sp").expect("valid breakpoint condition"),
+    );
+    breakpoint.add_setter(internal_row, "title", Some(&"LAN URL".to_value()));
+    breakpoint.add_setter(external_row, "title", Some(&"WAN URL".to_value()));
+    breakpoint.add_setter(internal_entry, "width-request", Some(&140i32.to_value()));
+    breakpoint.add_setter(external_entry, "width-request", Some(&140i32.to_value()));
+    breakpoint.add_setter(api_key_entry, "width-request", Some(&140i32.to_value()));
+    window.add_breakpoint(breakpoint);
 }
