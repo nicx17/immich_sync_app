@@ -115,45 +115,16 @@ pub async fn diff_album_vs_folder(
         }
     }
 
-    let mut to_upload = Vec::new();
-    let mut to_delete_local = Vec::new();
-    for entry in local_entries {
-        let path_str = entry.local.path.to_string_lossy().to_string();
-        if remote_set.contains(&entry.checksum) {
-            if let Some(old_path) = orphan_by_checksum.remove(&entry.checksum) {
-                migrate_renamed_record(&ctx, &old_path, &path_str, &entry.checksum);
-            }
-            continue;
-        }
-        // "Previously synced to THIS album" — strict: a record with a
-        // different album_id means the folder was re-targeted, treat as
-        // never-synced (so we upload rather than trash).
-        let was_previously_synced =
-            ctx.sync_index
-                .record_for_path(&path_str)
-                .is_some_and(|record| {
-                    record.checksum == entry.checksum
-                        && record.album_id.as_deref().is_none_or(|id| id == album_id)
-                });
-
-        if was_previously_synced {
-            if remote_unhashed > 0 {
-                log::debug!(
-                    "Skipping local delete decision for {} because {} remote album item(s) have no checksum",
-                    entry.local.path.display(),
-                    remote_unhashed
-                );
-            } else if rules.delete_album_to_folder && ALBUM_TO_FOLDER_TRASH_AVAILABLE {
-                to_delete_local.push(entry);
-            } else if manual_sync {
-                // Manual sync only: surface as re-upload candidate so user can
-                // explicitly restore the asset. Automatic context skips this.
-                to_upload.push(entry);
-            }
-        } else {
-            to_upload.push(entry);
-        }
-    }
+    let (mut to_upload, mut to_delete_local) = classify_local_entries(
+        &ctx,
+        local_entries,
+        &remote_set,
+        &mut orphan_by_checksum,
+        album_id,
+        remote_unhashed,
+        rules,
+        manual_sync,
+    );
 
     let mut to_delete_remote = Vec::new();
     if rules.delete_folder_to_album {
@@ -248,6 +219,61 @@ pub async fn diff_album_vs_folder(
         to_delete_remote,
         to_delete_local,
         remote_unhashed,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn classify_local_entries(
+    ctx: &Arc<AppContext>,
+    local_entries: Vec<LocalEntry>,
+    remote_set: &HashSet<String>,
+    orphan_by_checksum: &mut std::collections::HashMap<String, String>,
+    album_id: &str,
+    remote_unhashed: usize,
+    rules: &FolderRules,
+    manual_sync: bool,
+) -> (Vec<LocalEntry>, Vec<LocalEntry>) {
+    let mut to_upload = Vec::new();
+    let mut to_delete_local = Vec::new();
+
+    for entry in local_entries {
+        let path_str = entry.local.path.to_string_lossy().to_string();
+        if remote_set.contains(&entry.checksum) {
+            if let Some(old_path) = orphan_by_checksum.remove(&entry.checksum) {
+                migrate_renamed_record(ctx, &old_path, &path_str, &entry.checksum);
+            }
+            continue;
+        }
+
+        if !was_previously_synced_to(ctx, &path_str, &entry.checksum, album_id) {
+            to_upload.push(entry);
+            continue;
+        }
+
+        if remote_unhashed > 0 {
+            log::debug!(
+                "Skipping local delete decision for {} because {} remote album item(s) have no checksum",
+                entry.local.path.display(),
+                remote_unhashed
+            );
+        } else if rules.delete_album_to_folder && ALBUM_TO_FOLDER_TRASH_AVAILABLE {
+            to_delete_local.push(entry);
+        } else if manual_sync {
+            to_upload.push(entry);
+        }
+    }
+
+    (to_upload, to_delete_local)
+}
+
+fn was_previously_synced_to(
+    ctx: &Arc<AppContext>,
+    path: &str,
+    checksum: &str,
+    album_id: &str,
+) -> bool {
+    ctx.sync_index.record_for_path(path).is_some_and(|record| {
+        record.checksum == checksum && record.album_id.as_deref().is_none_or(|id| id == album_id)
     })
 }
 
