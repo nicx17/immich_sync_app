@@ -330,191 +330,46 @@ impl QueueManager {
                                     }
                                 }
 
-                                let mut s = state_ref.lock();
-                                let attempts = current_attempt_count(&s, &file_task.path);
-                                s.active_server_route = active_route;
-                                s.last_successful_sync_at = Some(unix_timestamp_now());
-                                s.last_completed_file = Some(file_task.path.clone());
-                                s.last_error = None;
-                                s.last_error_guidance = None;
-                                s.record_event(
-                                    file_task.path.clone(),
-                                    "completed",
-                                    Some(format!("Finished in {:.2}s", elapsed)),
-                                    attempts,
+                                record_upload_success(
+                                    &state_ref,
+                                    &file_task,
+                                    sync_target.as_ref(),
+                                    active_route,
+                                    elapsed,
                                 );
-                                if let Some(target) = sync_target.as_ref() {
-                                    let status = s
-                                        .folder_statuses
-                                        .entry(file_task.watch_path.clone())
-                                        .or_default();
-                                    status.pending_count = status.pending_count.saturating_sub(1);
-                                    status.last_sync_at = Some(unix_timestamp_now());
-                                    status.last_error = None;
-                                    status.target_album = target.album_name.clone();
-                                }
                             } else {
-                                log::warn!(
-                                    "Upload FAILED: {} ({:.2}s). Adding to retry queue.",
-                                    file_task.path,
-                                    elapsed
-                                );
-                                // Keep failed tasks in memory until the next graceful shutdown.
-                                retry_ref.lock().push(file_task.clone());
-                                let mut s = state_ref.lock();
-                                s.failed_count += 1;
-                                s.active_server_route = active_route;
-                                let error_text = latest_issue
-                                    .as_ref()
-                                    .map(|issue| issue.summary.clone())
-                                    .unwrap_or_else(|| {
-                                        format!("Upload failed for {}", file_task.path)
-                                    });
-                                s.last_error = Some(error_text.clone());
-                                s.last_error_guidance = latest_issue
-                                    .as_ref()
-                                    .map(|issue| issue.guidance.clone())
-                                    .or_else(|| {
-                                        Some(
-                                            "Review the latest server and permission settings, then retry the failed item."
-                                                .to_string(),
-                                        )
-                                    });
-
-                                let status = s
-                                    .folder_statuses
-                                    .entry(file_task.watch_path.clone())
-                                    .or_default();
-                                status.pending_count = status.pending_count.saturating_sub(1);
-                                status.last_error = Some(error_text);
-
-                                let attempts = current_attempt_count(&s, &file_task.path);
-                                s.record_event(
-                                    file_task.path.clone(),
-                                    "failed",
-                                    Some("Queued for retry".to_string()),
-                                    attempts,
+                                record_upload_failure(
+                                    &state_ref,
+                                    &retry_ref,
+                                    &file_task,
+                                    active_route,
+                                    latest_issue.as_ref(),
+                                    elapsed,
                                 );
                             }
 
                             // Track consecutive failures for connectivity-lost detection.
-                            if success {
-                                *consec_fail_ref.lock() = 0;
-                            } else {
-                                let mut cf = consec_fail_ref.lock();
-                                *cf += 1;
-                                // Fire connectivity-lost the first time N consecutive uploads fail.
-                                if *cf >= 3 {
-                                    let mut notified = connectivity_notified_ref.lock();
-                                    if !*notified {
-                                        *notified = true;
-                                        notifications::send_connectivity_lost();
-                                    }
-                                }
-                            }
+                            track_consecutive_failures(
+                                success,
+                                &consec_fail_ref,
+                                &connectivity_notified_ref,
+                            );
 
                             // Update processed count and determine idle state.
-                            let summary_batch = {
-                                let mut s = state_ref.lock();
-                                if success {
-                                    s.processed_count += 1;
-                                }
-                                s.active_workers -= 1;
-                                s.current_file = None;
-                                let route = s.active_server_route.clone();
-                                let completed_batch = s.transfer.finish_item(
-                                    TransferDirection::Upload,
-                                    &file_task.path,
-                                    route,
-                                );
-                                if completed_batch {
-                                    s.completed_upload_batches =
-                                        s.completed_upload_batches.saturating_add(1);
-                                }
-
-                                let total_handled = s.processed_count + s.failed_count;
-
-                                if total_handled >= s.total_queued && s.active_workers == 0 {
-                                    s.queue_size = 0;
-                                    s.status = if s.paused {
-                                        "paused".to_string()
-                                    } else {
-                                        "idle".to_string()
-                                    };
-                                    s.progress = 100;
-                                    log::info!("All {} file(s) processed. Idle.", s.total_queued);
-                                    if let Err(err) = sync_index_ref.flush() {
-                                        log::warn!("Failed to flush sync index on idle: {}", err);
-                                    }
-                                    let mut batch_state = batch_notify_ref.lock();
-                                    if batch_state.active
-                                        && batch_state.current_batch_id
-                                            != batch_state.last_notified_batch_id
-                                        && !batch_state.notify_scheduled
-                                    {
-                                        batch_state.notify_scheduled = true;
-                                        Some(batch_state.current_batch_id)
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    s.queue_size = s.total_queued.saturating_sub(total_handled);
-                                    s.progress = if s.total_queued > 0 {
-                                        ((total_handled as f32 / s.total_queued as f32) * 100.0)
-                                            as u8
-                                    } else {
-                                        0
-                                    };
-                                    s.status = "uploading".to_string();
-                                    None
-                                }
-                            };
+                            let summary_batch = finalize_upload_progress(
+                                &state_ref,
+                                &batch_notify_ref,
+                                &sync_index_ref,
+                                &file_task.path,
+                                success,
+                            );
 
                             if let Some(batch_id) = summary_batch {
-                                let state_ref = state_ref.clone();
-                                let batch_notify_ref = batch_notify_ref.clone();
-                                tokio::spawn(async move {
-                                    // Debounce queue-drain notifications so bursts of single-file
-                                    // arrivals do not emit one desktop notification per upload.
-                                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-                                    let summary = {
-                                        let s = state_ref.lock();
-                                        let mut batch_state = batch_notify_ref.lock();
-                                        let total_handled = s.processed_count + s.failed_count;
-                                        let queue_idle = total_handled >= s.total_queued
-                                            && s.active_workers == 0;
-
-                                        if batch_state.active
-                                            && batch_state.notify_scheduled
-                                            && batch_state.current_batch_id == batch_id
-                                            && batch_state.current_batch_id
-                                                != batch_state.last_notified_batch_id
-                                            && queue_idle
-                                        {
-                                            let succeeded = s
-                                                .processed_count
-                                                .saturating_sub(batch_state.start_processed);
-                                            let failed = s
-                                                .failed_count
-                                                .saturating_sub(batch_state.start_failed);
-
-                                            batch_state.last_notified_batch_id = batch_id;
-                                            batch_state.notify_scheduled = false;
-                                            batch_state.active = false;
-                                            Some((succeeded, failed))
-                                        } else {
-                                            if batch_state.current_batch_id == batch_id {
-                                                batch_state.notify_scheduled = false;
-                                            }
-                                            None
-                                        }
-                                    };
-
-                                    if let Some((succeeded, failed)) = summary {
-                                        notifications::send_sync_summary(succeeded, failed);
-                                    }
-                                });
+                                schedule_batch_notification(
+                                    state_ref.clone(),
+                                    batch_notify_ref.clone(),
+                                    batch_id,
+                                );
                             }
                         }
                         None => {
@@ -797,6 +652,202 @@ fn current_attempt_count(state: &AppState, path: &str) -> u32 {
 }
 
 /// Activate a batch tracking window if none is currently active.
+/// Record state updates after a successful upload.
+fn record_upload_success(
+    state_ref: &Arc<parking_lot::Mutex<AppState>>,
+    task: &FileTask,
+    sync_target: Option<&SyncTarget>,
+    active_route: Option<String>,
+    elapsed: f32,
+) {
+    let mut s = state_ref.lock();
+    let attempts = current_attempt_count(&s, &task.path);
+    s.active_server_route = active_route;
+    s.last_successful_sync_at = Some(unix_timestamp_now());
+    s.last_completed_file = Some(task.path.clone());
+    s.last_error = None;
+    s.last_error_guidance = None;
+    s.record_event(
+        task.path.clone(),
+        "completed",
+        Some(format!("Finished in {:.2}s", elapsed)),
+        attempts,
+    );
+    if let Some(target) = sync_target {
+        let status = s
+            .folder_statuses
+            .entry(task.watch_path.clone())
+            .or_default();
+        status.pending_count = status.pending_count.saturating_sub(1);
+        status.last_sync_at = Some(unix_timestamp_now());
+        status.last_error = None;
+        status.target_album = target.album_name.clone();
+    }
+}
+
+/// Record state updates after a failed upload.
+fn record_upload_failure(
+    state_ref: &Arc<parking_lot::Mutex<AppState>>,
+    retry_ref: &Arc<parking_lot::Mutex<Vec<FileTask>>>,
+    task: &FileTask,
+    active_route: Option<String>,
+    latest_issue: Option<&crate::api_client::ApiIssue>,
+    elapsed: f32,
+) {
+    log::warn!(
+        "Upload FAILED: {} ({:.2}s). Adding to retry queue.",
+        task.path,
+        elapsed
+    );
+    retry_ref.lock().push(task.clone());
+    let mut s = state_ref.lock();
+    s.failed_count += 1;
+    s.active_server_route = active_route;
+    let error_text = latest_issue
+        .map(|issue| issue.summary.clone())
+        .unwrap_or_else(|| format!("Upload failed for {}", task.path));
+    s.last_error = Some(error_text.clone());
+    s.last_error_guidance = latest_issue
+        .map(|issue| issue.guidance.clone())
+        .or_else(|| {
+            Some(
+                "Review the latest server and permission settings, then retry the failed item."
+                    .to_string(),
+            )
+        });
+    let status = s
+        .folder_statuses
+        .entry(task.watch_path.clone())
+        .or_default();
+    status.pending_count = status.pending_count.saturating_sub(1);
+    status.last_error = Some(error_text);
+    let attempts = current_attempt_count(&s, &task.path);
+    s.record_event(
+        task.path.clone(),
+        "failed",
+        Some("Queued for retry".to_string()),
+        attempts,
+    );
+}
+
+/// Track consecutive failures and fire a connectivity-lost notification after 3+.
+fn track_consecutive_failures(
+    success: bool,
+    consec_fail_ref: &Arc<parking_lot::Mutex<usize>>,
+    connectivity_notified_ref: &Arc<parking_lot::Mutex<bool>>,
+) {
+    if success {
+        *consec_fail_ref.lock() = 0;
+        return;
+    }
+    let mut cf = consec_fail_ref.lock();
+    *cf += 1;
+    if *cf >= 3 {
+        let mut notified = connectivity_notified_ref.lock();
+        if !*notified {
+            *notified = true;
+            notifications::send_connectivity_lost();
+        }
+    }
+}
+
+/// Finalize upload progress: update counters, detect queue idle, return batch ID if
+/// a summary notification should be scheduled.
+fn finalize_upload_progress(
+    state_ref: &Arc<parking_lot::Mutex<AppState>>,
+    batch_notify_ref: &Arc<parking_lot::Mutex<BatchNotifyState>>,
+    sync_index_ref: &Arc<ShardedSyncIndex>,
+    path: &str,
+    success: bool,
+) -> Option<u64> {
+    let mut s = state_ref.lock();
+    if success {
+        s.processed_count += 1;
+    }
+    s.active_workers -= 1;
+    s.current_file = None;
+    let route = s.active_server_route.clone();
+    let completed_batch = s
+        .transfer
+        .finish_item(TransferDirection::Upload, path, route);
+    if completed_batch {
+        s.completed_upload_batches = s.completed_upload_batches.saturating_add(1);
+    }
+    let total_handled = s.processed_count + s.failed_count;
+    if total_handled >= s.total_queued && s.active_workers == 0 {
+        s.queue_size = 0;
+        s.status = if s.paused {
+            "paused".to_string()
+        } else {
+            "idle".to_string()
+        };
+        s.progress = 100;
+        log::info!("All {} file(s) processed. Idle.", s.total_queued);
+        if let Err(err) = sync_index_ref.flush() {
+            log::warn!("Failed to flush sync index on idle: {}", err);
+        }
+        let mut batch_state = batch_notify_ref.lock();
+        if batch_state.active
+            && batch_state.current_batch_id != batch_state.last_notified_batch_id
+            && !batch_state.notify_scheduled
+        {
+            batch_state.notify_scheduled = true;
+            Some(batch_state.current_batch_id)
+        } else {
+            None
+        }
+    } else {
+        s.queue_size = s.total_queued.saturating_sub(total_handled);
+        s.progress = if s.total_queued > 0 {
+            ((total_handled as f32 / s.total_queued as f32) * 100.0) as u8
+        } else {
+            0
+        };
+        s.status = "uploading".to_string();
+        None
+    }
+}
+
+/// Spawn a debounced batch-notification task.
+fn schedule_batch_notification(
+    state_ref: Arc<parking_lot::Mutex<AppState>>,
+    batch_notify_ref: Arc<parking_lot::Mutex<BatchNotifyState>>,
+    batch_id: u64,
+) {
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        let summary = {
+            let s = state_ref.lock();
+            let mut batch_state = batch_notify_ref.lock();
+            let total_handled = s.processed_count + s.failed_count;
+            let queue_idle = total_handled >= s.total_queued && s.active_workers == 0;
+            if batch_state.active
+                && batch_state.notify_scheduled
+                && batch_state.current_batch_id == batch_id
+                && batch_state.current_batch_id != batch_state.last_notified_batch_id
+                && queue_idle
+            {
+                let succeeded = s
+                    .processed_count
+                    .saturating_sub(batch_state.start_processed);
+                let failed = s.failed_count.saturating_sub(batch_state.start_failed);
+                batch_state.last_notified_batch_id = batch_id;
+                batch_state.notify_scheduled = false;
+                batch_state.active = false;
+                Some((succeeded, failed))
+            } else {
+                if batch_state.current_batch_id == batch_id {
+                    batch_state.notify_scheduled = false;
+                }
+                None
+            }
+        };
+        if let Some((succeeded, failed)) = summary {
+            notifications::send_sync_summary(succeeded, failed);
+        }
+    });
+}
+
 fn activate_batch_if_needed(batch_state: &mut BatchNotifyState, state: &AppState) {
     if batch_state.active {
         return;
@@ -951,81 +1002,65 @@ async fn handle_upload(
 
     log::info!("Adding '{}' to album '{}'", task.path, album_name);
 
-    let mut final_album_id = if let Some(ref id) = task.album_id {
-        if !id.is_empty() {
-            Some(id.clone())
-        } else {
-            match api.get_or_create_album(&album_name).await {
-                Ok(id) => id,
-                Err(e) => {
-                    log::warn!("Failed to resolve album '{}': {}", album_name, e);
-                    None
-                }
-            }
-        }
-    } else {
-        match api.get_or_create_album(&album_name).await {
-            Ok(id) => id,
-            Err(e) => {
-                log::warn!("Failed to resolve album '{}': {}", album_name, e);
-                None
-            }
+    let mut final_album_id = match resolve_album_id(api, task, &album_name).await {
+        Some(id) => id,
+        None => {
+            log::warn!(
+                "Could not resolve album '{}'. Asset uploaded but not added to album.",
+                album_name
+            );
+            return None;
         }
     };
 
-    if let Some(album_id) = final_album_id.clone() {
+    if !api
+        .add_assets_to_album(&final_album_id, std::slice::from_ref(&asset_id))
+        .await
+    {
+        let name = task
+            .album_name
+            .clone()
+            .or_else(|| infer_album_name(&task.path))?;
+        log::warn!(
+            "Album '{}' may be stale or deleted. Refreshing album resolution.",
+            final_album_id
+        );
+        final_album_id = match api.resolve_album_by_name(&name, true).await {
+            Ok(Some(id)) => id,
+            Ok(None) | Err(_) => return None,
+        };
         if !api
-            .add_assets_to_album(&album_id, std::slice::from_ref(&asset_id))
+            .add_assets_to_album(&final_album_id, std::slice::from_ref(&asset_id))
             .await
         {
-            if let Some(album_name) = task
-                .album_name
-                .clone()
-                .or_else(|| infer_album_name(&task.path))
-            {
-                log::warn!(
-                    "Album '{}' may be stale or deleted. Refreshing album resolution.",
-                    album_id
-                );
-
-                final_album_id = match api.resolve_album_by_name(&album_name, true).await {
-                    Ok(id) => id,
-                    Err(e) => {
-                        log::warn!(
-                            "Failed to refresh album resolution for '{}': {}",
-                            album_name,
-                            e
-                        );
-                        None
-                    }
-                };
-
-                if let Some(ref refreshed_id) = final_album_id {
-                    if !api
-                        .add_assets_to_album(refreshed_id, std::slice::from_ref(&asset_id))
-                        .await
-                    {
-                        return None;
-                    }
-                } else {
-                    return None;
-                }
-            } else {
-                return None;
-            }
+            return None;
         }
-    } else {
-        log::warn!(
-            "Could not resolve album '{}'. Asset uploaded but not added to album.",
-            album_name
-        );
-        return None;
     }
 
     Some(SyncTarget {
         album_name: Some(album_name),
-        album_id: final_album_id,
+        album_id: Some(final_album_id),
     })
+}
+
+/// Resolve the album ID from either an explicit task ID or by name lookup.
+async fn resolve_album_id(
+    api: &ImmichApiClient,
+    task: &FileTask,
+    album_name: &str,
+) -> Option<String> {
+    if let Some(ref id) = task.album_id
+        && !id.is_empty()
+    {
+        return Some(id.clone());
+    }
+    match api.get_or_create_album(album_name).await {
+        Ok(id) => id,
+        Err(e) => {
+            log::warn!("Failed to resolve album '{}': {}", album_name, e);
+            None
+        }
+    }
 }
 
 /// Infer target album name from directory structure segment.
