@@ -10,7 +10,7 @@ use crate::diagnostics;
 use adw::prelude::*;
 use glib::clone;
 use gtk::prelude::*;
-use gtk::{Button, Entry, FileDialog, ListBox, PasswordEntry, ProgressBar, ScrolledWindow, Switch};
+use gtk::{Button, FileDialog, ListBox, ScrolledWindow};
 use libadwaita as adw;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -23,6 +23,11 @@ use std::time::Duration;
 use crate::app_context::AppContext;
 
 mod queue_inspector;
+mod actions_ui;
+mod behavior;
+mod connectivity;
+mod library;
+mod status;
 mod watch_folders;
 
 use queue_inspector::show_about_dialog;
@@ -200,136 +205,26 @@ pub fn build_settings_window_with_parent(
         settings_page.add(&welcome_group);
     }
 
-    // --- PROGRESS GROUP ---
-    let progress_group = adw::PreferencesGroup::builder()
-        .title("Sync Status")
-        .build();
-    status_page.add(&progress_group);
+    let status::StatusWidgets {
+        status_row,
+        progress_bar,
+        route_row,
+        folders_row,
+        queue_health_row,
+        last_sync_row,
+        error_row,
+    } = status::build_status_group(&status_page);
 
-    let status_row = adw::ActionRow::builder()
-        .title("Idle")
-        .subtitle("Waiting to sync...")
-        .build();
-    progress_group.add(&status_row);
+    let connectivity::ConnectivityWidgets {
+        internal_switch,
+        external_switch,
+        internal_entry,
+        external_entry,
+        api_key_entry,
+        test_btn,
+        save_btn,
+    } = connectivity::build_connectivity_group(&settings_page, &window);
 
-    let progress_bar = ProgressBar::builder()
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(12)
-        .margin_end(12)
-        .fraction(0.0)
-        .build();
-    progress_group.add(&progress_bar);
-
-    let health_group = adw::PreferencesGroup::builder()
-        .title("Health Dashboard")
-        .build();
-    status_page.add(&health_group);
-
-    let route_row = adw::ActionRow::builder()
-        .title("Server Route")
-        .subtitle("Checking connectivity...")
-        .build();
-    health_group.add(&route_row);
-
-    let folders_row = adw::ActionRow::builder()
-        .title("Watched Folders")
-        .subtitle("0 configured")
-        .build();
-    health_group.add(&folders_row);
-
-    let queue_health_row = adw::ActionRow::builder()
-        .title("Queue Health")
-        .subtitle("0 pending, 0 waiting to retry")
-        .build();
-    health_group.add(&queue_health_row);
-
-    let last_sync_row = adw::ActionRow::builder()
-        .title("Last Successful Sync")
-        .subtitle("No successful sync yet")
-        .build();
-    health_group.add(&last_sync_row);
-
-    let error_row = adw::ActionRow::builder()
-        .title("No recent errors")
-        .subtitle("Uploads are healthy.")
-        .build();
-    health_group.add(&error_row);
-
-    // --- CONNECTIVITY GROUP ---
-    let conn_group = adw::PreferencesGroup::builder()
-        .title("Connectivity")
-        .build();
-    settings_page.add(&conn_group);
-
-    // Internal URL
-    let internal_row = adw::ActionRow::builder()
-        .title("Internal URL (LAN)")
-        .title_lines(1)
-        .build();
-    let internal_switch = Switch::builder().valign(gtk::Align::Center).build();
-    let internal_entry = Entry::builder()
-        .placeholder_text("http://…")
-        .valign(gtk::Align::Center)
-        .width_request(140)
-        .max_width_chars(16)
-        .hexpand(true)
-        .build();
-    internal_row.add_prefix(&internal_switch);
-    internal_row.add_suffix(&internal_entry);
-    conn_group.add(&internal_row);
-
-    // External URL
-    let external_row = adw::ActionRow::builder()
-        .title("External URL (WAN)")
-        .title_lines(1)
-        .build();
-    let external_switch = Switch::builder().valign(gtk::Align::Center).build();
-    let external_entry = Entry::builder()
-        .placeholder_text("https://…")
-        .valign(gtk::Align::Center)
-        .width_request(140)
-        .max_width_chars(16)
-        .hexpand(true)
-        .build();
-    external_row.add_prefix(&external_switch);
-    external_row.add_suffix(&external_entry);
-    conn_group.add(&external_row);
-
-    // API Key
-    let api_key_row = adw::ActionRow::builder().title("API Key").build();
-    let api_key_entry = PasswordEntry::builder()
-        .valign(gtk::Align::Center)
-        .width_request(140)
-        .max_width_chars(16)
-        .hexpand(true)
-        .build();
-    api_key_row.add_suffix(&api_key_entry);
-    conn_group.add(&api_key_row);
-
-    // Test Connection Button
-    let test_btn = Button::builder()
-        .label("Test Connection")
-        .margin_top(12)
-        .build();
-    conn_group.add(&test_btn);
-
-    let save_btn = Button::builder()
-        .label("Save Credentials")
-        .css_classes(vec!["suggested-action".to_string()])
-        .margin_top(6)
-        .build();
-    conn_group.add(&save_btn);
-
-    let settings_breakpoint = adw::Breakpoint::new(
-        adw::BreakpointCondition::parse("max-width: 500sp").expect("valid breakpoint condition"),
-    );
-    settings_breakpoint.add_setter(&internal_row, "title", Some(&"LAN URL".to_value()));
-    settings_breakpoint.add_setter(&external_row, "title", Some(&"WAN URL".to_value()));
-    settings_breakpoint.add_setter(&internal_entry, "width-request", Some(&140i32.to_value()));
-    settings_breakpoint.add_setter(&external_entry, "width-request", Some(&140i32.to_value()));
-    settings_breakpoint.add_setter(&api_key_entry, "width-request", Some(&140i32.to_value()));
-    window.add_breakpoint(settings_breakpoint);
 
     // Clone before moving into test_btn closure so api_client is still available below
     let api_client_for_test = api_client.clone();
@@ -434,110 +329,20 @@ pub fn build_settings_window_with_parent(
         }
     ));
 
-    let behavior_group = adw::PreferencesGroup::builder().title("Behavior").build();
-    settings_page.add(&behavior_group);
-
-    let startup_row = adw::SwitchRow::builder()
-        .title("Run on Startup")
-        .subtitle("Start Mimick at login.")
-        .build();
-    behavior_group.add(&startup_row);
-
-    let background_sync_row = adw::SwitchRow::builder()
-        .title("Background Sync")
-        .subtitle("Watch folders in the background after launch.")
-        .build();
-    behavior_group.add(&background_sync_row);
-
-    let metered_row = adw::SwitchRow::builder()
-        .title("Pause on Metered Network")
-        .subtitle("Pause uploads on metered connections.")
-        .build();
-    behavior_group.add(&metered_row);
-
-    let battery_row = adw::SwitchRow::builder()
-        .title("Pause on Battery Power")
-        .subtitle("Pause uploads while on battery.")
-        .build();
-    behavior_group.add(&battery_row);
-
-    let notifications_row = adw::SwitchRow::builder()
-        .title("Enable Notifications")
-        .subtitle("Desktop notifications for sync events.")
-        .build();
-    behavior_group.add(&notifications_row);
-
-    let library_view_row = adw::SwitchRow::builder()
-        .title("Enable Library View")
-        .subtitle("In-app library browser. Requires restart.")
-        .build();
-    behavior_group.add(&library_view_row);
-
-    // Surface a clear "restart required" hint the moment the user flips the
-    // toggle, since the running window is still the old one until next launch.
-    // Also auto-save: this is a pure preference with no validation needed.
-    // The library-specific settings group is shown only when this toggle is
-    // on (wired further down once `library_group` exists).
-    let initial_library_view = config.data.library_view_enabled;
-    let ctx_for_lib_view = ctx.clone();
-    library_view_row.connect_active_notify(move |row| {
-        let active = row.is_active();
-        let needs_restart = active != initial_library_view;
-        let subtitle = if needs_restart {
-            "Restart Mimick to apply."
-        } else {
-            "In-app library browser. Requires restart."
-        };
-        row.set_subtitle(subtitle);
-        let mut cfg = ctx_for_lib_view.config.write();
-        if cfg.data.library_view_enabled != active {
-            cfg.data.library_view_enabled = active;
-            cfg.save();
-        }
-    });
-
-    let catchup_model = gtk::StringList::new(&["Full Scan", "Recent Only (7d)", "New Files Only"]);
-    let catchup_row = adw::ComboRow::builder()
-        .title("Default Startup Catch-up Mode")
-        .subtitle("Used when a folder has no override.")
-        .model(&catchup_model)
-        .build();
-    behavior_group.add(&catchup_row);
-
-    // Upload concurrency (1–10 workers)
-    let concurrency_adj = gtk::Adjustment::new(3.0, 1.0, 10.0, 1.0, 1.0, 0.0);
-    let concurrency_row = adw::SpinRow::builder()
-        .title("Upload Workers")
-        .subtitle("Parallel uploads. More = faster batches.")
-        .adjustment(&concurrency_adj)
-        .build();
-    behavior_group.add(&concurrency_row);
-
-    let xmp_sidecar_row = adw::SwitchRow::builder()
-        .title("Upload XMP Sidecars")
-        .subtitle("Attach .xmp sidecars with uploads.")
-        .build();
-    behavior_group.add(&xmp_sidecar_row);
-
-    let quiet_hours_row = adw::SwitchRow::builder()
-        .title("Quiet Hours")
-        .subtitle("Pause uploads on a nightly schedule.")
-        .build();
-    behavior_group.add(&quiet_hours_row);
-
-    let quiet_start_adj = gtk::Adjustment::new(22.0, 0.0, 23.0, 1.0, 1.0, 0.0);
-    let quiet_start_row = adw::SpinRow::builder()
-        .title("Quiet Hours Start (hour, local)")
-        .adjustment(&quiet_start_adj)
-        .build();
-    behavior_group.add(&quiet_start_row);
-
-    let quiet_end_adj = gtk::Adjustment::new(7.0, 0.0, 23.0, 1.0, 1.0, 0.0);
-    let quiet_end_row = adw::SpinRow::builder()
-        .title("Quiet Hours End (hour, local)")
-        .adjustment(&quiet_end_adj)
-        .build();
-    behavior_group.add(&quiet_end_row);
+    let behavior::BehaviorWidgets {
+        startup_row,
+        background_sync_row,
+        metered_row,
+        battery_row,
+        notifications_row,
+        library_view_row,
+        catchup_row,
+        concurrency_row,
+        xmp_sidecar_row,
+        quiet_hours_row,
+        quiet_start_row,
+        quiet_end_row,
+    } = behavior::build_behavior_group(&settings_page);
 
     // Show the hour spinners only when quiet hours are enabled
     quiet_hours_row.connect_active_notify(clone!(
@@ -552,27 +357,22 @@ pub fn build_settings_window_with_parent(
     ));
 
     // --- LIBRARY GROUP ---
-    // Only meaningful when the in-app library browser is on, so the whole
-    // group reveals/hides in step with the `library_view_row` toggle.
-    let library_group = adw::PreferencesGroup::builder()
-        .title("Library")
-        .description("Library browser settings.")
-        .visible(config.data.library_view_enabled)
-        .build();
-    settings_page.add(&library_group);
-    library_view_row.connect_active_notify(clone!(
+    let library::LibraryWidgets {
+        library_group,
+        preview_full_row,
+        grid_quality_row,
+        raw_full_decode_row,
+        raw_cache_row,
+        disk_cache_row,
+    } = library::build_library_group(&settings_page);
+
+    library_view_row.connect_active_notify(glib::clone!(
         #[weak]
         library_group,
         move |row| {
             library_group.set_visible(row.is_active());
         }
     ));
-
-    let preview_full_row = adw::SwitchRow::builder()
-        .title("Open Originals in Lightbox")
-        .subtitle("Use full-resolution instead of the 1440px preview.")
-        .build();
-    library_group.add(&preview_full_row);
 
     let ctx_for_preview = ctx.clone();
     preview_full_row.connect_active_notify(move |row| {
@@ -584,14 +384,6 @@ pub fn build_settings_window_with_parent(
         }
     });
 
-    let quality_options =
-        gtk::StringList::new(&["Auto (per cell size)", "Thumbnail", "Preview", "Full Size"]);
-    let grid_quality_row = adw::ComboRow::builder()
-        .title("Library Thumbnail Quality")
-        .subtitle("Higher quality uses more memory.")
-        .model(&quality_options)
-        .build();
-    library_group.add(&grid_quality_row);
     let initial_quality_idx = match ctx.config.read().data.library_grid_quality.as_str() {
         "thumbnail" => 1,
         "preview" => 2,
@@ -614,19 +406,6 @@ pub fn build_settings_window_with_parent(
         }
     });
 
-    let raw_full_decode_row = adw::SwitchRow::builder()
-        .title("Full RAW Decoding")
-        .subtitle("Sensor data instead of embedded previews. Slower.")
-        .build();
-    library_group.add(&raw_full_decode_row);
-
-    let raw_cache_row = adw::SwitchRow::builder()
-        .title("Cache Decoded RAW Files")
-        .subtitle("Instant re-opens. Uses disk space.")
-        .build();
-    library_group.add(&raw_cache_row);
-
-    // Cache setting only applies when full decode is enabled.
     raw_cache_row.set_sensitive(raw_full_decode_row.is_active());
 
     let cache_row_ref = raw_cache_row.clone();
@@ -652,14 +431,6 @@ pub fn build_settings_window_with_parent(
             cfg.save();
         }
     });
-
-    let disk_cache_adj = gtk::Adjustment::new(2000.0, 200.0, 10000.0, 100.0, 500.0, 0.0);
-    let disk_cache_row = adw::SpinRow::builder()
-        .title("Disk Cache Size (MB)")
-        .subtitle("Cap across all on-disk caches. Pruned at startup.")
-        .adjustment(&disk_cache_adj)
-        .build();
-    library_group.add(&disk_cache_row);
 
     let pending_disk_cache_save: Rc<Cell<Option<glib::SourceId>>> = Rc::new(Cell::new(None));
     let ctx_for_disk_cache = ctx.clone();
@@ -1167,79 +938,14 @@ pub fn build_settings_window_with_parent(
         );
     });
 
-    let controls_group = adw::PreferencesGroup::builder().title("Actions").build();
-    status_page.add(&controls_group);
-
-    // FlowBox so buttons wrap automatically on narrow widths
-    let actions_flow = gtk::FlowBox::builder()
-        .homogeneous(true)
-        .min_children_per_line(1)
-        .max_children_per_line(4)
-        .selection_mode(gtk::SelectionMode::None)
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_top(6)
-        .margin_bottom(6)
-        .build();
-    controls_group.add(&actions_flow);
-
-    let sync_now_btn = Button::builder()
-        .label("Sync Now")
-        .css_classes(vec!["suggested-action".to_string()])
-        .hexpand(true)
-        .build();
-    actions_flow.insert(&sync_now_btn, -1);
-
-    let pause_btn = Button::builder().label("Pause").hexpand(true).build();
-    actions_flow.insert(&pause_btn, -1);
-
-    let queue_btn = Button::builder()
-        .label("Queue Inspector")
-        .hexpand(true)
-        .build();
-    actions_flow.insert(&queue_btn, -1);
-
-    let export_btn = Button::builder()
-        .label("Export Diagnostics")
-        .hexpand(true)
-        .build();
-    actions_flow.insert(&export_btn, -1);
-
-    let clear_cache_btn = Button::builder()
-        .label("Clear Cache")
-        .tooltip_text(
-            "Removes all on-disk caches: thumbnails, decoded RAW previews, \
-             EXIF, video, and preview files.",
-        )
-        .hexpand(true)
-        .build();
-    actions_flow.insert(&clear_cache_btn, -1);
-
-    let app_group = adw::PreferencesGroup::builder()
-        .title("Application")
-        .build();
-    settings_page.add(&app_group);
-
-    let app_flow = gtk::FlowBox::builder()
-        .homogeneous(false)
-        .min_children_per_line(1)
-        .max_children_per_line(2)
-        .selection_mode(gtk::SelectionMode::None)
-        .row_spacing(8)
-        .column_spacing(8)
-        .margin_top(6)
-        .margin_bottom(6)
-        .build();
-    app_group.add(&app_flow);
-
-    let quit_btn = Button::builder()
-        .label("Quit")
-        .css_classes(vec!["destructive-action".to_string()])
-        .halign(gtk::Align::Start)
-        .hexpand(false)
-        .width_request(120)
-        .build();
-    app_flow.insert(&quit_btn, -1);
+    let actions_ui::ActionsWidgets {
+        sync_now_btn,
+        pause_btn,
+        queue_btn,
+        export_btn,
+        clear_cache_btn,
+        quit_btn,
+    } = actions_ui::build_actions_group(&status_page, &settings_page);
 
     pause_btn.set_label(if queue_manager.is_paused() {
         "Resume"
