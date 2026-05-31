@@ -44,40 +44,26 @@ impl ImmichApiClient {
         let api_key = self.settings.read().api_key.clone();
         log::info!("Fetching album list...");
 
-        match self
+        let result = self
             .client
             .get(&url)
             .header("x-api-key", &api_key)
             .header("Accept", "application/json")
             .timeout(Duration::from_secs(10))
             .send()
-            .await
-        {
+            .await;
+            
+        self.handle_fetch_albums_response(result).await;
+    }
+
+
+
+    async fn handle_fetch_albums_response(&self, result: Result<reqwest::Response, reqwest::Error>) {
+        match result {
             Ok(resp) if resp.status().is_success() => {
                 if let Ok(albums) = resp.json::<Vec<AlbumSummary>>().await {
                     let total = albums.len();
-                    let mut fresh: HashMap<String, String> = HashMap::with_capacity(total);
-                    let mut duplicates = 0usize;
-                    for album in albums {
-                        match fresh.get(&album.album_name) {
-                            Some(existing_id) if existing_id != &album.id => {
-                                duplicates += 1;
-                                log::warn!(
-                                    "Duplicate album on server: '{}' has both id {} and {} (keeping first). Future syncs will use the first.",
-                                    album.album_name,
-                                    existing_id,
-                                    album.id
-                                );
-                            }
-                            Some(_) => {
-                                // Same name + same id: server returned an entry twice; ignore silently.
-                            }
-                            None => {
-                                fresh.insert(album.album_name, album.id);
-                            }
-                        }
-                    }
-                    let unique = fresh.len();
+                    let (fresh, unique, duplicates) = Self::process_album_summaries(albums);
                     {
                         let mut cache = self.album_cache.lock().await;
                         *cache = fresh;
@@ -109,6 +95,32 @@ impl ImmichApiClient {
                     .await;
             }
         }
+    }
+
+    fn process_album_summaries(albums: Vec<AlbumSummary>) -> (HashMap<String, String>, usize, usize) {
+        let mut fresh: HashMap<String, String> = HashMap::with_capacity(albums.len());
+        let mut duplicates = 0usize;
+        for album in albums {
+            match fresh.get(&album.album_name) {
+                Some(existing_id) if existing_id != &album.id => {
+                    duplicates += 1;
+                    log::warn!(
+                        "Duplicate album on server: '{}' has both id {} and {} (keeping first). Future syncs will use the first.",
+                        album.album_name,
+                        existing_id,
+                        album.id
+                    );
+                }
+                Some(_) => {
+                    // Same name + same id: server returned an entry twice; ignore silently.
+                }
+                None => {
+                    fresh.insert(album.album_name, album.id);
+                }
+            }
+        }
+        let unique = fresh.len();
+        (fresh, unique, duplicates)
     }
 
     pub async fn refresh_album_cache(&self) {
@@ -163,19 +175,16 @@ impl ImmichApiClient {
             .send()
             .await
         {
-            Ok(resp) if resp.status().as_u16() == 200 || resp.status().as_u16() == 201 => {
-                if let Ok(json) = resp.json::<serde_json::Value>().await {
-                    let id = json["id"].as_str().map(String::from);
-                    if let Some(id_str) = &id {
-                        let mut cache = self.album_cache.lock().await;
-                        cache.insert(album_name.to_string(), id_str.clone());
-                    }
-                    self.clear_issue().await;
-                    log::info!("Album created: '{}' ({:?})", album_name, id);
-                    Ok(id)
-                } else {
-                    Ok(None)
+            Ok(resp) if resp.status().is_success() => {
+                let id = resp.json::<serde_json::Value>().await.ok()
+                    .and_then(|json| json["id"].as_str().map(String::from));
+                if let Some(id_str) = id.as_ref() {
+                    let mut cache = self.album_cache.lock().await;
+                    cache.insert(album_name.to_string(), id_str.clone());
                 }
+                self.clear_issue().await;
+                log::info!("Album created: '{}' ({:?})", album_name, id);
+                Ok(id)
             }
             Ok(resp) => {
                 log::error!("Failed to create album '{}': {}", album_name, resp.status());

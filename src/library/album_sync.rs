@@ -43,19 +43,7 @@ pub async fn diff_album_vs_folder(
     rules: &FolderRules,
     manual_sync: bool,
 ) -> Result<AlbumDiff, String> {
-    let mut remote = Vec::new();
-    let mut page: u32 = 1;
-    loop {
-        let (chunk, has_more) = ctx
-            .api_client
-            .fetch_album_assets(album_id, page, 1000, None)
-            .await?;
-        remote.extend(chunk);
-        if !has_more {
-            break;
-        }
-        page += 1;
-    }
+    let remote = fetch_remote_album_assets(&ctx, album_id).await?;
 
     let watch_root = watch_path.to_path_buf();
     let locals: Vec<LocalAsset> = enumerate_local(ctx.clone())
@@ -73,23 +61,7 @@ pub async fn diff_album_vs_folder(
 
     // Orphan records (path gone) keyed by checksum — drives rename detection
     // and suppresses to_download for assets headed for to_delete_remote.
-    // Skip records whose path still physically exists (filtered by rules,
-    // unreadable subdir, or portal handle mismatch) — those aren't deletions.
-    // Also skip records whose album_id is for a different album.
-    let mut orphan_by_checksum: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    for (path, record) in ctx.sync_index.records_under_path(watch_path) {
-        if local_paths.contains(&path) {
-            continue;
-        }
-        if Path::new(&path).exists() {
-            continue;
-        }
-        if record.album_id.as_deref().is_some_and(|id| id != album_id) {
-            continue;
-        }
-        orphan_by_checksum.entry(record.checksum).or_insert(path);
-    }
+    let mut orphan_by_checksum = compute_orphan_records(&ctx, album_id, watch_path, &local_paths);
 
     let mut to_download = Vec::new();
     let mut remote_by_checksum = std::collections::HashMap::new();
@@ -129,72 +101,20 @@ pub async fn diff_album_vs_folder(
         &classify_ctx,
     );
 
-    let mut to_delete_remote = Vec::new();
-    if rules.delete_folder_to_album {
-        let mut seen_remote_delete_ids = HashSet::new();
-        for (path, record) in ctx.sync_index.records_under_path(watch_path) {
-            if local_paths.contains(&path) {
-                continue;
-            }
-            if Path::new(&path).exists() {
-                continue;
-            }
-            if record.album_id.as_deref().is_some_and(|id| id != album_id) {
-                continue;
-            }
-            if let Some(asset) = remote_by_checksum.get(&record.checksum) {
-                if !seen_remote_delete_ids.insert(asset.id.clone()) {
-                    continue;
-                }
-                to_delete_remote.push(asset.clone());
-            }
-        }
-    }
+    let mut to_delete_remote = compute_remote_deletions(
+        &ctx,
+        album_id,
+        watch_path,
+        &local_paths,
+        &remote_by_checksum,
+        rules,
+    );
 
-    // Two-tick confirmation (#7) for mass deletes — small batches (≤5) trust
-    // the single read. The previous "still on server" filter was removed
-    // because bulk-upload-check matches even trashed assets, which silently
-    // suppressed the common case of "user trashed asset from album".
-    if to_delete_local.len() > 5 {
-        let album = album_id.to_string();
-        let pending = ctx.pending_deletions.clone();
-        to_delete_local
-            .retain(|entry| pending.confirm(&format!("local:{}:{}", album, entry.checksum)));
-    }
-    if to_delete_remote.len() > 5 {
-        let album = album_id.to_string();
-        let pending = ctx.pending_deletions.clone();
-        to_delete_remote.retain(|asset| {
-            let key = asset
-                .checksum
-                .as_deref()
-                .map(|c| format!("remote:{}:{}", album, c))
-                .unwrap_or_else(|| format!("remote:{}:id:{}", album, asset.id));
-            pending.confirm(&key)
-        });
-    }
+    // Two-tick confirmation (#7) for mass deletes
+    confirm_pending_deletions(&ctx, album_id, &mut to_delete_local, &mut to_delete_remote);
 
-    // Clear pending-deletion confirmations for items that came back — both
-    // for assets still in remote_set (alive in album) and local files that
-    // are present (alive on disk).
-    {
-        let album = album_id.to_string();
-        let pending = ctx.pending_deletions.clone();
-        for checksum in &remote_set {
-            pending.clear(&format!("local:{}:{}", album, checksum));
-        }
-        for entry in &to_upload {
-            // Local files that were never previously synced — clear any stale
-            // remote-trash confirmation for their checksum.
-            pending.clear(&format!("remote:{}:{}", album, entry.checksum));
-        }
-        for path in &local_paths {
-            // Records whose path is back on disk — clear remote-trash intent.
-            if let Some(record) = ctx.sync_index.record_for_path(path) {
-                pending.clear(&format!("remote:{}:{}", album, record.checksum));
-            }
-        }
-    }
+    // Clear pending-deletion confirmations for items that came back
+    clear_pending_deletions(&ctx, album_id, &remote_set, &to_upload, &local_paths);
 
     if !to_upload.is_empty()
         || !to_download.is_empty()
@@ -626,3 +546,124 @@ fn finish_album_download(ctx: &Arc<AppContext>, item_id: &str) {
         .transfer
         .finish_item(TransferDirection::Download, item_id, route);
 }
+
+async fn fetch_remote_album_assets(ctx: &Arc<AppContext>, album_id: &str) -> Result<Vec<LibraryAsset>, String> {
+    let mut remote = Vec::new();
+    let mut page: u32 = 1;
+    loop {
+        let (chunk, has_more) = ctx
+            .api_client
+            .fetch_album_assets(album_id, page, 1000, None)
+            .await?;
+        remote.extend(chunk);
+        if !has_more {
+            break;
+        }
+        page += 1;
+    }
+    Ok(remote)
+}
+
+fn compute_orphan_records(
+    ctx: &Arc<AppContext>,
+    album_id: &str,
+    watch_path: &Path,
+    local_paths: &HashSet<String>,
+) -> std::collections::HashMap<String, String> {
+    let mut orphan_by_checksum: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for (path, record) in ctx.sync_index.records_under_path(watch_path) {
+        if local_paths.contains(&path) {
+            continue;
+        }
+        if Path::new(&path).exists() {
+            continue;
+        }
+        if record.album_id.as_deref().is_some_and(|id| id != album_id) {
+            continue;
+        }
+        orphan_by_checksum.entry(record.checksum).or_insert(path);
+    }
+    orphan_by_checksum
+}
+
+fn compute_remote_deletions(
+    ctx: &Arc<AppContext>,
+    album_id: &str,
+    watch_path: &Path,
+    local_paths: &HashSet<String>,
+    remote_by_checksum: &std::collections::HashMap<String, LibraryAsset>,
+    rules: &FolderRules,
+) -> Vec<LibraryAsset> {
+    let mut to_delete_remote = Vec::new();
+    if rules.delete_folder_to_album {
+        let mut seen_remote_delete_ids = HashSet::new();
+        for (path, record) in ctx.sync_index.records_under_path(watch_path) {
+            if local_paths.contains(&path) {
+                continue;
+            }
+            if Path::new(&path).exists() {
+                continue;
+            }
+            if record.album_id.as_deref().is_some_and(|id| id != album_id) {
+                continue;
+            }
+            if let Some(asset) = remote_by_checksum.get(&record.checksum) {
+                if !seen_remote_delete_ids.insert(asset.id.clone()) {
+                    continue;
+                }
+                to_delete_remote.push(asset.clone());
+            }
+        }
+    }
+    to_delete_remote
+}
+
+fn confirm_pending_deletions(
+    ctx: &Arc<AppContext>,
+    album_id: &str,
+    to_delete_local: &mut Vec<LocalEntry>,
+    to_delete_remote: &mut Vec<LibraryAsset>,
+) {
+    if to_delete_local.len() > 5 {
+        let album = album_id.to_string();
+        let pending = ctx.pending_deletions.clone();
+        to_delete_local
+            .retain(|entry| pending.confirm(&format!("local:{}:{}", album, entry.checksum)));
+    }
+    if to_delete_remote.len() > 5 {
+        let album = album_id.to_string();
+        let pending = ctx.pending_deletions.clone();
+        to_delete_remote.retain(|asset| {
+            let key = asset
+                .checksum
+                .as_deref()
+                .map(|c| format!("remote:{}:{}", album, c))
+                .unwrap_or_else(|| format!("remote:{}:id:{}", album, asset.id));
+            pending.confirm(&key)
+        });
+    }
+}
+
+fn clear_pending_deletions(
+    ctx: &Arc<AppContext>,
+    album_id: &str,
+    remote_set: &HashSet<String>,
+    to_upload: &[LocalEntry],
+    local_paths: &HashSet<String>,
+) {
+    let album = album_id.to_string();
+    let pending = ctx.pending_deletions.clone();
+    for checksum in remote_set {
+        pending.clear(&format!("local:{}:{}", album, checksum));
+    }
+    for entry in to_upload {
+        pending.clear(&format!("remote:{}:{}", album, entry.checksum));
+    }
+    for path in local_paths {
+        if let Some(record) = ctx.sync_index.record_for_path(path) {
+            pending.clear(&format!("remote:{}:{}", album, record.checksum));
+        }
+    }
+}
+

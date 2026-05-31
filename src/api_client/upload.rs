@@ -28,45 +28,16 @@ impl ImmichApiClient {
         sidecar_path: Option<&str>,
         progress: Option<TransferProgressCallback>,
     ) -> Option<String> {
-        let base_url = match self.get_active_url().await {
+        let base_url = match self.check_active_url(file_path).await {
             Some(u) => u,
-            None => {
-                log::error!("No active connection. Skipping upload: {}", file_path);
-                self.set_issue(ApiIssue {
-                    summary: "No active server connection".to_string(),
-                    guidance: "Test the server connection in Settings and confirm at least one Immich URL is reachable."
-                        .to_string(),
-                })
-                .await;
-                return None;
-            }
+            None => return None,
         };
 
+        let meta = match self.read_asset_metadata(file_path).await {
+            Some(m) => m,
+            None => return None,
+        };
         let path = Path::new(file_path);
-        if !path.exists() {
-            log::warn!("File not found, skipping: {}", file_path);
-            self.set_issue(ApiIssue {
-                summary: "A queued file is no longer available".to_string(),
-                guidance: "Check that the watched folder still exists and that the file was not moved or deleted before upload."
-                    .to_string(),
-            })
-            .await;
-            return None;
-        }
-
-        let meta = match std::fs::metadata(path) {
-            Ok(m) => m,
-            Err(e) => {
-                log::error!("Could not read metadata for {}: {}", file_path, e);
-                self.set_issue(ApiIssue {
-                    summary: "Mimick could not read a queued file".to_string(),
-                    guidance: "Verify folder permissions and make sure the file is still accessible to the app."
-                        .to_string(),
-                })
-                .await;
-                return None;
-            }
-        };
 
         let (created_ts, modified_ts) = file_timestamps(&meta);
         let created_at = unix_to_utc_iso8601(created_ts);
@@ -89,19 +60,7 @@ impl ImmichApiClient {
         let file_len = meta.len();
 
         // Stream the file body so large videos do not get buffered into memory.
-        let file = match tokio::fs::File::open(path).await {
-            Ok(f) => f,
-            Err(e) => {
-                log::error!("Failed to open {}: {}", file_path, e);
-                self.set_issue(ApiIssue {
-                    summary: "Mimick could not open a queued file".to_string(),
-                    guidance: "The file may be locked, deleted, or outside the app's allowed folder access."
-                        .to_string(),
-                })
-                .await;
-                return None;
-            }
-        };
+        let file = self.open_asset_file(path, file_path).await?;
 
         let progress_for_stream = progress.clone();
         let mut uploaded_bytes = 0_u64;
@@ -119,7 +78,7 @@ impl ImmichApiClient {
             .mime_str(mime)
             .ok()?;
 
-        let mut form = reqwest::multipart::Form::new()
+        let form = reqwest::multipart::Form::new()
             .part("assetData", file_part)
             .text("deviceAssetId", device_asset_id)
             .text("deviceId", device_id)
@@ -127,62 +86,16 @@ impl ImmichApiClient {
             .text("fileModifiedAt", modified_at)
             .text("isFavorite", "false");
 
-        // Attach XMP sidecar when present.
-        if let Some(sidecar) = sidecar_path {
-            let sidecar_p = Path::new(sidecar);
-            if sidecar_p.exists() {
-                match tokio::fs::read(sidecar_p).await {
-                    Ok(sidecar_bytes) => {
-                        let sidecar_filename = sidecar_p
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_else(|| "sidecar.xmp".to_string());
-                        if let Ok(sidecar_part) = reqwest::multipart::Part::bytes(sidecar_bytes)
-                            .file_name(sidecar_filename.clone())
-                            .mime_str("application/xml")
-                        {
-                            form = form.part("sidecarData", sidecar_part);
-                            log::info!("Attaching sidecar: {}", sidecar_filename);
-                        }
-                    }
-                    Err(err) => {
-                        log::warn!("Could not read sidecar '{}': {}", sidecar, err);
-                    }
-                }
-            }
-        }
+        let form = Self::attach_sidecar(form, sidecar_path).await;
 
-        let url = format!("{}/api/assets", base_url);
-        let api_key = self.settings.read().api_key.clone();
-
-        match self
-            .client
-            .post(&url)
-            .header("x-api-key", &api_key)
-            .header("Accept", "application/json")
-            .multipart(form)
-            .send()
-            .await
-        {
-            Ok(resp) => {
-                self.handle_upload_response(
-                    resp,
-                    &filename,
-                    file_len,
-                    &desired_time_zone,
-                    base_url,
-                    progress.as_ref(),
-                )
-                .await
-            }
-            Err(e) => {
-                log::error!("Network error uploading {}: {}", filename, e);
-                *self.active_url.lock().await = None;
-                self.set_issue(classify_network_issue(RequestContext::Upload, &e))
-                    .await;
-                None
-            }
-        }
+        self.execute_upload_request(
+            form,
+            base_url,
+            filename,
+            file_len,
+            desired_time_zone,
+            progress,
+        ).await
     }
 
     async fn handle_upload_response(
@@ -197,34 +110,10 @@ impl ImmichApiClient {
         let status = resp.status().as_u16();
         match status {
             200 | 201 => {
-                let json = resp.json::<serde_json::Value>().await.ok()?;
-                let asset_id = json["id"].as_str().map(String::from);
-                if let Some(callback) = progress {
-                    callback(file_len, Some(file_len));
-                }
-                if let Some(asset_id) = asset_id.as_deref() {
-                    self.schedule_asset_timezone_fixup(
-                        base_url,
-                        asset_id.to_string(),
-                        desired_time_zone.clone(),
-                    );
-                }
-                self.clear_issue().await;
-                log::info!("Upload OK: {} => {:?}", filename, asset_id);
-                asset_id
+                self.handle_upload_success(resp, filename, file_len, desired_time_zone, base_url, progress).await
             }
             409 => {
-                log::info!("Duplicate (already in Immich): {}", filename);
-                self.clear_issue().await;
-                if let Some(callback) = progress {
-                    callback(file_len, Some(file_len));
-                }
-                if let Ok(json) = resp.json::<serde_json::Value>().await
-                    && let Some(id) = json["id"].as_str()
-                {
-                    return Some(id.to_string());
-                }
-                Some("DUPLICATE".to_string())
+                self.handle_upload_duplicate(resp, filename, file_len, progress).await
             }
             413 => {
                 log::error!("Upload failed (file too large): {}", filename);
@@ -300,5 +189,179 @@ impl ImmichApiClient {
                     .await;
             }
         });
+    }
+
+    async fn handle_upload_success(
+        &self,
+        resp: reqwest::Response,
+        filename: &str,
+        file_len: u64,
+        desired_time_zone: &Option<String>,
+        base_url: String,
+        progress: Option<&TransferProgressCallback>,
+    ) -> Option<String> {
+        let json = resp.json::<serde_json::Value>().await.ok()?;
+        let asset_id = json["id"].as_str().map(String::from);
+        if let Some(callback) = progress {
+            callback(file_len, Some(file_len));
+        }
+        if let Some(asset_id) = asset_id.as_deref() {
+            self.schedule_asset_timezone_fixup(
+                base_url,
+                asset_id.to_string(),
+                desired_time_zone.clone(),
+            );
+        }
+        self.clear_issue().await;
+        log::info!("Upload OK: {} => {:?}", filename, asset_id);
+        asset_id
+    }
+
+    async fn handle_upload_duplicate(
+        &self,
+        resp: reqwest::Response,
+        filename: &str,
+        file_len: u64,
+        progress: Option<&TransferProgressCallback>,
+    ) -> Option<String> {
+        log::info!("Duplicate (already in Immich): {}", filename);
+        self.clear_issue().await;
+        if let Some(callback) = progress {
+            callback(file_len, Some(file_len));
+        }
+        if let Ok(json) = resp.json::<serde_json::Value>().await
+            && let Some(id) = json["id"].as_str()
+        {
+            return Some(id.to_string());
+        }
+        Some("DUPLICATE".to_string())
+    }
+
+    async fn attach_sidecar(mut form: reqwest::multipart::Form, sidecar_path: Option<&str>) -> reqwest::multipart::Form {
+        if let Some(sidecar) = sidecar_path {
+            let sidecar_p = Path::new(sidecar);
+            if sidecar_p.exists() {
+                match tokio::fs::read(sidecar_p).await {
+                    Ok(sidecar_bytes) => {
+                        let sidecar_filename = sidecar_p
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "sidecar.xmp".to_string());
+                        if let Ok(sidecar_part) = reqwest::multipart::Part::bytes(sidecar_bytes)
+                            .file_name(sidecar_filename.clone())
+                            .mime_str("application/xml")
+                        {
+                            form = form.part("sidecarData", sidecar_part);
+                            log::info!("Attaching sidecar: {}", sidecar_filename);
+                        }
+                    }
+                    Err(err) => {
+                        log::warn!("Could not read sidecar '{}': {}", sidecar, err);
+                    }
+                }
+            }
+        }
+        form
+    }
+
+    async fn read_asset_metadata(&self, file_path: &str) -> Option<std::fs::Metadata> {
+        let path = Path::new(file_path);
+        if !path.exists() {
+            log::warn!("File not found, skipping: {}", file_path);
+            self.set_issue(ApiIssue {
+                summary: "A queued file is no longer available".to_string(),
+                guidance: "Check that the watched folder still exists and that the file was not moved or deleted before upload."
+                    .to_string(),
+            })
+            .await;
+            return None;
+        }
+
+        match std::fs::metadata(path) {
+            Ok(m) => Some(m),
+            Err(e) => {
+                log::error!("Could not read metadata for {}: {}", file_path, e);
+                self.set_issue(ApiIssue {
+                    summary: "Mimick could not read a queued file".to_string(),
+                    guidance: "Verify folder permissions and make sure the file is still accessible to the app."
+                        .to_string(),
+                })
+                .await;
+                None
+            }
+        }
+    }
+    async fn open_asset_file(&self, path: &Path, file_path: &str) -> Option<tokio::fs::File> {
+        match tokio::fs::File::open(path).await {
+            Ok(f) => Some(f),
+            Err(e) => {
+                log::error!("Failed to open {}: {}", file_path, e);
+                self.set_issue(ApiIssue {
+                    summary: "Mimick could not open a queued file".to_string(),
+                    guidance: "The file may be locked, deleted, or outside the app's allowed folder access."
+                        .to_string(),
+                })
+                .await;
+                None
+            }
+        }
+    }
+    async fn check_active_url(&self, file_path: &str) -> Option<String> {
+        match self.get_active_url().await {
+            Some(u) => Some(u),
+            None => {
+                log::error!("No active connection. Skipping upload: {}", file_path);
+                self.set_issue(ApiIssue {
+                    summary: "No active server connection".to_string(),
+                    guidance: "Test the server connection in Settings and confirm at least one Immich URL is reachable."
+                        .to_string(),
+                })
+                .await;
+                None
+            }
+        }
+    }
+
+    async fn execute_upload_request(
+        &self,
+        form: reqwest::multipart::Form,
+        base_url: String,
+        filename: String,
+        file_len: u64,
+        desired_time_zone: Option<String>,
+        progress: Option<TransferProgressCallback>,
+    ) -> Option<String> {
+        let url = format!("{}/api/assets", base_url);
+        let api_key = self.settings.read().api_key.clone();
+
+        match self
+            .client
+            .post(&url)
+            .header("x-api-key", &api_key)
+            .header("Accept", "application/json")
+            .multipart(form)
+            .send()
+            .await
+        {
+            Ok(resp) => {
+                self.handle_upload_response(
+                    resp,
+                    &filename,
+                    file_len,
+                    &desired_time_zone,
+                    base_url,
+                    progress.as_ref(),
+                )
+                .await
+            }
+            Err(e) => {
+                log::error!("Network error uploading {}: {}", filename, e);
+                let mut active = self.active_url.lock().await;
+                *active = None;
+                self.set_issue(classify_network_issue(RequestContext::Upload, &e))
+                    .await;
+                None
+            }
+        }
     }
 }

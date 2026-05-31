@@ -656,6 +656,31 @@ fn jpeg_bytes_to_oriented_texture(
     pixbuf_to_texture(&oriented)
 }
 
+fn extract_primary_embedded_jpeg(
+    path: &std::path::Path,
+    flip: i32,
+    sensor_dims: (u32, u32),
+) -> Option<gdk4::Texture> {
+    if let Some(scan) = extract_largest_embedded_jpeg(path) {
+        let scan_len = scan.len();
+        if let Some(texture) = jpeg_bytes_to_oriented_texture(&scan, flip, sensor_dims) {
+            log::debug!(
+                "Extracted embedded JPEG preview ({} bytes via SOI-scan, flip={}) from {}",
+                scan_len,
+                flip,
+                path.display()
+            );
+            return Some(texture);
+        }
+        log::debug!(
+            "SOI-scanned JPEG ({} bytes) failed to decode for {}; falling back to libraw",
+            scan_len,
+            path.display()
+        );
+    }
+    None
+}
+
 /// Embedded RAW preview: SOI-scan for the largest JPEG (primary), fall back
 /// to libraw's bitmap/JPEG thumbnail for files that store the preview as
 /// TIFF strips (Samsung DNG, OnePlus DNG, etc.). Full demosaic path untouched.
@@ -689,22 +714,8 @@ fn extract_libraw_thumb(path: &std::path::Path) -> Option<gdk4::Texture> {
         let sensor_dims = ((*lr).sizes.width as u32, (*lr).sizes.height as u32);
 
         // PRIMARY: scan the file for the largest embedded JPEG and decode it.
-        if let Some(scan) = extract_largest_embedded_jpeg(path) {
-            let scan_len = scan.len();
-            if let Some(texture) = jpeg_bytes_to_oriented_texture(&scan, flip, sensor_dims) {
-                log::debug!(
-                    "Extracted embedded JPEG preview ({} bytes via SOI-scan, flip={}) from {}",
-                    scan_len,
-                    flip,
-                    path.display()
-                );
-                return Some(texture);
-            }
-            log::debug!(
-                "SOI-scanned JPEG ({} bytes) failed to decode for {}; falling back to libraw",
-                scan_len,
-                path.display()
-            );
+        if let Some(texture) = extract_primary_embedded_jpeg(path, flip, sensor_dims) {
+            return Some(texture);
         }
 
         // FALLBACK: libraw thumb — handles bitmap previews (Samsung/OnePlus

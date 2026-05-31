@@ -957,23 +957,9 @@ async fn handle_upload(
         }
     };
 
-    let asset_id = match asset_id {
-        None => return None,
-        Some(ref id) if id == "DUPLICATE" => match api.find_existing_asset_id(&task.checksum).await
-        {
-            Some(existing) => existing,
-            None => {
-                log::info!("Asset already on server: {}", task.path);
-                return Some(SyncTarget {
-                    album_name: task
-                        .album_name
-                        .clone()
-                        .or_else(|| infer_album_name(&task.path)),
-                    album_id: task.album_id.clone(),
-                });
-            }
-        },
-        Some(id) => id,
+    let asset_id = match resolve_final_asset_id(api, task, asset_id).await {
+        Ok(id) => id,
+        Err(early_return) => return early_return,
     };
 
     // Manual / library uploads skip album association entirely. The asset is
@@ -1013,29 +999,10 @@ async fn handle_upload(
         }
     };
 
-    if !api
-        .add_assets_to_album(&final_album_id, std::slice::from_ref(&asset_id))
-        .await
-    {
-        let name = task
-            .album_name
-            .clone()
-            .or_else(|| infer_album_name(&task.path))?;
-        log::warn!(
-            "Album '{}' may be stale or deleted. Refreshing album resolution.",
-            final_album_id
-        );
-        final_album_id = match api.resolve_album_by_name(&name, true).await {
-            Ok(Some(id)) => id,
-            Ok(None) | Err(_) => return None,
-        };
-        if !api
-            .add_assets_to_album(&final_album_id, std::slice::from_ref(&asset_id))
-            .await
-        {
-            return None;
-        }
-    }
+    final_album_id = match add_to_album_with_retry(api, task, &asset_id, final_album_id).await {
+        Some(id) => id,
+        None => return None,
+    };
 
     Some(SyncTarget {
         album_name: Some(album_name),
@@ -1106,6 +1073,64 @@ fn load_retries(path: &PathBuf) -> Vec<FileTask> {
             Vec::new()
         }
     }
+}
+
+async fn resolve_final_asset_id(
+    api: &ImmichApiClient,
+    task: &FileTask,
+    asset_id: Option<String>,
+) -> Result<String, Option<SyncTarget>> {
+    let id = match asset_id {
+        None => return Err(None),
+        Some(ref id) if id == "DUPLICATE" => match api.find_existing_asset_id(&task.checksum).await {
+            Some(existing) => existing,
+            None => {
+                log::info!("Asset already on server: {}", task.path);
+                return Err(Some(SyncTarget {
+                    album_name: task
+                        .album_name
+                        .clone()
+                        .or_else(|| infer_album_name(&task.path)),
+                    album_id: task.album_id.clone(),
+                }));
+            }
+        },
+        Some(id) => id,
+    };
+    Ok(id)
+}
+
+async fn add_to_album_with_retry(
+    api: &ImmichApiClient,
+    task: &FileTask,
+    asset_id: &str,
+    mut final_album_id: String,
+) -> Option<String> {
+    let asset_id_str = asset_id.to_string();
+    if !api
+        .add_assets_to_album(&final_album_id, std::slice::from_ref(&asset_id_str))
+        .await
+    {
+        let name = task
+            .album_name
+            .clone()
+            .or_else(|| infer_album_name(&task.path))?;
+        log::warn!(
+            "Album '{}' may be stale or deleted. Refreshing album resolution.",
+            final_album_id
+        );
+        final_album_id = match api.resolve_album_by_name(&name, true).await {
+            Ok(Some(id)) => id,
+            Ok(None) | Err(_) => return None,
+        };
+        if !api
+            .add_assets_to_album(&final_album_id, std::slice::from_ref(&asset_id_str))
+            .await
+        {
+            return None;
+        }
+    }
+    Some(final_album_id)
 }
 
 #[cfg(test)]

@@ -22,11 +22,11 @@ use std::time::Duration;
 
 use crate::app_context::AppContext;
 
-mod queue_inspector;
 mod actions_ui;
 mod behavior;
 mod connectivity;
 mod library;
+mod queue_inspector;
 mod status;
 mod watch_folders;
 
@@ -224,7 +224,6 @@ pub fn build_settings_window_with_parent(
         test_btn,
         save_btn,
     } = connectivity::build_connectivity_group(&settings_page, &window);
-
 
     // Clone before moving into test_btn closure so api_client is still available below
     let api_client_for_test = api_client.clone();

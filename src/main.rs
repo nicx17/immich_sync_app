@@ -52,9 +52,7 @@ use state_manager::{AppState, StateManager};
 use sync_index::{ShardedSyncIndex, SyncDecision, SyncTarget};
 use tray_icon::build_tray;
 
-use flexi_logger::{
-    Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode,
-};
+use flexi_logger::{Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 
 /// Shared application context reused by UI entry points and the shutdown path.
 static APP_CONTEXT: std::sync::OnceLock<Arc<AppContext>> = std::sync::OnceLock::new();
