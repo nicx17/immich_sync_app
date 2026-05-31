@@ -541,50 +541,57 @@ impl MasonryCanvas {
         item_at_x(row, x as f32).map(|it| it.asset_index)
     }
 
+    fn handle_primary_click(&self, gesture: &gtk::GestureClick, x: f64, y: f64) {
+        let Some(pos) = self.hit_test(x, y) else {
+            return;
+        };
+        let imp = self.imp();
+        let ctrl = gesture
+            .current_event_state()
+            .contains(gtk::gdk::ModifierType::CONTROL_MASK);
+        let Some(sel) = imp.selection.get() else {
+            return;
+        };
+
+        if ctrl {
+            toggle_selection(sel, pos);
+            if !imp.select_mode.get()
+                && let Some(changer) = imp.select_mode_changer.borrow().clone()
+            {
+                (*changer)(true);
+            }
+            return;
+        }
+
+        if imp.select_mode.get() {
+            toggle_selection(sel, pos);
+            return;
+        }
+
+        if let Some(handler) = imp.activate_handler.borrow().clone() {
+            (*handler)(pos);
+        }
+    }
+
+    fn handle_secondary_click(&self, x: f64, y: f64) {
+        let Some(pos) = self.hit_test(x, y) else {
+            return;
+        };
+        let imp = self.imp();
+        if let Some(handler_cell) = imp.context_menu_handler.borrow().clone()
+            && let Some(cb) = handler_cell.borrow().as_ref()
+        {
+            (cb)(pos, x, y);
+        }
+    }
+
     fn install_gestures(&self) {
         let primary = gtk::GestureClick::new();
         primary.set_button(gtk::gdk::BUTTON_PRIMARY);
         let weak = self.downgrade();
         primary.connect_pressed(move |gesture, _, x, y| {
-            let Some(canvas) = weak.upgrade() else {
-                return;
-            };
-            let Some(pos) = canvas.hit_test(x, y) else {
-                return;
-            };
-            let imp = canvas.imp();
-            let ctrl = gesture
-                .current_event_state()
-                .contains(gtk::gdk::ModifierType::CONTROL_MASK);
-            let Some(sel) = imp.selection.get() else {
-                return;
-            };
-
-            if ctrl {
-                if sel.is_selected(pos) {
-                    sel.unselect_item(pos);
-                } else {
-                    sel.select_item(pos, false);
-                }
-                if !imp.select_mode.get()
-                    && let Some(changer) = imp.select_mode_changer.borrow().clone()
-                {
-                    (*changer)(true);
-                }
-                return;
-            }
-
-            if imp.select_mode.get() {
-                if sel.is_selected(pos) {
-                    sel.unselect_item(pos);
-                } else {
-                    sel.select_item(pos, false);
-                }
-                return;
-            }
-
-            if let Some(handler) = imp.activate_handler.borrow().clone() {
-                (*handler)(pos);
+            if let Some(canvas) = weak.upgrade() {
+                canvas.handle_primary_click(gesture, x, y);
             }
         });
         self.add_controller(primary);
@@ -593,19 +600,18 @@ impl MasonryCanvas {
         secondary.set_button(gtk::gdk::BUTTON_SECONDARY);
         let weak = self.downgrade();
         secondary.connect_pressed(move |_, _, x, y| {
-            let Some(canvas) = weak.upgrade() else {
-                return;
-            };
-            let Some(pos) = canvas.hit_test(x, y) else {
-                return;
-            };
-            let imp = canvas.imp();
-            if let Some(handler_cell) = imp.context_menu_handler.borrow().clone()
-                && let Some(cb) = handler_cell.borrow().as_ref()
-            {
-                (cb)(pos, x, y);
+            if let Some(canvas) = weak.upgrade() {
+                canvas.handle_secondary_click(x, y);
             }
         });
         self.add_controller(secondary);
+    }
+}
+
+fn toggle_selection(sel: &gtk::MultiSelection, pos: u32) {
+    if sel.is_selected(pos) {
+        sel.unselect_item(pos);
+    } else {
+        sel.select_item(pos, false);
     }
 }

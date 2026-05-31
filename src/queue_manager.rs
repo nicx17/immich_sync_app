@@ -775,35 +775,46 @@ fn finalize_upload_progress(
     }
     let total_handled = s.processed_count + s.failed_count;
     if total_handled >= s.total_queued && s.active_workers == 0 {
-        s.queue_size = 0;
-        s.status = if s.paused {
-            "paused".to_string()
-        } else {
-            "idle".to_string()
-        };
-        s.progress = 100;
-        log::info!("All {} file(s) processed. Idle.", s.total_queued);
-        if let Err(err) = sync_index_ref.flush() {
-            log::warn!("Failed to flush sync index on idle: {}", err);
-        }
-        let mut batch_state = batch_notify_ref.lock();
-        if batch_state.active
-            && batch_state.current_batch_id != batch_state.last_notified_batch_id
-            && !batch_state.notify_scheduled
-        {
-            batch_state.notify_scheduled = true;
-            Some(batch_state.current_batch_id)
-        } else {
-            None
-        }
+        apply_idle_state(&mut s, sync_index_ref);
+        check_batch_notification(&mut batch_notify_ref.lock())
     } else {
-        s.queue_size = s.total_queued.saturating_sub(total_handled);
-        s.progress = if s.total_queued > 0 {
-            ((total_handled as f32 / s.total_queued as f32) * 100.0) as u8
-        } else {
-            0
-        };
-        s.status = "uploading".to_string();
+        apply_active_state(&mut s, total_handled);
+        None
+    }
+}
+
+fn apply_idle_state(s: &mut AppState, sync_index_ref: &Arc<ShardedSyncIndex>) {
+    s.queue_size = 0;
+    s.status = if s.paused {
+        "paused".to_string()
+    } else {
+        "idle".to_string()
+    };
+    s.progress = 100;
+    log::info!("All {} file(s) processed. Idle.", s.total_queued);
+    if let Err(err) = sync_index_ref.flush() {
+        log::warn!("Failed to flush sync index on idle: {}", err);
+    }
+}
+
+fn apply_active_state(s: &mut AppState, total_handled: usize) {
+    s.queue_size = s.total_queued.saturating_sub(total_handled);
+    s.progress = if s.total_queued > 0 {
+        ((total_handled as f32 / s.total_queued as f32) * 100.0) as u8
+    } else {
+        0
+    };
+    s.status = "uploading".to_string();
+}
+
+fn check_batch_notification(batch_state: &mut BatchNotifyState) -> Option<u64> {
+    if batch_state.active
+        && batch_state.current_batch_id != batch_state.last_notified_batch_id
+        && !batch_state.notify_scheduled
+    {
+        batch_state.notify_scheduled = true;
+        Some(batch_state.current_batch_id)
+    } else {
         None
     }
 }

@@ -76,57 +76,81 @@ pub(crate) fn pack_rows(
     let mut i = 0_usize;
 
     while i < dims.len() {
-        let mut indices: Vec<usize> = Vec::new();
-        let mut summed_w = 0.0_f32;
-        while i < dims.len() {
-            let w_at_max = aspect(dims[i].0, dims[i].1) * cfg.max_row_height;
-            let gap_before = if indices.is_empty() { 0.0 } else { cfg.gap };
-            if !indices.is_empty() && summed_w + gap_before + w_at_max > canvas_w {
-                break;
-            }
-            indices.push(i);
-            summed_w += w_at_max + gap_before;
-            i += 1;
-        }
-        let last_row = i >= dims.len() && summed_w + cfg.gap < canvas_w;
+        let (indices, next_i) = collect_row_indices(dims, i, canvas_w, cfg);
+        i = next_i;
 
-        let mut row_h = scale_to_fit(&indices, dims, canvas_w, cfg);
-
-        // Pop the trailing item if the row is too short — it spills to the next row.
-        if indices.len() > 1 && row_h < cfg.min_row_height {
-            let popped = indices.pop().unwrap();
-            i = popped;
-            row_h = scale_to_fit(&indices, dims, canvas_w, cfg);
-        }
-
-        // Filled rows keep their computed height so the row reaches canvas_w.
-        // Only the underfilled trailing row is clamped.
-        if last_row {
-            row_h = row_h.clamp(cfg.min_row_height, cfg.max_row_height);
-        }
-
-        let mut placed = Vec::with_capacity(indices.len());
-        let mut x_cursor = 0.0_f32;
-        for &idx in &indices {
-            let w = aspect(dims[idx].0, dims[idx].1) * row_h;
-            placed.push(LaidItem {
-                asset_index: idx as u32,
-                x: x_cursor,
-                w,
-            });
-            x_cursor += w + cfg.gap;
-        }
-
-        rows.push(LaidRow {
-            y: y_cursor,
-            h: row_h,
-            items: placed,
-        });
-        y_cursor += row_h + cfg.gap;
+        let last_row = i >= dims.len();
+        let row = build_row(dims, indices, canvas_w, y_cursor, last_row, cfg);
+        y_cursor += row.h + cfg.gap;
+        rows.push(row);
     }
 
     let total_height = (y_cursor - cfg.gap).max(0.0);
     (rows, total_height)
+}
+
+/// Greedily collect item indices that fit into a single row at max height.
+fn collect_row_indices(
+    dims: &[(u32, u32)],
+    start: usize,
+    canvas_w: f32,
+    cfg: LayoutConfig,
+) -> (Vec<usize>, usize) {
+    let mut indices: Vec<usize> = Vec::new();
+    let mut summed_w = 0.0_f32;
+    let mut i = start;
+    while i < dims.len() {
+        let w_at_max = aspect(dims[i].0, dims[i].1) * cfg.max_row_height;
+        let gap_before = if indices.is_empty() { 0.0 } else { cfg.gap };
+        if !indices.is_empty() && summed_w + gap_before + w_at_max > canvas_w {
+            break;
+        }
+        indices.push(i);
+        summed_w += w_at_max + gap_before;
+        i += 1;
+    }
+    (indices, i)
+}
+
+/// Scale, clamp, and place items into a single laid-out row.
+fn build_row(
+    dims: &[(u32, u32)],
+    mut indices: Vec<usize>,
+    canvas_w: f32,
+    y: f32,
+    last_row: bool,
+    cfg: LayoutConfig,
+) -> LaidRow {
+    let mut row_h = scale_to_fit(&indices, dims, canvas_w, cfg);
+
+    // Pop the trailing item if the row is too short -- it spills to the next row
+    // (handled by the caller via the returned next index).
+    if indices.len() > 1 && row_h < cfg.min_row_height {
+        indices.pop();
+        row_h = scale_to_fit(&indices, dims, canvas_w, cfg);
+    }
+
+    if last_row {
+        row_h = row_h.clamp(cfg.min_row_height, cfg.max_row_height);
+    }
+
+    let mut placed = Vec::with_capacity(indices.len());
+    let mut x_cursor = 0.0_f32;
+    for &idx in &indices {
+        let w = aspect(dims[idx].0, dims[idx].1) * row_h;
+        placed.push(LaidItem {
+            asset_index: idx as u32,
+            x: x_cursor,
+            w,
+        });
+        x_cursor += w + cfg.gap;
+    }
+
+    LaidRow {
+        y,
+        h: row_h,
+        items: placed,
+    }
 }
 
 fn scale_to_fit(indices: &[usize], dims: &[(u32, u32)], canvas_w: f32, cfg: LayoutConfig) -> f32 {

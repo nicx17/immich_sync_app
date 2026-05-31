@@ -326,43 +326,62 @@ const MIN_EMBEDDED_JPEG_SIZE: usize = 4096;
 /// RAW files wrap compressed Bayer data in SOF3 containers -- these are
 /// never renderable and should be skipped by the preview scanner.
 fn is_lossless_jpeg(bytes: &[u8], start: usize, end: usize) -> bool {
-    // Walk the marker structure from just after SOI (FF D8) looking for
-    // a SOF marker. SOF markers are C0-CF excluding C4 (DHT), C8
-    // (reserved), and CC (DAC).
     let mut pos = start + 2;
     while pos + 3 < end {
         if bytes[pos] != 0xFF {
             return false;
         }
         let marker = bytes[pos + 1];
-        // Skip fill bytes and parameterless markers.
-        if marker == 0xFF {
-            pos += 1;
-            continue;
+        match classify_jpeg_marker(marker) {
+            MarkerKind::Fill => {
+                pos += 1;
+            }
+            MarkerKind::Parameterless => {
+                pos += 2;
+            }
+            MarkerKind::Sof => return marker == 0xC3,
+            MarkerKind::Sos => return false,
+            MarkerKind::Segment => {
+                if let Some(next) = skip_segment(bytes, pos, end) {
+                    pos = next;
+                } else {
+                    return false;
+                }
+            }
         }
-        if marker == 0x01 || (0xD0..=0xD7).contains(&marker) {
-            pos += 2;
-            continue;
-        }
-        // SOF marker range: C0-CF except C4, C8, CC.
-        if (0xC0..=0xCF).contains(&marker) && marker != 0xC4 && marker != 0xC8 && marker != 0xCC {
-            return marker == 0xC3;
-        }
-        // SOS -- no SOF found before entropy data; not lossless.
-        if marker == 0xDA {
-            return false;
-        }
-        // Variable-length segment: skip by declared length.
-        if pos + 3 >= end {
-            return false;
-        }
-        let seg_len = u16::from_be_bytes([bytes[pos + 2], bytes[pos + 3]]) as usize;
-        if seg_len < 2 || pos + 2 + seg_len > end {
-            return false;
-        }
-        pos = pos + 2 + seg_len;
     }
     false
+}
+
+enum MarkerKind {
+    Fill,
+    Parameterless,
+    Sof,
+    Sos,
+    Segment,
+}
+
+fn classify_jpeg_marker(marker: u8) -> MarkerKind {
+    match marker {
+        0xFF => MarkerKind::Fill,
+        0x01 | 0xD0..=0xD7 => MarkerKind::Parameterless,
+        0xC0..=0xCF if marker != 0xC4 && marker != 0xC8 && marker != 0xCC => MarkerKind::Sof,
+        0xDA => MarkerKind::Sos,
+        _ => MarkerKind::Segment,
+    }
+}
+
+/// Read and skip a variable-length JPEG segment. Returns the position after
+/// the segment, or None if the segment is malformed.
+fn skip_segment(bytes: &[u8], pos: usize, end: usize) -> Option<usize> {
+    if pos + 3 >= end {
+        return None;
+    }
+    let seg_len = u16::from_be_bytes([bytes[pos + 2], bytes[pos + 3]]) as usize;
+    if seg_len < 2 || pos + 2 + seg_len > end {
+        return None;
+    }
+    Some(pos + 2 + seg_len)
 }
 
 /// Return the largest renderable JPEG embedded in the file, or None.
@@ -408,99 +427,84 @@ fn extract_largest_embedded_jpeg(path: &std::path::Path) -> Option<Vec<u8>> {
 /// FF 00 (byte-stuffing) and FF D0-D7 (restart markers) are skipped.
 fn find_jpeg_end(bytes: &[u8], start: usize) -> Option<usize> {
     let len = bytes.len();
-    // Skip past SOI (FF D8).
     let mut pos = start + 2;
 
     loop {
-        // Find the next 0xFF marker prefix.
-        while pos < len && bytes[pos] != 0xFF {
-            pos += 1;
-        }
-        if pos + 1 >= len {
-            // Reached EOF without an explicit EOI. Accept the whole tail
-            // as the JPEG payload — some RAW formats omit the trailing D9.
-            return Some(len);
-        }
-
-        // Skip any padding FFs (JPEG spec allows fill bytes before markers).
-        while pos + 1 < len && bytes[pos + 1] == 0xFF {
-            pos += 1;
-        }
+        pos = seek_marker(bytes, pos);
         if pos + 1 >= len {
             return Some(len);
         }
 
         let marker = bytes[pos + 1];
         match marker {
-            // FF 00: byte-stuffed escape inside entropy data — not a marker.
-            0x00 => {
-                pos += 2;
-            }
-            // EOI: end of this JPEG stream.
-            0xD9 => {
-                return Some(pos + 2);
-            }
-            // SOI: nested JPEG start — abort this stream (the outer loop
-            // will pick it up as a new candidate).
-            0xD8 => {
-                return Some(pos);
-            }
-            // RST0-RST7: restart markers (no payload).
-            0xD0..=0xD7 => {
-                pos += 2;
-            }
-            // SOS (Start of Scan): read the segment header, then enter
-            // the entropy-coded section where only byte-stuffing and
-            // restart markers are valid FF-sequences.
-            0xDA => {
-                if pos + 3 >= len {
-                    return Some(len);
-                }
-                let seg_len = u16::from_be_bytes([bytes[pos + 2], bytes[pos + 3]]) as usize;
-                if seg_len < 2 {
-                    return Some(len);
-                }
-                pos = pos + 2 + seg_len;
-                // Now inside entropy data: scan for the next real marker.
-                // FF 00 and FF D0-D7 are part of the stream; anything
-                // else is a marker that ends the entropy section.
-                while pos + 1 < len {
-                    if bytes[pos] == 0xFF {
-                        let next = bytes[pos + 1];
-                        if next == 0x00 || (0xD0..=0xD7).contains(&next) {
-                            // Byte-stuffed escape or restart marker.
-                            pos += 2;
-                            continue;
-                        }
-                        // Real marker found — break out to the outer loop
-                        // which will classify it (EOI, another SOS, etc.).
-                        break;
-                    }
-                    pos += 1;
-                }
-                if pos + 1 >= len {
-                    return Some(len);
-                }
-            }
-            // All other markers: fixed-length header markers (TEM=0x01)
-            // and variable-length segments (APP0-APPn, DQT, DHT, SOF, COM,
-            // etc.) — skip by declared segment length.
-            0x01 => {
-                pos += 2;
-            }
-            _ => {
-                if pos + 3 >= len {
-                    return Some(len);
-                }
-                let seg_len = u16::from_be_bytes([bytes[pos + 2], bytes[pos + 3]]) as usize;
-                if seg_len < 2 || pos + 2 + seg_len > len {
-                    // Malformed segment length — accept what we have.
-                    return Some(len);
-                }
-                pos = pos + 2 + seg_len;
-            }
+            0x00 => pos += 2,
+            0xD9 => return Some(pos + 2),
+            0xD8 => return Some(pos),
+            0xD0..=0xD7 => pos += 2,
+            0xDA => match scan_sos_entropy(bytes, pos) {
+                Some(next) => pos = next,
+                None => return Some(len),
+            },
+            0x01 => pos += 2,
+            _ => match skip_or_accept(bytes, pos) {
+                Some(next) => pos = next,
+                None => return Some(len),
+            },
         }
     }
+}
+
+/// Advance past non-marker bytes and padding 0xFF fills, returning the
+/// position of the next real marker prefix.
+fn seek_marker(bytes: &[u8], mut pos: usize) -> usize {
+    let len = bytes.len();
+    while pos < len && bytes[pos] != 0xFF {
+        pos += 1;
+    }
+    while pos + 1 < len && bytes[pos + 1] == 0xFF {
+        pos += 1;
+    }
+    pos
+}
+
+/// Read a SOS header, then scan through entropy-coded data until the next
+/// real marker. Returns the position of that marker, or None on truncation.
+fn scan_sos_entropy(bytes: &[u8], pos: usize) -> Option<usize> {
+    let len = bytes.len();
+    if pos + 3 >= len {
+        return None;
+    }
+    let seg_len = u16::from_be_bytes([bytes[pos + 2], bytes[pos + 3]]) as usize;
+    if seg_len < 2 {
+        return None;
+    }
+    let mut p = pos + 2 + seg_len;
+    while p + 1 < len {
+        if bytes[p] == 0xFF {
+            let next = bytes[p + 1];
+            if next == 0x00 || (0xD0..=0xD7).contains(&next) {
+                p += 2;
+                continue;
+            }
+            return Some(p);
+        }
+        p += 1;
+    }
+    None
+}
+
+/// Skip a variable-length JPEG segment, or return None when the segment is
+/// malformed (signals the caller to accept the whole remaining buffer).
+fn skip_or_accept(bytes: &[u8], pos: usize) -> Option<usize> {
+    let len = bytes.len();
+    if pos + 3 >= len {
+        return None;
+    }
+    let seg_len = u16::from_be_bytes([bytes[pos + 2], bytes[pos + 3]]) as usize;
+    if seg_len < 2 || pos + 2 + seg_len > len {
+        return None;
+    }
+    Some(pos + 2 + seg_len)
 }
 
 /// Read EXIF orientation (tag 0x0112) from JPEG bytes. Returns 1..=8 or None.
@@ -708,18 +712,13 @@ fn extract_libraw_thumb(path: &std::path::Path) -> Option<gdk4::Texture> {
             return None;
         }
 
-        // Container orientation and sensor dimensions — used to decide
-        // whether a thumbnail is pre-rotated by comparing aspect ratios.
         let flip = (*lr).sizes.flip;
         let sensor_dims = ((*lr).sizes.width as u32, (*lr).sizes.height as u32);
 
-        // PRIMARY: scan the file for the largest embedded JPEG and decode it.
         if let Some(texture) = extract_primary_embedded_jpeg(path, flip, sensor_dims) {
             return Some(texture);
         }
 
-        // FALLBACK: libraw thumb — handles bitmap previews (Samsung/OnePlus
-        // DNG store uncompressed TIFF strips) and non-contiguous JPEG-in-strip.
         if libraw_sys::libraw_unpack_thumb(lr) != 0 {
             log::debug!("No embedded thumbnail in {}", path.display());
             return None;
@@ -749,64 +748,83 @@ fn extract_libraw_thumb(path: &std::path::Path) -> Option<gdk4::Texture> {
         let bytes = std::slice::from_raw_parts((*img).data.as_ptr(), data_size);
 
         if (*img).type_ == libraw_sys::LibRaw_image_formats_LIBRAW_IMAGE_JPEG {
-            let texture = jpeg_bytes_to_oriented_texture(bytes, flip, sensor_dims);
-            if texture.is_some() {
-                log::debug!(
-                    "Extracted embedded JPEG preview ({} bytes via libraw, flip={}) from {}",
-                    data_size,
-                    flip,
-                    path.display()
-                );
-            } else {
-                log::debug!(
-                    "libraw JPEG thumb failed to decode via pixbuf for {}",
-                    path.display()
-                );
-            }
-            texture
+            decode_libraw_jpeg_thumb(bytes, flip, sensor_dims, data_size, path)
         } else {
-            // Bitmap thumb (Samsung/OnePlus DNG): build Pixbuf, apply flip
-            // only if the thumbnail is NOT already pre-rotated.
-            let width = (*img).width as i32;
-            let height = (*img).height as i32;
-            let colors = (*img).colors as i32;
-            if colors != 3 {
-                log::debug!(
-                    "Embedded thumbnail has {} channels for {} -- skipping",
-                    colors,
-                    path.display()
-                );
-                return None;
-            }
-            let row_stride = width.checked_mul(colors)?;
-            let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_mut_slice(
-                bytes.to_vec(),
-                gtk::gdk_pixbuf::Colorspace::Rgb,
-                false,
-                8,
-                width,
-                height,
-                row_stride,
-            );
-            let prerotated =
-                is_thumbnail_prerotated(width, height, sensor_dims.0, sensor_dims.1, flip);
-            let oriented = if prerotated {
-                pixbuf
-            } else {
-                apply_libraw_flip(&pixbuf, flip)
-            };
-            let texture = pixbuf_to_texture(&oriented);
-            if texture.is_some() {
-                log::debug!(
-                    "Extracted embedded bitmap preview (flip={}, prerotated={}) from {}",
-                    flip,
-                    prerotated,
-                    path.display()
-                );
-            }
-            texture
+            decode_libraw_bitmap_thumb(bytes, &*img, flip, sensor_dims, path)
         }
     }
+}
+
+/// Decode a JPEG thumbnail extracted by libraw.
+fn decode_libraw_jpeg_thumb(
+    bytes: &[u8],
+    flip: i32,
+    sensor_dims: (u32, u32),
+    data_size: usize,
+    path: &std::path::Path,
+) -> Option<gdk4::Texture> {
+    let texture = jpeg_bytes_to_oriented_texture(bytes, flip, sensor_dims);
+    if texture.is_some() {
+        log::debug!(
+            "Extracted embedded JPEG preview ({} bytes via libraw, flip={}) from {}",
+            data_size,
+            flip,
+            path.display()
+        );
+    } else {
+        log::debug!(
+            "libraw JPEG thumb failed to decode via pixbuf for {}",
+            path.display()
+        );
+    }
+    texture
+}
+
+/// Decode a bitmap (uncompressed RGB) thumbnail extracted by libraw.
+fn decode_libraw_bitmap_thumb(
+    bytes: &[u8],
+    img: &libraw_sys::libraw_processed_image_t,
+    flip: i32,
+    sensor_dims: (u32, u32),
+    path: &std::path::Path,
+) -> Option<gdk4::Texture> {
+    let width = img.width as i32;
+    let height = img.height as i32;
+    let colors = img.colors as i32;
+    if colors != 3 {
+        log::debug!(
+            "Embedded thumbnail has {} channels for {} -- skipping",
+            colors,
+            path.display()
+        );
+        return None;
+    }
+    let row_stride = width.checked_mul(colors)?;
+    let pixbuf = gtk::gdk_pixbuf::Pixbuf::from_mut_slice(
+        bytes.to_vec(),
+        gtk::gdk_pixbuf::Colorspace::Rgb,
+        false,
+        8,
+        width,
+        height,
+        row_stride,
+    );
+    let prerotated = is_thumbnail_prerotated(width, height, sensor_dims.0, sensor_dims.1, flip);
+    let oriented = if prerotated {
+        pixbuf
+    } else {
+        apply_libraw_flip(&pixbuf, flip)
+    };
+    let texture = pixbuf_to_texture(&oriented);
+    if texture.is_some() {
+        log::debug!(
+            "Extracted embedded bitmap preview (flip={}, prerotated={}) from {}",
+            flip,
+            prerotated,
+            path.display()
+        );
+    }
+    texture
 }
 
 /// Convert a `Pixbuf` to a `gdk4::Texture` (same logic as `decode_pixbuf_texture`).
@@ -1307,6 +1325,30 @@ fn inject_missing_xmlns(bytes: &[u8]) -> Vec<u8> {
     let Ok(text) = std::str::from_utf8(bytes) else {
         return bytes.to_vec();
     };
+    let declared = scan_declared_prefixes(text);
+    let used = scan_used_prefixes(text, &declared);
+    if used.is_empty() {
+        return bytes.to_vec();
+    }
+    let Some(svg_tag) = text.find("<svg") else {
+        return bytes.to_vec();
+    };
+    let insert_at = svg_tag + 4;
+    let mut decls = String::new();
+    for prefix in &used {
+        decls.push_str(&format!(
+            " xmlns:{prefix}=\"urn:mimick:placeholder:{prefix}\""
+        ));
+    }
+    let mut out = Vec::with_capacity(bytes.len() + decls.len());
+    out.extend_from_slice(&bytes[..insert_at]);
+    out.extend_from_slice(decls.as_bytes());
+    out.extend_from_slice(&bytes[insert_at..]);
+    out
+}
+
+/// Collect namespace prefixes that already have `xmlns:` declarations.
+fn scan_declared_prefixes(text: &str) -> std::collections::HashSet<String> {
     let mut declared: std::collections::HashSet<String> = ["xml", "xmlns", "xlink"]
         .into_iter()
         .map(String::from)
@@ -1328,54 +1370,56 @@ fn inject_missing_xmlns(bytes: &[u8]) -> Vec<u8> {
         }
         i = end;
     }
+    declared
+}
+
+/// Find namespace prefixes referenced in elements/attributes but missing a declaration.
+fn scan_used_prefixes(
+    text: &str,
+    declared: &std::collections::HashSet<String>,
+) -> std::collections::HashSet<String> {
+    let bytes_str = text.as_bytes();
     let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut j = 0;
     while j < bytes_str.len() {
         let b = bytes_str[j];
-        let starts_token = b == b'<' || b == b' ' || b == b'\t' || b == b'\n';
-        if starts_token {
-            let mut k = j + 1;
-            if k < bytes_str.len() && bytes_str[k] == b'/' {
-                k += 1;
-            }
-            let ident_start = k;
-            while k < bytes_str.len() {
-                let c = bytes_str[k];
-                if c.is_ascii_alphanumeric() || c == b'_' || c == b'-' {
-                    k += 1;
-                } else {
-                    break;
-                }
-            }
-            if k > ident_start && k < bytes_str.len() && bytes_str[k] == b':' {
-                let prefix = &text[ident_start..k];
+        if b == b'<' || b == b' ' || b == b'\t' || b == b'\n' {
+            if let Some((prefix, next)) = extract_prefix_at(bytes_str, text, j) {
                 if !declared.contains(prefix) {
                     used.insert(prefix.to_string());
                 }
+                j = next;
+            } else {
+                j += 1;
             }
-            j = k.max(j + 1);
         } else {
             j += 1;
         }
     }
-    if used.is_empty() {
-        return bytes.to_vec();
+    used
+}
+
+/// Try to read a `prefix:` token starting after position `j`.
+/// Returns `(prefix_str, next_scan_position)` on success.
+fn extract_prefix_at<'a>(bytes_str: &[u8], text: &'a str, j: usize) -> Option<(&'a str, usize)> {
+    let mut k = j + 1;
+    if k < bytes_str.len() && bytes_str[k] == b'/' {
+        k += 1;
     }
-    let Some(svg_tag) = text.find("<svg") else {
-        return bytes.to_vec();
-    };
-    let insert_at = svg_tag + 4;
-    let mut decls = String::new();
-    for prefix in &used {
-        decls.push_str(&format!(
-            " xmlns:{prefix}=\"urn:mimick:placeholder:{prefix}\""
-        ));
+    let ident_start = k;
+    while k < bytes_str.len() {
+        let c = bytes_str[k];
+        if c.is_ascii_alphanumeric() || c == b'_' || c == b'-' {
+            k += 1;
+        } else {
+            break;
+        }
     }
-    let mut out = Vec::with_capacity(bytes.len() + decls.len());
-    out.extend_from_slice(&bytes[..insert_at]);
-    out.extend_from_slice(decls.as_bytes());
-    out.extend_from_slice(&bytes[insert_at..]);
-    out
+    if k > ident_start && k < bytes_str.len() && bytes_str[k] == b':' {
+        Some((&text[ident_start..k], k))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

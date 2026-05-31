@@ -598,28 +598,34 @@ fn compute_remote_deletions(
     remote_by_checksum: &std::collections::HashMap<String, LibraryAsset>,
     rules: &FolderRules,
 ) -> Vec<LibraryAsset> {
+    if !rules.delete_folder_to_album {
+        return Vec::new();
+    }
     let mut to_delete_remote = Vec::new();
-    if rules.delete_folder_to_album {
-        let mut seen_remote_delete_ids = HashSet::new();
-        for (path, record) in ctx.sync_index.records_under_path(watch_path) {
-            if local_paths.contains(&path) {
-                continue;
-            }
-            if Path::new(&path).exists() {
-                continue;
-            }
-            if record.album_id.as_deref().is_some_and(|id| id != album_id) {
-                continue;
-            }
-            if let Some(asset) = remote_by_checksum.get(&record.checksum) {
-                if !seen_remote_delete_ids.insert(asset.id.clone()) {
-                    continue;
-                }
-                to_delete_remote.push(asset.clone());
-            }
+    let mut seen_ids = HashSet::new();
+    for (path, record) in ctx.sync_index.records_under_path(watch_path) {
+        if !is_orphan_record(&path, local_paths, album_id, &record) {
+            continue;
+        }
+        if let Some(asset) = remote_by_checksum.get(&record.checksum)
+            && seen_ids.insert(asset.id.clone())
+        {
+            to_delete_remote.push(asset.clone());
         }
     }
     to_delete_remote
+}
+
+/// True when a sync record's file is gone from disk and belongs to this album.
+fn is_orphan_record(
+    path: &str,
+    local_paths: &HashSet<String>,
+    album_id: &str,
+    record: &crate::sync_index::SyncedFileRecord,
+) -> bool {
+    !local_paths.contains(path)
+        && !Path::new(path).exists()
+        && record.album_id.as_deref().is_none_or(|id| id == album_id)
 }
 
 fn confirm_pending_deletions(
