@@ -27,10 +27,8 @@ pub fn build_behavior_group(settings_page: &adw::PreferencesPage) -> BehaviorWid
         battery_row,
         notifications_row,
         library_view_row,
-        catchup_row,
-        concurrency_row,
-        xmp_sidecar_row,
-    ) = add_core_rows(&behavior_group);
+    ) = add_toggle_rows(&behavior_group);
+    let (catchup_row, concurrency_row, xmp_sidecar_row) = add_upload_rows(&behavior_group);
     let (quiet_hours_row, quiet_start_row, quiet_end_row) = add_quiet_hours_rows(&behavior_group);
 
     BehaviorWidgets {
@@ -49,7 +47,7 @@ pub fn build_behavior_group(settings_page: &adw::PreferencesPage) -> BehaviorWid
     }
 }
 
-fn add_core_rows(
+fn add_toggle_rows(
     group: &adw::PreferencesGroup,
 ) -> (
     adw::SwitchRow,
@@ -57,9 +55,6 @@ fn add_core_rows(
     adw::SwitchRow,
     adw::SwitchRow,
     adw::SwitchRow,
-    adw::SwitchRow,
-    adw::ComboRow,
-    adw::SpinRow,
     adw::SwitchRow,
 ) {
     let startup = add_switch(group, "Run on Startup", "Start Mimick at login.");
@@ -88,6 +83,17 @@ fn add_core_rows(
         "Enable Library View",
         "In-app library browser. Requires restart.",
     );
+    (
+        startup,
+        background,
+        metered,
+        battery,
+        notifications,
+        library,
+    )
+}
+
+fn add_upload_rows(group: &adw::PreferencesGroup) -> (adw::ComboRow, adw::SpinRow, adw::SwitchRow) {
     let catchup = add_catchup_row(group);
     let concurrency = add_spin(
         group,
@@ -100,17 +106,7 @@ fn add_core_rows(
         "Upload XMP Sidecars",
         "Attach .xmp sidecars with uploads.",
     );
-    (
-        startup,
-        background,
-        metered,
-        battery,
-        notifications,
-        library,
-        catchup,
-        concurrency,
-        xmp,
-    )
+    (catchup, concurrency, xmp)
 }
 
 fn add_quiet_hours_rows(

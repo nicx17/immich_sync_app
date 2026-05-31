@@ -125,33 +125,49 @@ impl ImmichApiClient {
                 self.handle_upload_duplicate(resp, filename, file_len, progress)
                     .await
             }
-            413 => {
-                log::error!("Upload failed (file too large): {}", filename);
-                self.set_upload_issue(file_too_large_issue()).await;
-                None
-            }
-            401 | 403 => {
-                self.set_upload_issue(upload_auth_issue()).await;
-                None
-            }
-            502..=504 => {
-                log::warn!("Server error {}: retrying later for {}", status, filename);
-                *self.active_url.lock().await = None;
-                self.set_upload_issue(temporary_server_issue()).await;
-                None
-            }
+            413 => self.handle_upload_too_large(filename).await,
+            401 | 403 => self.handle_upload_auth_error().await,
+            502..=504 => self.handle_upload_server_error(status, filename).await,
             _ => {
-                let body = resp.text().await.unwrap_or_default();
-                log::error!("Upload failed [{}] for {}: {}", status, filename, body);
-                self.set_issue(classify_http_issue(
-                    RequestContext::Upload,
-                    status,
-                    Some(filename),
-                ))
-                .await;
-                None
+                self.handle_upload_unknown_error(resp, status, filename)
+                    .await
             }
         }
+    }
+
+    async fn handle_upload_too_large(&self, filename: &str) -> Option<String> {
+        log::error!("Upload failed (file too large): {}", filename);
+        self.set_upload_issue(file_too_large_issue()).await;
+        None
+    }
+
+    async fn handle_upload_auth_error(&self) -> Option<String> {
+        self.set_upload_issue(upload_auth_issue()).await;
+        None
+    }
+
+    async fn handle_upload_server_error(&self, status: u16, filename: &str) -> Option<String> {
+        log::warn!("Server error {}: retrying later for {}", status, filename);
+        *self.active_url.lock().await = None;
+        self.set_upload_issue(temporary_server_issue()).await;
+        None
+    }
+
+    async fn handle_upload_unknown_error(
+        &self,
+        resp: reqwest::Response,
+        status: u16,
+        filename: &str,
+    ) -> Option<String> {
+        let body = resp.text().await.unwrap_or_default();
+        log::error!("Upload failed [{}] for {}: {}", status, filename, body);
+        self.set_issue(classify_http_issue(
+            RequestContext::Upload,
+            status,
+            Some(filename),
+        ))
+        .await;
+        None
     }
 
     async fn set_upload_issue(&self, issue: ApiIssue) {

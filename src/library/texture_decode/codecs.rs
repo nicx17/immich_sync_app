@@ -1,5 +1,19 @@
 pub(super) fn decode_jpegxl_texture(path: &std::path::Path) -> Option<gdk4::Texture> {
     let render = load_jxl_render(path)?;
+    let (width, height, format, bpp, buf) = read_jxl_pixels(&render, path)?;
+    super::memory_texture(
+        width,
+        height,
+        format,
+        buf,
+        usize::try_from(width).ok()?.checked_mul(bpp)?,
+    )
+}
+
+fn read_jxl_pixels(
+    render: &jxl_oxide::Render,
+    path: &std::path::Path,
+) -> Option<(u32, u32, gdk4::MemoryFormat, usize, Vec<u8>)> {
     let mut stream = render.stream();
     let width = stream.width();
     let height = stream.height();
@@ -10,13 +24,7 @@ pub(super) fn decode_jpegxl_texture(path: &std::path::Path) -> Option<gdk4::Text
     let mut buf = vec![0u8; pixel_count.checked_mul(channels as usize)?];
     stream.write_to_buffer::<u8>(&mut buf);
     let (format, bpp, buf) = normalize_jxl_pixels(buf, channels, pixel_count, path)?;
-    super::memory_texture(
-        width,
-        height,
-        format,
-        buf,
-        usize::try_from(width).ok()?.checked_mul(bpp)?,
-    )
+    Some((width, height, format, bpp, buf))
 }
 
 fn load_jxl_render(path: &std::path::Path) -> Option<jxl_oxide::Render> {

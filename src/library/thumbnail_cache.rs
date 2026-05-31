@@ -570,16 +570,24 @@ fn custom_decode_to_thumbnail(path: &std::path::Path) -> Result<gtk::gdk_pixbuf:
 }
 
 fn pixbuf_png_bytes(pixbuf: &gtk::gdk_pixbuf::Pixbuf) -> Result<Vec<u8>, String> {
-    use image::ImageEncoder;
-
     let width = pixbuf.width().max(1) as usize;
     let height = pixbuf.height().max(1) as usize;
     let channels = if pixbuf.has_alpha() { 4 } else { 3 };
     let rowstride = pixbuf.rowstride() as usize;
     let bytes = pixbuf.read_pixel_bytes();
-    let src = bytes.as_ref();
-    let mut packed = Vec::with_capacity(width * height * channels);
 
+    let packed = pack_pixel_rows(bytes.as_ref(), width, height, channels, rowstride)?;
+    encode_png_bytes(&packed, width as u32, height as u32, pixbuf.has_alpha())
+}
+
+fn pack_pixel_rows(
+    src: &[u8],
+    width: usize,
+    height: usize,
+    channels: usize,
+    rowstride: usize,
+) -> Result<Vec<u8>, String> {
+    let mut packed = Vec::with_capacity(width * height * channels);
     for row in 0..height {
         let start = row
             .checked_mul(rowstride)
@@ -592,15 +600,24 @@ fn pixbuf_png_bytes(pixbuf: &gtk::gdk_pixbuf::Pixbuf) -> Result<Vec<u8>, String>
             .ok_or_else(|| "pixbuf row outside buffer".to_string())?;
         packed.extend_from_slice(row_bytes);
     }
+    Ok(packed)
+}
 
-    let mut encoded = Vec::new();
-    let color = if pixbuf.has_alpha() {
+fn encode_png_bytes(
+    packed: &[u8],
+    width: u32,
+    height: u32,
+    has_alpha: bool,
+) -> Result<Vec<u8>, String> {
+    use image::ImageEncoder;
+    let color = if has_alpha {
         image::ColorType::Rgba8
     } else {
         image::ColorType::Rgb8
     };
+    let mut encoded = Vec::new();
     image::codecs::png::PngEncoder::new(&mut encoded)
-        .write_image(&packed, width as u32, height as u32, color.into())
+        .write_image(packed, width, height, color.into())
         .map_err(|err| err.to_string())?;
     Ok(encoded)
 }
