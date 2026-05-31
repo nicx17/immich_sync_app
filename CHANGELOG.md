@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- New masonry layout for the Photos view in Library. Images now keep their natural aspect ratios and pack into justified rows instead of a fixed tile grid.
+- New `Library Thumbnail Quality` setting with `Auto`, `Thumbnail`, `Preview`, and `Full Size` options. `Auto` chooses a size based on the rendered cell size, and `Full Size` falls back automatically when the server does not provide that image size.
+
+### Changed
+
+- Library layout now uses image dimensions from Immich EXIF data earlier in the load path, so rows are sized more accurately from the first paint.
+- Thumbnail memory cache is now sized automatically from available system RAM, using up to 20% of memory with built-in minimum and maximum limits, so the manual memory-cache limit setting has been removed.
+- Thumbnail loading now uses separate concurrency limits for smaller thumbnails and larger preview/full-size requests to keep browsing responsive while larger images are still loading.
+- Library settings text was shortened and cleaned up to make common options easier to scan.
+
+### Fixed
+
+- Masonry grid scrolling and thumbnail loading are now more stable. Items close to the visible area load first, and the layout no longer shifts as much while images are coming in.
+- Large cells can now request higher-quality preview and full-size thumbnail buckets correctly, with automatic fallback when a higher bucket is unavailable on the server.
+
 ## [9.6.1] - 2026-05-31
 
 ### Changed
