@@ -8,7 +8,7 @@
 
 use gtk::prelude::*;
 use libadwaita as adw;
-use log::Record;
+
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,6 +21,7 @@ mod cache_manager;
 mod config;
 mod diagnostics;
 mod library;
+mod logging;
 mod media_kinds;
 mod monitor;
 mod notifications;
@@ -38,7 +39,7 @@ mod tray_icon;
 mod util;
 mod watch_path_display;
 
-use api_client::{ImmichApiClient, LibraryAsset};
+use api_client::ImmichApiClient;
 use app_context::AppContext;
 use config::{Config, best_matching_watch_entry};
 use library::state::LibraryState;
@@ -52,225 +53,21 @@ use sync_index::{ShardedSyncIndex, SyncDecision, SyncTarget};
 use tray_icon::build_tray;
 
 use flexi_logger::{
-    Cleanup, Criterion, DeferredNow, Duplicate, FileSpec, Logger, Naming, WriteMode, style,
+    Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode,
 };
-use std::io::Write;
 
 /// Shared application context reused by UI entry points and the shutdown path.
 static APP_CONTEXT: std::sync::OnceLock<Arc<AppContext>> = std::sync::OnceLock::new();
 
-/// Description of a local deletion event request targeting the remote album.
-#[derive(Clone, Debug)]
-struct LocalDeletionRequest {
-    /// Absolute local path of deleted asset.
-    local_path: String,
-    /// Target Immich asset identifier.
-    asset_id: String,
-    /// Absolute filename of deleted asset.
-    asset_name: String,
-    /// Mapped Immich album name.
-    album_name: String,
-    /// Mapped Immich album identifier.
-    album_id: Option<String>,
-}
-
-/// Helper to extract formatted filename and line number from logs.
-fn format_log_location(record: &Record) -> String {
-    match (record.file(), record.line()) {
-        (Some(file), Some(line)) => format!(" {}:{}", file, line),
-        _ => String::new(),
-    }
-}
-
-/// Logger formatter that produces plain text for files.
-fn detailed_plain_format(
-    w: &mut dyn Write,
-    now: &mut DeferredNow,
-    record: &Record,
-) -> Result<(), std::io::Error> {
-    write!(
-        w,
-        "[{}] {:<5} [{}] {}{}",
-        now.format("%Y-%m-%d %H:%M:%S%.6f %:z"),
-        record.level(),
-        record.target(),
-        record.args(),
-        format_log_location(record)
-    )
-}
-
-/// Logger formatter that produces ANSI color output for terminal displays.
-fn detailed_colored_format(
-    w: &mut dyn Write,
-    now: &mut DeferredNow,
-    record: &Record,
-) -> Result<(), std::io::Error> {
-    write!(
-        w,
-        "[{}] {} [{}] {}{}",
-        now.format("%Y-%m-%d %H:%M:%S%.6f %:z"),
-        style(record.level()).paint(format!("{:<5}", record.level())),
-        record.target(),
-        record.args(),
-        format_log_location(record)
-    )
-}
-
-/// Check if local deletion matches validation criteria for remote mirror sweep.
-async fn build_local_deletion_request(
-    ctx: Arc<AppContext>,
-    path: String,
-) -> Option<LocalDeletionRequest> {
-    let record = match ctx.sync_index.record_for_path(&path) {
-        Some(record) => record,
-        None => {
-            log::debug!("No sync record for deleted file: {}", path);
-            return None;
-        }
-    };
-
-    let path_obj = std::path::Path::new(&path);
-    let entry = {
-        let entries = ctx.live_watch_paths.lock();
-        best_matching_watch_entry(path_obj, &entries).cloned()
-    };
-    let Some(entry) = entry else {
-        log::debug!("Deleted file is not under any watch folder: {}", path);
-        return None;
-    };
-    let rules = entry.rules();
-    if !rules.delete_folder_to_album {
-        log::debug!("Folder-to-album deletion disabled for: {}", path);
-        return None;
-    }
-
-    let album_name = entry
-        .album_name()
-        .map(|name| name.to_string())
-        .or(record.album_name.clone())
-        .or_else(|| {
-            path_obj
-                .parent()
-                .and_then(|parent| parent.file_name())
-                .map(|name| name.to_string_lossy().to_string())
-        })
-        .unwrap_or_else(|| "Mimick".to_string());
-
-    let configured_album_id = match &entry {
-        config::WatchPathEntry::WithConfig { album_id, .. } => album_id.clone(),
-        config::WatchPathEntry::Simple(_) => None,
-    };
-    let album_id = match configured_album_id.or(record.album_id.clone()) {
-        Some(id) => Some(id),
-        None => match ctx.api_client.get_album_id_if_exists(&album_name).await {
-            Ok(id) => id,
-            Err(err) => {
-                log::warn!(
-                    "Could not resolve album '{}' for deletion sync: {}",
-                    album_name,
-                    err
-                );
-                None
-            }
-        },
-    }?;
-
-    match find_album_asset_by_checksum(ctx.api_client.clone(), &album_id, &record.checksum).await {
-        Ok(Some(asset)) => Some(LocalDeletionRequest {
-            local_path: path,
-            asset_id: asset.id,
-            asset_name: asset.filename,
-            album_name,
-            album_id: Some(album_id),
-        }),
-        Ok(None) => {
-            log::debug!("No matching album asset for deleted file: {}", path);
-            None
-        }
-        Err(err) => {
-            log::warn!("Could not inspect album for deletion sync: {}", err);
-            None
-        }
-    }
-}
-
-/// Mirrors local filesystem deletion by unlinking or trashing assets on Immich.
-async fn trash_remote_after_local_delete(ctx: Arc<AppContext>, request: LocalDeletionRequest) {
-    let asset_ids = vec![request.asset_id.clone()];
-    let album_count = ctx
-        .api_client
-        .count_albums_for_asset(&request.asset_id)
-        .await;
-    let (succeeded, action_log) = match (album_count, request.album_id.as_deref()) {
-        (Some(n), Some(album_id)) if n > 1 => {
-            let ok = ctx
-                .api_client
-                .remove_assets_from_album(album_id, &asset_ids)
-                .await;
-            (
-                ok,
-                format!(
-                    "Unlinked '{}' from album '{}' (asset belongs to {} albums; preserved on server)",
-                    request.asset_name, request.album_name, n
-                ),
-            )
-        }
-        _ => match ctx.api_client.delete_assets(&asset_ids).await {
-            Ok(()) => (
-                true,
-                format!(
-                    "Mirrored local delete of '{}' to album '{}' (asset trashed on server)",
-                    request.asset_name, request.album_name
-                ),
-            ),
-            Err(err) => {
-                log::warn!(
-                    "Could not mirror local delete of '{}': {}; sync record kept for retry",
-                    request.asset_name,
-                    err
-                );
-                return;
-            }
-        },
-    };
-    if !succeeded {
-        log::warn!(
-            "Could not mirror local delete of '{}'; sync record kept for retry",
-            request.asset_name
-        );
-        return;
-    }
-    if let Err(err) = ctx.sync_index.remove_path(&request.local_path) {
-        log::warn!(
-            "Server-side delete succeeded but sync record cleanup failed for '{}': {}",
-            request.local_path,
-            err
-        );
-    }
-    log::info!("{}", action_log);
-}
-
-/// Iterate through album assets matching checksum to find matching Immich library record.
-async fn find_album_asset_by_checksum(
-    api_client: Arc<ImmichApiClient>,
-    album_id: &str,
-    checksum: &str,
-) -> Result<Option<LibraryAsset>, String> {
-    let mut page = 1;
-    loop {
-        let (assets, has_more) = api_client
-            .fetch_album_assets(album_id, page, 1000, None)
-            .await?;
-        if let Some(asset) = assets
-            .into_iter()
-            .find(|asset| asset.checksum.as_deref() == Some(checksum))
-        {
-            return Ok(Some(asset));
-        }
-        if !has_more {
-            return Ok(None);
-        }
-        page += 1;
+/// Atomically check and clear a cross-thread boolean flag.
+/// Returns true if the flag was set, clearing it in the process.
+fn consume_flag(flag: &parking_lot::Mutex<bool>) -> bool {
+    let mut f = flag.lock();
+    if *f {
+        *f = false;
+        true
+    } else {
+        false
     }
 }
 
@@ -309,8 +106,8 @@ async fn main() {
                 .suppress_timestamp() // "mimick.log" instead of "mimick_2026-03-09_10-33-35.log"
                 .suffix("log"),
         )
-        .format_for_files(detailed_plain_format)
-        .format_for_stdout(detailed_colored_format)
+        .format_for_files(logging::detailed_plain_format)
+        .format_for_stdout(logging::detailed_colored_format)
         .rotate(
             Criterion::Size(2_000_000),
             Naming::Numbers,
@@ -593,9 +390,9 @@ async fn main() {
                             continue;
                         }
                         if let Some(request) =
-                            build_local_deletion_request(deletion_ctx.clone(), path).await
+                            remote_sync::build_local_deletion_request(deletion_ctx.clone(), path).await
                         {
-                            trash_remote_after_local_delete(deletion_ctx.clone(), request).await;
+                            remote_sync::trash_remote_after_local_delete(deletion_ctx.clone(), request).await;
                         }
                     }
                 }
@@ -693,16 +490,7 @@ async fn main() {
         // GTK-side: poll the flag every 250ms on the main thread.
         // The application handle stays on the GTK thread and never enters Tokio tasks.
         glib::timeout_add_local(std::time::Duration::from_millis(250), move || {
-            let settings_triggered = {
-                let mut f = settings_flag.lock();
-                if *f {
-                    *f = false;
-                    true
-                } else {
-                    false
-                }
-            };
-            if settings_triggered {
+            if consume_flag(&settings_flag) {
                 let ctx = APP_CONTEXT
                     .get()
                     .cloned()
@@ -710,16 +498,7 @@ async fn main() {
                 open_settings_window_now(&app_clone2, ctx);
             }
 
-            let library_triggered = {
-                let mut f = library_flag.lock();
-                if *f {
-                    *f = false;
-                    true
-                } else {
-                    false
-                }
-            };
-            if library_triggered {
+            if consume_flag(&library_flag) {
                 let ctx = APP_CONTEXT
                     .get()
                     .cloned()
@@ -727,30 +506,12 @@ async fn main() {
                 open_library_window_now(&app_clone2, ctx);
             }
 
-            let quit_triggered = {
-                let mut f = quit_flag.lock();
-                if *f {
-                    *f = false;
-                    true
-                } else {
-                    false
-                }
-            };
-            if quit_triggered {
+            if consume_flag(&quit_flag) {
                 app_clone3.quit();
                 return glib::ControlFlow::Break;
             }
 
-            let pause_triggered = {
-                let mut f = pause_flag.lock();
-                if *f {
-                    *f = false;
-                    true
-                } else {
-                    false
-                }
-            };
-            if pause_triggered {
+            if consume_flag(&pause_flag) {
                 let qm = &APP_CONTEXT
                     .get()
                     .expect("App context should be initialized before pause handling")
@@ -764,16 +525,7 @@ async fn main() {
                 qm.set_paused(paused, reason);
             }
 
-            let sync_now_triggered = {
-                let mut f = sync_now_flag.lock();
-                if *f {
-                    *f = false;
-                    true
-                } else {
-                    false
-                }
-            };
-            if sync_now_triggered {
+            if consume_flag(&sync_now_flag) {
                 let tx = &APP_CONTEXT
                     .get()
                     .expect("App context should be initialized before manual sync handling")
