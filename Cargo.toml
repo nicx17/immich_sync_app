@@ -94,3 +94,6 @@ lto = true        # Link-Time Optimisation – dead code is stripped at link tim
 panic = "unwind"  # Keep unwinding so catch_unwind can recover from third-party
 # decoder panics (rawloader OOB on malformed RAW files etc.)
 strip = true # Strip debug symbols from the final binary
+
+[lints.clippy]
+cognitive_complexity = "warn"
