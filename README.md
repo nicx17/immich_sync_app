@@ -247,7 +247,7 @@ If you prefer to compile Mimick yourself, you can build it natively or package i
 
 ### Prerequisites (Native Build)
 
-- Rust toolchain (`cargo`): https://rustup.rs
+- Rust toolchain (`cargo`): <https://rustup.rs>
 - GTK4 + Libadwaita development headers
 
 **Ubuntu / Debian:**
