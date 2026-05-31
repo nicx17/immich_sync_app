@@ -95,7 +95,8 @@ impl ImmichApiClient {
             file_len,
             desired_time_zone,
             progress,
-        ).await
+        )
+        .await
     }
 
     async fn handle_upload_response(
@@ -110,10 +111,19 @@ impl ImmichApiClient {
         let status = resp.status().as_u16();
         match status {
             200 | 201 => {
-                self.handle_upload_success(resp, filename, file_len, desired_time_zone, base_url, progress).await
+                self.handle_upload_success(
+                    resp,
+                    filename,
+                    file_len,
+                    desired_time_zone,
+                    base_url,
+                    progress,
+                )
+                .await
             }
             409 => {
-                self.handle_upload_duplicate(resp, filename, file_len, progress).await
+                self.handle_upload_duplicate(resp, filename, file_len, progress)
+                    .await
             }
             413 => {
                 log::error!("Upload failed (file too large): {}", filename);
@@ -237,7 +247,10 @@ impl ImmichApiClient {
         Some("DUPLICATE".to_string())
     }
 
-    async fn attach_sidecar(mut form: reqwest::multipart::Form, sidecar_path: Option<&str>) -> reqwest::multipart::Form {
+    async fn attach_sidecar(
+        mut form: reqwest::multipart::Form,
+        sidecar_path: Option<&str>,
+    ) -> reqwest::multipart::Form {
         if let Some(sidecar) = sidecar_path {
             let sidecar_p = Path::new(sidecar);
             if sidecar_p.exists() {

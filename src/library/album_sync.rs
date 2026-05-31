@@ -547,7 +547,10 @@ fn finish_album_download(ctx: &Arc<AppContext>, item_id: &str) {
         .finish_item(TransferDirection::Download, item_id, route);
 }
 
-async fn fetch_remote_album_assets(ctx: &Arc<AppContext>, album_id: &str) -> Result<Vec<LibraryAsset>, String> {
+async fn fetch_remote_album_assets(
+    ctx: &Arc<AppContext>,
+    album_id: &str,
+) -> Result<Vec<LibraryAsset>, String> {
     let mut remote = Vec::new();
     let mut page: u32 = 1;
     loop {
@@ -666,4 +669,3 @@ fn clear_pending_deletions(
         }
     }
 }
-

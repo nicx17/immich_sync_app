@@ -164,12 +164,9 @@ pub async fn queue_unsynced_files(
 
     // 2c & 2d: Batch pre-flight existing check, split tasks, and inline reassociate hits.
     let prepared_tasks: Vec<FileTask> = std::mem::take(&mut *prepared.lock());
-    let (to_upload, reassociated_count) = filter_and_reassociate_existing(
-        prepared_tasks,
-        &api_client,
-        &sync_index,
-    ).await;
-    
+    let (to_upload, reassociated_count) =
+        filter_and_reassociate_existing(prepared_tasks, &api_client, &sync_index).await;
+
     let reassociated = Arc::new(AtomicUsize::new(reassociated_count));
 
     let queued = Arc::new(AtomicUsize::new(0));

@@ -1082,7 +1082,8 @@ async fn resolve_final_asset_id(
 ) -> Result<String, Option<SyncTarget>> {
     let id = match asset_id {
         None => return Err(None),
-        Some(ref id) if id == "DUPLICATE" => match api.find_existing_asset_id(&task.checksum).await {
+        Some(ref id) if id == "DUPLICATE" => match api.find_existing_asset_id(&task.checksum).await
+        {
             Some(existing) => existing,
             None => {
                 log::info!("Asset already on server: {}", task.path);

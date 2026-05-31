@@ -52,13 +52,14 @@ impl ImmichApiClient {
             .timeout(Duration::from_secs(10))
             .send()
             .await;
-            
+
         self.handle_fetch_albums_response(result).await;
     }
 
-
-
-    async fn handle_fetch_albums_response(&self, result: Result<reqwest::Response, reqwest::Error>) {
+    async fn handle_fetch_albums_response(
+        &self,
+        result: Result<reqwest::Response, reqwest::Error>,
+    ) {
         match result {
             Ok(resp) if resp.status().is_success() => {
                 if let Ok(albums) = resp.json::<Vec<AlbumSummary>>().await {
@@ -97,7 +98,9 @@ impl ImmichApiClient {
         }
     }
 
-    fn process_album_summaries(albums: Vec<AlbumSummary>) -> (HashMap<String, String>, usize, usize) {
+    fn process_album_summaries(
+        albums: Vec<AlbumSummary>,
+    ) -> (HashMap<String, String>, usize, usize) {
         let mut fresh: HashMap<String, String> = HashMap::with_capacity(albums.len());
         let mut duplicates = 0usize;
         for album in albums {
@@ -176,7 +179,10 @@ impl ImmichApiClient {
             .await
         {
             Ok(resp) if resp.status().is_success() => {
-                let id = resp.json::<serde_json::Value>().await.ok()
+                let id = resp
+                    .json::<serde_json::Value>()
+                    .await
+                    .ok()
                     .and_then(|json| json["id"].as_str().map(String::from));
                 if let Some(id_str) = id.as_ref() {
                     let mut cache = self.album_cache.lock().await;
