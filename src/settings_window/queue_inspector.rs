@@ -16,7 +16,6 @@ use libadwaita as adw;
 
 use crate::queue_manager::QueueManager;
 use crate::state_manager::QueueEvent;
-use crate::watch_path_display::display_watch_path;
 
 /// Construct and present the modal Queue Inspector window.
 pub fn show_queue_inspector(
@@ -44,9 +43,14 @@ pub fn show_queue_inspector(
         .margin_end(12)
         .build();
 
+    let main_scroll = ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .child(&content)
+        .build();
+
     let toolbar = adw::ToolbarView::builder().build();
     toolbar.add_top_bar(&header);
-    toolbar.set_content(Some(&content));
+    toolbar.set_content(Some(&main_scroll));
     dialog.set_content(Some(&toolbar));
 
     let actions = Box::builder()
@@ -71,16 +75,11 @@ pub fn show_queue_inspector(
         .build();
     content.append(&events_group);
 
-    let events_scroll = ScrolledWindow::builder()
-        .min_content_height(340)
-        .vexpand(true)
-        .build();
     let events_list = ListBox::builder()
         .selection_mode(gtk::SelectionMode::None)
         .css_classes(vec!["boxed-list".to_string()])
         .build();
-    events_scroll.set_child(Some(&events_list));
-    events_group.add(&events_scroll);
+    events_group.add(&events_list);
 
     // Initial population.
     refresh_inspector(&failed_group, &events_list, &queue_manager);
@@ -142,11 +141,7 @@ pub fn show_queue_inspector(
     );
     bp.add_setter(&retry_all_btn, "label", Some(&"Retry All".to_value()));
     bp.add_setter(&clear_failed_btn, "label", Some(&"Clear".to_value()));
-    bp.add_setter(
-        &events_scroll,
-        "min-content-height",
-        Some(&220i32.to_value()),
-    );
+
     dialog.add_breakpoint(bp);
 
     dialog.present();
@@ -220,7 +215,7 @@ fn rebuild_failed_rows(
                     .unwrap_or(task.path.as_str()),
             )
             .subtitle(&task.path)
-            .title_lines(1)
+            .title_lines(0)
             .subtitle_lines(3)
             .build();
         let retry_btn = Button::builder().label("Retry").build();
@@ -266,17 +261,10 @@ fn rebuild_event_rows(list: &ListBox, events: &[QueueEvent]) {
                     .map(|detail| format!(" | {}", detail))
                     .unwrap_or_default()
             ))
-            .title_lines(1)
+            .title_lines(0)
             .subtitle_lines(4)
             .build();
-        row.add_prefix(
-            &gtk::Label::builder()
-                .label(display_watch_path(&event.path))
-                .ellipsize(gtk::pango::EllipsizeMode::End)
-                .max_width_chars(20)
-                .halign(gtk::Align::Start)
-                .build(),
-        );
+
         list.append(&row);
     }
 }

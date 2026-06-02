@@ -40,17 +40,18 @@ pub fn build_actions_group(
         .build();
     settings_page.add(&app_group);
 
-    let app_flow = action_flow(false, 2);
-    app_group.add(&app_flow);
+    let row = adw::ActionRow::builder()
+        .title("Close Application")
+        .subtitle("Stop syncing and exit Mimick completely")
+        .build();
 
     let quit_btn = Button::builder()
         .label("Quit")
         .css_classes(vec!["destructive-action".to_string()])
-        .halign(gtk::Align::Start)
-        .hexpand(false)
-        .width_request(120)
+        .valign(gtk::Align::Center)
         .build();
-    app_flow.insert(&quit_btn, -1);
+    row.add_suffix(&quit_btn);
+    app_group.add(&row);
 
     ActionsWidgets {
         sync_now_btn,
