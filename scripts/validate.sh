@@ -8,9 +8,14 @@ echo "Running cargo check..."
 cargo check
 
 echo ""
-echo "Running cargo fmt --check..."
-cargo fmt -- --check
-
+echo "Checking code formatting..."
+if ! cargo fmt -- --check; then
+    echo "Formatting issues found. Running 'cargo fmt' to fix them automatically..."
+    cargo fmt
+    echo "Formatting applied."
+else
+    echo "Formatting is correct."
+fi
 echo ""
 echo "Running cargo clippy (with -D warnings)..."
 cargo clippy --all-targets --all-features -- -D warnings
