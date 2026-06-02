@@ -34,18 +34,6 @@ pub fn show_queue_inspector(
         .build();
 
     let header = adw::HeaderBar::builder().show_title(true).build();
-    let close_btn = Button::builder()
-        .label("Close")
-        .css_classes(vec!["suggested-action".to_string()])
-        .build();
-    close_btn.connect_clicked(clone!(
-        #[weak]
-        dialog,
-        move |_| {
-            dialog.close();
-        }
-    ));
-    header.pack_end(&close_btn);
 
     let content = Box::builder()
         .orientation(Orientation::Vertical)

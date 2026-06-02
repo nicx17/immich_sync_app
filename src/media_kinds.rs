@@ -28,8 +28,8 @@ pub static SUPPORTED: phf::Set<&'static str> = phf_set! {
     "tif", "tiff", "ts", "vob", "webm", "webp", "wmv", "x3f",
 };
 
-/// Camera RAW extensions — subset of SUPPORTED that needs RAW-specific
-/// decoding (libraw / imagepipe) instead of pixbuf or image-rs.
+/// Camera RAW extensions -- subset of SUPPORTED that needs RAW-specific
+/// decoding (libraw) instead of pixbuf or image-rs.
 pub static RAW_EXTENSIONS: phf::Set<&'static str> = phf_set! {
     "3fr", "ari", "arw", "cap", "cin", "cr2", "cr3", "crw", "dcr", "dng",
     "erf", "fff", "iiq", "k25", "kdc", "mrw", "nef", "nrw", "orf", "ori",

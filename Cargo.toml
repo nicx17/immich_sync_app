@@ -64,7 +64,7 @@ libheif-rs = { version = "2.7.0", default-features = false, features = [
     "v1_20",
 ] }
 jxl-oxide = "0.12.5"
-imagepipe = "0.5.0"
+
 libraw-rs-sys = "0.0.4"
 resvg = { version = "0.47.0", default-features = false, features = [
     "text",
@@ -91,8 +91,7 @@ glib-build-tools = "0.22"
 opt-level = "z"   # Optimise for binary size (less code = less mapped pages)
 codegen-units = 1 # Full whole-program optimisation
 lto = true        # Link-Time Optimisation – dead code is stripped at link time
-panic = "unwind"  # Keep unwinding so catch_unwind can recover from third-party
-# decoder panics (rawloader OOB on malformed RAW files etc.)
+panic = "abort"
 strip = true # Strip debug symbols from the final binary
 
 [lints.clippy]
