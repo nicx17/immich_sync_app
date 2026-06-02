@@ -155,6 +155,9 @@ async fn main() {
         // Always follow the desktop's light/dark preference.
         adw::StyleManager::default().set_color_scheme(adw::ColorScheme::Default);
 
+        // Register global CSS for button animations and UI components
+        crate::library::style::ensure_registered();
+
         thread_local! {
             static APP_HOLD: std::cell::RefCell<Option<gtk::gio::ApplicationHoldGuard>> = const { std::cell::RefCell::new(None) };
         }

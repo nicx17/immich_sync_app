@@ -193,7 +193,7 @@ button,
 .mimick-pressable,
 menubutton > button,
 row.activatable {
-    transition: transform 80ms ease-out, opacity 80ms ease-out;
+    transition: all 150ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 button:active,
