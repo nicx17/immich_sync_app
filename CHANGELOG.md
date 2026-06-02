@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a `validate.sh` script to streamline local development checks (`cargo check`, `fmt`, `clippy`, and `audit`).
+- Added detailed permission error dialogs across the Library, Explore, and Server Statistics views to clearly identify missing API scopes (e.g. `HTTP 401/403`) instead of treating them as generic network failures.
 - New masonry layout for the Photos view in Library. Images now keep their natural aspect ratios and pack into justified rows instead of a fixed tile grid.
 - New `Library Thumbnail Quality` setting with `Auto`, `Thumbnail`, `Preview`, and `Full Size` options. `Auto` chooses a size based on the rendered cell size, and `Full Size` falls back automatically when the server does not provide that image size.
 
@@ -18,11 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Thumbnail memory cache is now sized automatically from available system RAM, using up to 20% of memory with built-in minimum and maximum limits, so the manual memory-cache limit setting has been removed.
 - Thumbnail loading now uses separate concurrency limits for smaller thumbnails and larger preview/full-size requests to keep browsing responsive while larger images are still loading.
 - Library settings text was shortened and cleaned up to make common options easier to scan.
+- Removed the redundant "(Selected via Flatpak portal)" text globally (affects Settings, Diagnostics, Album views) since the app is exclusively distributed via Flatpak.
 
 ### Fixed
 
+- Fixed native GTK button hover and scale animations across the app by replacing the rigid CSS transition with a smoother `cubic-bezier` curve.
 - Masonry grid scrolling and thumbnail loading are now more stable. Items close to the visible area load first, and the layout no longer shifts as much while images are coming in.
 - Large cells can now request higher-quality preview and full-size thumbnail buckets correctly, with automatic fallback when a higher bucket is unavailable on the server.
+- Queue Inspector: Fixed the Recent Queue Activity layout so it no longer redundantly duplicates the filename in two columns.
+- Queue Inspector: Allowed filenames to smoothly wrap to multiple lines, preventing truncation (cut off with ellipses) when the window is narrow.
+- Settings: Replaced the Application Quit button's FlowBox layout with a native Libadwaita ActionRow, fixing an oversized invisible touch target anomaly and matching standard OS styling.
 
 ### Refactored
 
