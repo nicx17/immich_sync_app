@@ -1019,7 +1019,9 @@ pub fn build_settings_window_with_parent(
                                             "Diagnostics Exported",
                                             format!(
                                                 "Saved diagnostics bundle to {}",
-                                                bundle_dir.display()
+                                                crate::watch_path_display::display_watch_path(
+                                                    &bundle_dir.to_string_lossy()
+                                                )
                                             ),
                                         ),
                                         Ok(Err(err)) => (
