@@ -921,7 +921,13 @@ fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
         #[strong]
         ctx,
         async move {
-            let people = ctx.api_client.fetch_people(true).await.unwrap_or_default();
+            let people_res = ctx.api_client.fetch_people(false).await;
+            if let Err(e) = &people_res
+                && (e.contains("HTTP 401") || e.contains("HTTP 403"))
+            {
+                show_library_permission_error(&ui.window);
+            }
+            let people = people_res.unwrap_or_default();
             let click_ui = ui.clone();
             explore_view::populate_people(&ui.explore, ctx.clone(), people, move |id, name| {
                 let filters = MetadataSearchFilters {
@@ -946,7 +952,13 @@ fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
         #[strong]
         ctx,
         async move {
-            let places = ctx.api_client.fetch_all_places().await.unwrap_or_default();
+            let places_res = ctx.api_client.fetch_all_places().await;
+            if let Err(e) = &places_res
+                && (e.contains("HTTP 401") || e.contains("HTTP 403"))
+            {
+                show_library_permission_error(&ui.window);
+            }
+            let places = places_res.unwrap_or_default();
             let click_ui = ui.clone();
             explore_view::populate_places(&ui.explore, ctx.clone(), places, move |_kind, value| {
                 let next = LibrarySource::AdvancedSearch {
@@ -969,7 +981,13 @@ fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
         #[strong]
         ctx,
         async move {
-            let sections = ctx.api_client.fetch_explore().await.unwrap_or_default();
+            let sections_res = ctx.api_client.fetch_explore().await;
+            if let Err(e) = &sections_res
+                && (e.contains("HTTP 401") || e.contains("HTTP 403"))
+            {
+                show_library_permission_error(&ui.window);
+            }
+            let sections = sections_res.unwrap_or_default();
             let click_ui = ui.clone();
             explore_view::populate_explore(
                 &ui.explore,
@@ -1524,4 +1542,14 @@ async fn merge_album_unified_page(
 
     local_rows.append(&mut remote);
     Ok((local_rows, has_more))
+}
+
+/// Helper to show a permissions error dialog for library views.
+fn show_library_permission_error(window: &libadwaita::ApplicationWindow) {
+    let dialog = libadwaita::AlertDialog::builder()
+        .heading("Missing API Permissions")
+        .body("Your API key is missing permissions required for the Library view. Please ensure the key has 'asset.read', 'asset.view', 'asset.download', and 'person.read' enabled.")
+        .build();
+    dialog.add_response("close", "Close");
+    dialog.present(Some(window));
 }

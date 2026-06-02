@@ -110,10 +110,34 @@ pub fn present(ctx: Arc<AppContext>, parent: &libadwaita::ApplicationWindow) {
                             .build();
                         content.append(&note);
                     } else {
+                        let mut is_permission_error = false;
+                        if let Err(e) = &asset_stats
+                            && (e.contains("HTTP 401") || e.contains("HTTP 403"))
+                        {
+                            is_permission_error = true;
+                        }
+                        if let Err(e) = &server_stats
+                            && (e.contains("HTTP 401") || e.contains("HTTP 403"))
+                        {
+                            is_permission_error = true;
+                        }
+
+                        let (title, subtitle) = if is_permission_error {
+                            (
+                                "Missing API Permissions",
+                                "Your API key must include the 'server.about', 'server.statistics', and 'server.versionCheck' permissions to view server stats.",
+                            )
+                        } else {
+                            (
+                                "Unable to load statistics",
+                                "Check your connection and try again.",
+                            )
+                        };
+
                         let err_row = libadwaita::ActionRow::builder()
-                            .title("Unable to load statistics")
-                            .subtitle("Check your connection and try again.")
-                            .subtitle_lines(2)
+                            .title(title)
+                            .subtitle(subtitle)
+                            .subtitle_lines(3)
                             .build();
                         let group = libadwaita::PreferencesGroup::builder().build();
                         group.add(&err_row);
