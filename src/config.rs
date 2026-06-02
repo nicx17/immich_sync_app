@@ -496,23 +496,23 @@ mod tests {
 
     #[test]
     fn test_watch_path_entry_parsing_simple() {
-        let json = r#""/home/nick/Pictures""#;
+        let json = r#""/home/user/Pictures""#;
         let entry: WatchPathEntry = serde_json::from_str(json).unwrap();
 
-        assert_eq!(entry.path(), "/home/nick/Pictures");
+        assert_eq!(entry.path(), "/home/user/Pictures");
         assert!(matches!(entry, WatchPathEntry::Simple(_)));
     }
 
     #[test]
     fn test_watch_path_entry_parsing_with_config() {
         let json = r#"{
-            "path": "/home/nick/Pictures",
+            "path": "/home/user/Pictures",
             "album_id": "abc-123",
             "album_name": "My Album"
         }"#;
         let entry: WatchPathEntry = serde_json::from_str(json).unwrap();
 
-        assert_eq!(entry.path(), "/home/nick/Pictures");
+        assert_eq!(entry.path(), "/home/user/Pictures");
         let WatchPathEntry::WithConfig { album_id, .. } = &entry else {
             panic!("expected configured watch entry");
         };

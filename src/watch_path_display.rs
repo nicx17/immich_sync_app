@@ -6,8 +6,6 @@
 
 use std::path::Path;
 
-const PORTAL_FOLDER_LABEL: &str = "Selected via Flatpak portal";
-
 /// Converts a stored watch path into a user-friendly label for display in the UI and logs.
 pub fn display_watch_path(path: &str) -> String {
     if is_document_portal_path(path) {
@@ -23,12 +21,14 @@ pub fn display_watch_path(path: &str) -> String {
 }
 
 /// Returns an explanatory subtitle for special watch paths, if applicable.
-pub fn watch_path_subtitle(path: &str) -> Option<&'static str> {
-    if is_document_portal_path(path) {
-        Some(PORTAL_FOLDER_LABEL)
-    } else {
-        None
-    }
+pub fn watch_path_subtitle(_path: &str) -> Option<&'static str> {
+    None
+}
+
+/// Returns the full path for regular folders, or the folder name for Flatpak portal paths.
+/// Useful for contexts where the path is displayed inline (e.g., diagnostics, album linked folder) without a separate subtitle.
+pub fn display_watch_path_inline(path: &str) -> String {
+    display_watch_path(path)
 }
 
 /// Detects document-portal paths returned by the Flatpak file chooser portal.
@@ -38,7 +38,7 @@ pub fn is_document_portal_path(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{display_watch_path, is_document_portal_path, watch_path_subtitle};
+    use super::{display_watch_path, is_document_portal_path};
 
     #[test]
     fn test_display_watch_path_for_portal_folder() {
@@ -49,19 +49,11 @@ mod tests {
     }
 
     #[test]
-    fn test_watch_path_subtitle_for_portal_folder() {
-        assert_eq!(
-            watch_path_subtitle("/run/user/1000/doc/abcd1234/Screenshots"),
-            Some("Selected via Flatpak portal")
-        );
-    }
-
-    #[test]
     fn test_display_watch_path_for_regular_folder() {
         assert_eq!(
-            display_watch_path("/home/nick/Pictures"),
-            "/home/nick/Pictures"
+            display_watch_path("/home/user/Pictures"),
+            "/home/user/Pictures"
         );
-        assert!(!is_document_portal_path("/home/nick/Pictures"));
+        assert!(!is_document_portal_path("/home/user/Pictures"));
     }
 }

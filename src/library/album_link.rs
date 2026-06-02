@@ -38,7 +38,9 @@ pub(super) fn refresh_album_link_row(ui: &LibraryWindowUi, source: &LibrarySourc
         Some(entry) => {
             ui.album_link_row.set_title("Linked folder");
             ui.album_link_row
-                .set_subtitle(&crate::watch_path_display::display_watch_path(entry.path()));
+                .set_subtitle(&crate::watch_path_display::display_watch_path_inline(
+                    entry.path(),
+                ));
             ui.album_link_button.set_label("Unlink");
             ui.album_sync_button.set_visible(true);
         }
