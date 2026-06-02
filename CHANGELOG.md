@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated README and in-app missing permission dialogs to explicitly document `asset.statistics` as a required API key scope for fetching server statistics.
 - Library layout now uses image dimensions from Immich EXIF data earlier in the load path, so rows are sized more accurately from the first paint.
 - Thumbnail memory cache is now sized automatically from available system RAM, using up to 20% of memory with built-in minimum and maximum limits, so the manual memory-cache limit setting has been removed.
 - Thumbnail loading now uses separate concurrency limits for smaller thumbnails and larger preview/full-size requests to keep browsing responsive while larger images are still loading.
@@ -24,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fixed an issue where the footer statistics would remain permanently missing if the initial network connection failed at startup.
+- Fixed the Server Statistics missing permissions dialog text truncating on narrow screens (like 360px width) by allowing it to wrap.
+- Fixed `validate.sh` to automatically apply `cargo fmt` fixes instead of failing on formatting errors.
 - Fixed native GTK button hover and scale animations across the app by replacing the rigid CSS transition with a smoother `cubic-bezier` curve.
 - Masonry grid scrolling and thumbnail loading are now more stable. Items close to the visible area load first, and the layout no longer shifts as much while images are coming in.
 - Large cells can now request higher-quality preview and full-size thumbnail buckets correctly, with automatic fallback when a higher bucket is unavailable on the server.

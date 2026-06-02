@@ -10,6 +10,7 @@ use gtk::graphene::{Rect, Size};
 use gtk::gsk::RoundedRect;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
+use libadwaita::prelude::*;
 
 use super::grid_view::AssetContextMenuHandler;
 use crate::api_client::ThumbnailSize;
@@ -91,6 +92,7 @@ mod imp {
         pub activate_handler: RefCell<Option<ActivateHandler>>,
         pub context_menu_handler: RefCell<Option<AssetContextMenuHandler>>,
         pub select_mode_changer: RefCell<Option<SelectModeChanger>>,
+        pub permission_warned: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -550,6 +552,23 @@ fn finish_masonry_load(
         Err(e) => {
             if e != "cancelled" {
                 imp.failed.borrow_mut().insert(asset_id.to_string());
+
+                if (e.contains("HTTP 401") || e.contains("HTTP 403"))
+                    && !imp.permission_warned.get()
+                {
+                    imp.permission_warned.set(true);
+                    if let Some(window) = widget
+                        .root()
+                        .and_downcast::<libadwaita::ApplicationWindow>()
+                    {
+                        let dialog = libadwaita::AlertDialog::builder()
+                            .heading("Missing API Permissions")
+                            .body("Your API key is missing permissions required to view thumbnails. Please ensure the key has 'asset.view' enabled.")
+                            .build();
+                        dialog.add_response("ok", "OK");
+                        dialog.present(Some(&window));
+                    }
+                }
             }
             log::warn!("masonry load ERR id={} err={}", asset_id, e);
             false

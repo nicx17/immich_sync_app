@@ -595,13 +595,29 @@ fn bootstrap_window(ui: Rc<LibraryWindowUi>) {
     load_source_page(ui, initial_request, false);
 }
 
-/// Start a periodic server health checking loop updating status icons in the UI.
 fn spawn_server_ping_loop(ui: Rc<LibraryWindowUi>) {
     glib::timeout_add_seconds_local(5, move || {
         let ui_for_tick = ui.clone();
         glib::MainContext::default().spawn_local(async move {
             let _ = ui_for_tick.ctx.api_client.check_connection().await;
             let route = ui_for_tick.ctx.api_client.active_route_label().await;
+
+            // If we are online but missing stats (e.g. from an initial network failure), re-fetch them.
+            if route.is_some() {
+                let missing_stats = {
+                    let state = ui_for_tick.ctx.library_state.lock();
+                    state.status.stats.is_none() || state.status.about.is_none()
+                };
+                if missing_stats {
+                    let stats = ui_for_tick.ctx.api_client.fetch_server_stats().await.ok();
+                    let about = ui_for_tick.ctx.api_client.fetch_server_about().await.ok();
+                    if stats.is_some() || about.is_some() {
+                        let mut state = ui_for_tick.ctx.library_state.lock();
+                        state.set_status(stats, about);
+                    }
+                }
+            }
+
             update_footer(&ui_for_tick, route);
         });
         glib::ControlFlow::Continue

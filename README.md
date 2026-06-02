@@ -177,7 +177,8 @@ When generating the API key in Immich (Account Settings → API Keys), grant onl
 
 | Feature                                                             | Additional permissions                                                                                                                                         |
 | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Server Stats Dialog (click server name in Settings)                 | `server.about`, `server.statistics`, `server.versionCheck`                                                                                                     |
+| Server Stats Dialog (click server name in Settings)                 | `server.about`, `server.versionCheck`, `server.statistics`, `asset.statistics`                                                                 |
+| Library Footer Statistics (photo/video counts)                      | `asset.statistics`                                                                                                                                             |
 | Library / Explore view (browse photos inside Mimick)                | `asset.read`, `asset.view`, `asset.download`, `person.read`                                                                                                    |
 | **Sync Method** set to **Full** or **Download Only** (folder rules) | `asset.read`, `asset.download`                                                                                                                                 |
 | **Mirror Folder Deletions to Album** (folder rules toggle)          | `asset.delete` _and_ `albumAsset.delete` (the latter is used when the same asset is referenced by another watch folder, so we just unlink instead of trashing) |

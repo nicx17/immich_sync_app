@@ -125,7 +125,7 @@ pub fn present(ctx: Arc<AppContext>, parent: &libadwaita::ApplicationWindow) {
                         let (title, subtitle) = if is_permission_error {
                             (
                                 "Missing API Permissions",
-                                "Your API key must include the 'server.about', 'server.statistics', and 'server.versionCheck' permissions to view server stats.",
+                                "Your API key must include the 'server.about', 'server.versionCheck', 'server.statistics', and 'asset.statistics' permissions to view stats.",
                             )
                         } else {
                             (
@@ -137,7 +137,7 @@ pub fn present(ctx: Arc<AppContext>, parent: &libadwaita::ApplicationWindow) {
                         let err_row = libadwaita::ActionRow::builder()
                             .title(title)
                             .subtitle(subtitle)
-                            .subtitle_lines(3)
+                            .subtitle_lines(0)
                             .build();
                         let group = libadwaita::PreferencesGroup::builder().build();
                         group.add(&err_row);
