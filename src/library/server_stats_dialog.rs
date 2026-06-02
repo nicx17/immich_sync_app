@@ -58,95 +58,95 @@ pub fn present(ctx: Arc<AppContext>, parent: &libadwaita::ApplicationWindow) {
                 content.remove(&child);
             }
 
-            // -- Version badge (pill-shaped, centered) --
             if let Ok(about) = &about {
-                let badge_label = gtk::Label::builder()
-                    .label(format!("Immich {}", about.version))
-                    .css_classes(vec!["caption".to_string()])
-                    .build();
-                let badge = gtk::Box::builder()
-                    .halign(gtk::Align::Center)
-                    .css_classes(vec!["mimick-version-badge".to_string()])
-                    .build();
-                badge.append(&badge_label);
-                content.append(&badge);
+                append_version_badge(&content, &about.version);
             }
 
-            // -- Stat cards --
-            match &server_stats {
-                Ok(stats) => {
-                    let cards = stat_card_row(&[
-                        ("Photos", format_number(stats.photos), "photo-card"),
-                        ("Videos", format_number(stats.videos), "video-card"),
-                        ("Storage", format_size(stats.usage), "storage-card"),
-                    ]);
-                    content.append(&cards);
-
-                    if !stats.usage_by_user.is_empty() {
-                        let user_group = libadwaita::PreferencesGroup::builder()
-                            .title("By user")
-                            .build();
-                        for user in &stats.usage_by_user {
-                            let row = user_row(user);
-                            user_group.add(&row);
-                        }
-                        content.append(&user_group);
-                    }
-                }
-                Err(_) => {
-                    if let Ok(asset_stats) = &asset_stats {
-                        let cards = stat_card_row(&[
-                            ("Photos", format_number(asset_stats.images), "photo-card"),
-                            ("Videos", format_number(asset_stats.videos), "video-card"),
-                            ("Total", format_number(asset_stats.total), "storage-card"),
-                        ]);
-                        content.append(&cards);
-
-                        let note = gtk::Label::builder()
-                            .label("Server-wide statistics require administrator access.")
-                            .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
-                            .wrap(true)
-                            .halign(gtk::Align::Center)
-                            .build();
-                        content.append(&note);
-                    } else {
-                        let mut is_permission_error = false;
-                        if let Err(e) = &asset_stats
-                            && (e.contains("HTTP 401") || e.contains("HTTP 403"))
-                        {
-                            is_permission_error = true;
-                        }
-                        if let Err(e) = &server_stats
-                            && (e.contains("HTTP 401") || e.contains("HTTP 403"))
-                        {
-                            is_permission_error = true;
-                        }
-
-                        let (title, subtitle) = if is_permission_error {
-                            (
-                                "Missing API Permissions",
-                                "Your API key must include the 'server.about', 'server.versionCheck', 'server.statistics', and 'asset.statistics' permissions to view stats.",
-                            )
-                        } else {
-                            (
-                                "Unable to load statistics",
-                                "Check your connection and try again.",
-                            )
-                        };
-
-                        let err_row = libadwaita::ActionRow::builder()
-                            .title(title)
-                            .subtitle(subtitle)
-                            .subtitle_lines(0)
-                            .build();
-                        let group = libadwaita::PreferencesGroup::builder().build();
-                        group.add(&err_row);
-                        content.append(&group);
-                    }
+            match (&server_stats, &asset_stats) {
+                (Ok(stats), _) => append_server_statistics(&content, stats),
+                (Err(_), Ok(assets)) => append_asset_statistics(&content, assets),
+                (Err(server_err), Err(asset_err)) => {
+                    append_error_ui(&content, asset_err, server_err)
                 }
             }
         }
     });
+}
+
+fn append_version_badge(content: &gtk::Box, version: &str) {
+    let badge_label = gtk::Label::builder()
+        .label(format!("Immich {}", version))
+        .css_classes(vec!["caption".to_string()])
+        .build();
+    let badge = gtk::Box::builder()
+        .halign(gtk::Align::Center)
+        .css_classes(vec!["mimick-version-badge".to_string()])
+        .build();
+    badge.append(&badge_label);
+    content.append(&badge);
+}
+
+fn append_server_statistics(content: &gtk::Box, stats: &crate::api_client::ServerStatistics) {
+    let cards = stat_card_row(&[
+        ("Photos", format_number(stats.photos), "photo-card"),
+        ("Videos", format_number(stats.videos), "video-card"),
+        ("Storage", format_size(stats.usage), "storage-card"),
+    ]);
+    content.append(&cards);
+
+    if !stats.usage_by_user.is_empty() {
+        let user_group = libadwaita::PreferencesGroup::builder()
+            .title("By user")
+            .build();
+        for user in &stats.usage_by_user {
+            let row = user_row(user);
+            user_group.add(&row);
+        }
+        content.append(&user_group);
+    }
+}
+
+fn append_asset_statistics(content: &gtk::Box, asset_stats: &crate::api_client::ServerStats) {
+    let cards = stat_card_row(&[
+        ("Photos", format_number(asset_stats.images), "photo-card"),
+        ("Videos", format_number(asset_stats.videos), "video-card"),
+        ("Total", format_number(asset_stats.total), "storage-card"),
+    ]);
+    content.append(&cards);
+
+    let note = gtk::Label::builder()
+        .label("Server-wide statistics require administrator access.")
+        .css_classes(vec!["dim-label".to_string(), "caption".to_string()])
+        .wrap(true)
+        .halign(gtk::Align::Center)
+        .build();
+    content.append(&note);
+}
+
+fn append_error_ui(content: &gtk::Box, asset_err: &str, server_err: &str) {
+    let is_permission_error = (asset_err.contains("HTTP 401") || asset_err.contains("HTTP 403"))
+        || (server_err.contains("HTTP 401") || server_err.contains("HTTP 403"));
+
+    let (title, subtitle) = if is_permission_error {
+        (
+            "Missing API Permissions",
+            "Your API key must include the 'server.about', 'server.versionCheck', 'server.statistics', and 'asset.statistics' permissions to view stats.",
+        )
+    } else {
+        (
+            "Unable to load statistics",
+            "Check your connection and try again.",
+        )
+    };
+
+    let err_row = libadwaita::ActionRow::builder()
+        .title(title)
+        .subtitle(subtitle)
+        .subtitle_lines(0)
+        .build();
+    let group = libadwaita::PreferencesGroup::builder().build();
+    group.add(&err_row);
+    content.append(&group);
 }
 
 /// Build a row of colored stat cards arranged in a responsive `FlowBox`.
