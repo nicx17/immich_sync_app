@@ -363,6 +363,9 @@ pub fn build_settings_window_with_parent(
         raw_full_decode_row,
         raw_cache_row,
         disk_cache_row,
+        download_folder_row,
+        download_change_btn,
+        download_clear_btn,
     } = library::build_library_group(&settings_page);
 
     library_view_row.connect_active_notify(glib::clone!(
@@ -450,6 +453,51 @@ pub fn build_settings_window_with_parent(
         });
         pending_disk_cache_save.set(Some(id));
     });
+
+    // --- Download folder row wiring ---
+    if let Some(path) = ctx.config.read().data.download_target_path.as_deref() {
+        download_folder_row.set_subtitle(path);
+        download_clear_btn.set_visible(true);
+    }
+
+    let ctx_for_dl_change = ctx.clone();
+    let dl_row_for_change = download_folder_row.clone();
+    let dl_clear_for_change = download_clear_btn.clone();
+    download_change_btn.connect_clicked(clone!(
+        #[weak]
+        window,
+        move |_| {
+            let ctx = ctx_for_dl_change.clone();
+            let row = dl_row_for_change.clone();
+            let clear = dl_clear_for_change.clone();
+            let dialog = gtk::FileDialog::builder()
+                .title("Choose Download Folder")
+                .build();
+            dialog.select_folder(Some(&window), gtk::gio::Cancellable::NONE, move |res| {
+                if let Some(path) = res.ok().and_then(|f| f.path()) {
+                    let path_str = path.to_string_lossy().to_string();
+                    row.set_subtitle(&path_str);
+                    clear.set_visible(true);
+                    let mut cfg = ctx.config.write();
+                    cfg.data.download_target_path = Some(path_str);
+                    cfg.save();
+                }
+            });
+        }
+    ));
+
+    let ctx_for_dl_clear = ctx.clone();
+    download_clear_btn.connect_clicked(clone!(
+        #[weak]
+        download_folder_row,
+        move |btn| {
+            download_folder_row.set_subtitle("Not set");
+            btn.set_visible(false);
+            let mut cfg = ctx_for_dl_clear.config.write();
+            cfg.data.download_target_path = None;
+            cfg.save();
+        }
+    ));
 
     // --- WATCH FOLDERS GROUP ---
     let folders_group = adw::PreferencesGroup::builder()

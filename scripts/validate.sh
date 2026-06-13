@@ -1,33 +1,29 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# Change to the root of the repository to ensure cargo commands run properly
 cd "$(dirname "$0")/.."
 
-echo "Running cargo check..."
-cargo check
+step() { printf '\n\033[1;34m>> %s\033[0m\n' "$1"; }
 
-echo ""
-echo "Checking code formatting..."
-if ! cargo fmt -- --check; then
+step "Checking code formatting..."
+if ! cargo fmt --all -- --check; then
     echo "Formatting issues found. Running 'cargo fmt' to fix them automatically..."
-    cargo fmt
+    cargo fmt --all
     echo "Formatting applied."
-else
-    echo "Formatting is correct."
 fi
-echo ""
-echo "Running cargo clippy (with -D warnings)..."
-cargo clippy --all-targets --all-features -- -D warnings
 
-echo ""
-echo "Running cargo audit..."
-# Check if cargo-audit is installed, if not, offer a helpful message or install it
-if ! cargo audit --version &> /dev/null; then
-    echo "cargo-audit is not installed. Installing it now (this might take a moment)..."
-    cargo install cargo-audit
+step "Running cargo clippy (with -D warnings)..."
+cargo clippy --locked --all-targets --all-features -- -D warnings
+
+step "Running tests..."
+cargo test --locked
+
+step "Running cargo audit..."
+if ! command -v cargo-audit &>/dev/null; then
+    echo "cargo-audit not found. Install with: cargo install cargo-audit"
+    exit 1
 fi
-cargo audit
+cargo audit --deny warnings
 
 echo ""
 echo "All checks passed successfully!"

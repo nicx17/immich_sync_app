@@ -10,8 +10,8 @@ pub(crate) const PREVIEW_BUCKET_THRESHOLD: f32 = 600.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GridQuality {
-    #[default]
     Auto,
+    #[default]
     Thumbnail,
     Preview,
     Fullsize,

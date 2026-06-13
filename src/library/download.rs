@@ -4,7 +4,7 @@
 //! updating the progress bar and transfer rate display. Video files can
 //! optionally be handed off to the system default player after download.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -117,22 +117,6 @@ pub(super) fn spawn_video_handoff(ui: Rc<LibraryWindowUi>, asset_id: String, fil
 
 pub(super) fn start_download(ui: Rc<LibraryWindowUi>, asset_id: String, filename: String) {
     begin_download_session(&ui.ctx, filename.clone());
-    start_download_with_session(ui, asset_id, filename, true);
-}
-
-pub(super) fn start_download_group(ui: Rc<LibraryWindowUi>, downloads: Vec<(String, String)>) {
-    begin_download_session(&ui.ctx, format!("{} items", downloads.len()));
-    for (asset_id, filename) in downloads {
-        start_download_with_session(ui.clone(), asset_id, filename, false);
-    }
-}
-
-fn start_download_with_session(
-    ui: Rc<LibraryWindowUi>,
-    asset_id: String,
-    filename: String,
-    show_result_dialog: bool,
-) {
     glib::MainContext::default().spawn_local(clone!(
         #[strong]
         ui,
@@ -143,115 +127,267 @@ fn start_download_with_session(
             let safe_name =
                 crate::sanitize::safe_filename(&filename).unwrap_or_else(|| asset_id.clone());
             let output_path = target_dir.join(&safe_name);
-            if output_path.exists() {
-                let dialog = libadwaita::AlertDialog::builder()
-                    .heading("File already exists")
-                    .body("Overwrite the existing file or skip this download?")
-                    .build();
-                dialog.add_response("skip", "Skip");
-                dialog.add_response("overwrite", "Overwrite");
-                dialog.set_response_appearance(
-                    "overwrite",
-                    libadwaita::ResponseAppearance::Destructive,
-                );
-                dialog.connect_response(
-                    None,
-                    clone!(
-                        #[strong]
-                        ui,
-                        #[strong]
-                        asset_id,
-                        #[strong]
-                        filename,
-                        #[strong]
-                        show_result_dialog,
-                        move |dialog, response| {
-                            dialog.close();
-                            if response == "overwrite" {
-                                spawn_download(
-                                    ui.clone(),
-                                    asset_id.clone(),
-                                    target_dir.join(&filename),
-                                    show_result_dialog,
-                                );
-                            }
-                        }
-                    ),
-                );
-                dialog.present(Some(&ui.window));
+            if output_path.exists() && !show_overwrite_dialog(&ui, &safe_name).await {
                 return;
             }
-            spawn_download(ui, asset_id, output_path, show_result_dialog);
+            match do_download(&ui, &asset_id, &output_path).await {
+                Ok(()) => {
+                    let alert = libadwaita::AlertDialog::builder()
+                        .heading("Download Complete")
+                        .body(format!("Saved {}", safe_name))
+                        .build();
+                    alert.add_response("ok", "OK");
+                    alert.present(Some(&ui.window));
+                }
+                Err(err) => {
+                    let alert = libadwaita::AlertDialog::builder()
+                        .heading("Download Failed")
+                        .body(&err)
+                        .build();
+                    alert.add_response("ok", "OK");
+                    alert.present(Some(&ui.window));
+                }
+            }
         }
     ));
 }
 
-fn spawn_download(
-    ui: Rc<LibraryWindowUi>,
-    asset_id: String,
-    output_path: PathBuf,
-    show_result_dialog: bool,
-) {
+#[derive(Clone, Copy)]
+enum ConflictAction {
+    Skip,
+    Overwrite,
+    Rename,
+}
+
+pub(super) fn start_download_group(ui: Rc<LibraryWindowUi>, downloads: Vec<(String, String)>) {
+    begin_download_session(&ui.ctx, format!("{} items", downloads.len()));
     glib::MainContext::default().spawn_local(clone!(
         #[strong]
         ui,
         async move {
-            let item_label = output_path
-                .file_name()
-                .map(|name| name.to_string_lossy().to_string())
-                .unwrap_or_else(|| output_path.display().to_string());
-            let progress =
-                track_download_item(&ui.ctx, asset_id.clone(), Some(item_label.clone()), None);
-            match ui
-                .ctx
-                .api_client
-                .download_original_to_file(&asset_id, &output_path, Some(progress))
-                .await
-            {
-                Ok(()) => {
-                    let session_finished = {
-                        finish_download_item(&ui.ctx, &asset_id);
-                        !ui.ctx.state.lock().transfer.active
-                    };
-                    if should_refresh_after_download(&ui) && session_finished {
-                        super::refresh_library_after_mutation(ui.clone(), true);
-                    }
-                    if show_result_dialog {
-                        let heading = "Download Complete";
-                        let body = format!("Saved {}", output_path.display());
-                        let alert = libadwaita::AlertDialog::builder()
-                            .heading(heading)
-                            .body(&body)
-                            .build();
-                        alert.add_response("ok", "OK");
-                        alert.present(Some(&ui.window));
+            let Some(target_dir) = ensure_download_target(&ui).await else {
+                return;
+            };
+
+            let mut succeeded: u32 = 0;
+            let mut failed: u32 = 0;
+            let mut skipped: u32 = 0;
+            let mut conflict_policy: Option<ConflictAction> = None;
+
+            for (asset_id, filename) in &downloads {
+                let safe_name =
+                    crate::sanitize::safe_filename(filename).unwrap_or_else(|| asset_id.clone());
+                let mut output_path = target_dir.join(&safe_name);
+
+                if output_path.exists() {
+                    match resolve_conflict(&ui, &safe_name, &mut conflict_policy).await {
+                        ConflictAction::Skip => {
+                            skipped += 1;
+                            continue;
+                        }
+                        ConflictAction::Overwrite => {}
+                        ConflictAction::Rename => {
+                            output_path = unique_path(&target_dir, &safe_name);
+                        }
                     }
                 }
-                Err(err) => {
-                    finish_download_item(&ui.ctx, &asset_id);
-                    if show_result_dialog {
-                        let alert = libadwaita::AlertDialog::builder()
-                            .heading("Download Failed")
-                            .body(&err)
-                            .build();
-                        alert.add_response("ok", "OK");
-                        alert.present(Some(&ui.window));
-                    }
+
+                match do_download(&ui, asset_id, &output_path).await {
+                    Ok(()) => succeeded += 1,
+                    Err(_) => failed += 1,
                 }
             }
+
+            ui.grid.selection.unselect_all();
+            ui.select_toggle.set_active(false);
+            show_batch_summary(&ui, succeeded, failed, skipped, &target_dir);
         }
     ));
 }
 
+async fn resolve_conflict(
+    ui: &LibraryWindowUi,
+    filename: &str,
+    policy: &mut Option<ConflictAction>,
+) -> ConflictAction {
+    if let Some(a) = *policy {
+        return a;
+    }
+    let (action, apply_all) = show_batch_conflict_dialog(ui, filename).await;
+    if apply_all {
+        *policy = Some(action);
+    }
+    action
+}
+
+fn show_batch_summary(
+    ui: &LibraryWindowUi,
+    succeeded: u32,
+    failed: u32,
+    skipped: u32,
+    target_dir: &Path,
+) {
+    let folder_name = folder_display_name(target_dir);
+    let (heading, body) = if succeeded == 0 && failed == 0 {
+        (
+            "No Assets Downloaded",
+            format!("All {} asset(s) were skipped", skipped),
+        )
+    } else if failed == 0 && skipped == 0 {
+        (
+            "Download Complete",
+            format!("Downloaded {} asset(s) to {}", succeeded, folder_name),
+        )
+    } else {
+        let mut parts = vec![format!(
+            "Downloaded {} asset(s) to {}",
+            succeeded, folder_name
+        )];
+        if skipped > 0 {
+            parts.push(format!("{} skipped", skipped));
+        }
+        if failed > 0 {
+            parts.push(format!("{} failed", failed));
+        }
+        (
+            if succeeded > 0 {
+                "Download Complete"
+            } else {
+                "Download Failed"
+            },
+            parts.join("\n"),
+        )
+    };
+    let alert = libadwaita::AlertDialog::builder()
+        .heading(heading)
+        .body(body)
+        .build();
+    alert.add_response("ok", "OK");
+    alert.present(Some(&ui.window));
+}
+
+async fn do_download(
+    ui: &Rc<LibraryWindowUi>,
+    asset_id: &str,
+    output_path: &Path,
+) -> Result<(), String> {
+    let item_label = output_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| output_path.display().to_string());
+    let progress = track_download_item(&ui.ctx, asset_id.to_string(), Some(item_label), None);
+    let result = ui
+        .ctx
+        .api_client
+        .download_original_to_file(asset_id, output_path, Some(progress))
+        .await;
+    finish_download_item(&ui.ctx, asset_id);
+    if result.is_ok() {
+        let session_finished = !ui.ctx.state.lock().transfer.active;
+        if should_refresh_after_download(ui) && session_finished {
+            super::refresh_library_after_mutation(ui.clone(), true);
+        }
+    }
+    result
+}
+
+async fn show_overwrite_dialog(ui: &LibraryWindowUi, filename: &str) -> bool {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let tx = std::cell::Cell::new(Some(tx));
+    let dialog = libadwaita::AlertDialog::builder()
+        .heading("File already exists")
+        .body(format!("\"{}\" already exists. Overwrite?", filename))
+        .build();
+    dialog.add_response("skip", "Skip");
+    dialog.add_response("overwrite", "Overwrite");
+    dialog.set_response_appearance("overwrite", libadwaita::ResponseAppearance::Destructive);
+    dialog.connect_response(None, move |_, response| {
+        if let Some(tx) = tx.take() {
+            let _ = tx.send(response == "overwrite");
+        }
+    });
+    dialog.present(Some(&ui.window));
+    rx.await.unwrap_or(false)
+}
+
+async fn show_batch_conflict_dialog(
+    ui: &LibraryWindowUi,
+    filename: &str,
+) -> (ConflictAction, bool) {
+    let (tx, rx) = tokio::sync::oneshot::channel::<(ConflictAction, bool)>();
+    let tx = std::cell::Cell::new(Some(tx));
+    let dialog = libadwaita::AlertDialog::builder()
+        .heading("File already exists")
+        .body(format!(
+            "\"{}\" already exists in the download folder.",
+            filename
+        ))
+        .build();
+    let apply_all = gtk::CheckButton::builder()
+        .label("Apply to all remaining conflicts")
+        .build();
+    dialog.set_extra_child(Some(&apply_all));
+    dialog.add_response("skip", "Skip");
+    dialog.add_response("rename", "Rename");
+    dialog.add_response("overwrite", "Overwrite");
+    dialog.set_response_appearance("overwrite", libadwaita::ResponseAppearance::Destructive);
+    dialog.set_default_response(Some("rename"));
+    dialog.connect_response(
+        None,
+        clone!(
+            #[weak]
+            apply_all,
+            move |_, response| {
+                let all = apply_all.is_active();
+                let action = match response {
+                    "rename" => ConflictAction::Rename,
+                    "overwrite" => ConflictAction::Overwrite,
+                    _ => ConflictAction::Skip,
+                };
+                if let Some(tx) = tx.take() {
+                    let _ = tx.send((action, all));
+                }
+            }
+        ),
+    );
+    dialog.present(Some(&ui.window));
+    rx.await.unwrap_or((ConflictAction::Skip, false))
+}
+
+fn unique_path(dir: &Path, filename: &str) -> PathBuf {
+    let name = Path::new(filename);
+    let stem = name
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(filename);
+    let ext = name.extension().and_then(|e| e.to_str());
+    for i in 1..1000 {
+        let candidate = match ext {
+            Some(e) => dir.join(format!("{} ({}).{}", stem, i, e)),
+            None => dir.join(format!("{} ({})", stem, i)),
+        };
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    dir.join(format!("{}_copy", filename))
+}
+
+fn folder_display_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("selected folder")
+        .to_string()
+}
+
 pub(super) async fn ensure_download_target(ui: &LibraryWindowUi) -> Option<PathBuf> {
-    let existing_target = ui.ctx.config.read().data.download_target_path.clone();
-    if let Some(path) = existing_target {
+    if let Some(path) = ui.ctx.config.read().data.download_target_path.clone() {
         return Some(PathBuf::from(path));
     }
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     let dialog = gtk::FileDialog::builder()
-        .title("Choose Library Download Folder")
+        .title("Choose Download Folder")
         .build();
     dialog.select_folder(Some(&ui.window), gtk::gio::Cancellable::NONE, move |res| {
         let _ = tx.send(
@@ -260,9 +396,26 @@ pub(super) async fn ensure_download_target(ui: &LibraryWindowUi) -> Option<PathB
                 .map(|path| path.to_path_buf()),
         );
     });
-
     let path = rx.await.ok().flatten()?;
-    {
+
+    let (save_tx, save_rx) = tokio::sync::oneshot::channel::<bool>();
+    let save_tx = std::cell::Cell::new(Some(save_tx));
+    let confirm = libadwaita::AlertDialog::builder()
+        .heading("Save as default?")
+        .body(format!("Always download to {}?", path.display()))
+        .build();
+    confirm.add_response("once", "Just Once");
+    confirm.add_response("always", "Always");
+    confirm.set_default_response(Some("always"));
+    confirm.connect_response(None, move |dlg, response| {
+        if let Some(tx) = save_tx.take() {
+            let _ = tx.send(response == "always");
+        }
+        dlg.close();
+    });
+    confirm.present(Some(&ui.window));
+
+    if save_rx.await.unwrap_or(false) {
         let mut config = ui.ctx.config.write();
         config.data.download_target_path = Some(path.to_string_lossy().to_string());
         let _ = config.save();

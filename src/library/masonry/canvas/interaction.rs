@@ -78,18 +78,32 @@ impl MasonryCanvas {
             return;
         };
         let imp = self.imp();
-        let ctrl = gesture
-            .current_event_state()
-            .contains(gtk::gdk::ModifierType::CONTROL_MASK);
+        let mods = gesture.current_event_state();
+        let ctrl = mods.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+        let shift = mods.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         let Some(sel) = imp.selection.get() else {
             return;
         };
 
-        if ctrl {
+        if shift {
+            // Shift+Click: select contiguous range [anchor..pos].
+            let anchor = imp.last_selected.get().unwrap_or(pos);
+            let lo = anchor.min(pos);
+            let hi = anchor.max(pos);
+            // Shift only: replace selection with range. Ctrl+Shift: union.
+            if !ctrl {
+                sel.unselect_all();
+            }
+            select_range(sel, lo, hi);
+            enable_select_mode_if_needed(imp, pos);
+            // Preserve anchor so repeated Shift+Clicks extend from the same origin.
+        } else if ctrl {
             toggle_selection(sel, pos);
             enable_select_mode_if_needed(imp, pos);
+            imp.last_selected.set(Some(pos));
         } else if imp.select_mode.get() {
             toggle_selection(sel, pos);
+            imp.last_selected.set(Some(pos));
         } else if let Some(handler) = imp.activate_handler.borrow().clone() {
             (*handler)(pos);
         }
@@ -204,4 +218,9 @@ fn toggle_selection(sel: &gtk::MultiSelection, pos: u32) {
     } else {
         sel.select_item(pos, false);
     }
+}
+
+fn select_range(sel: &gtk::MultiSelection, lo: u32, hi: u32) {
+    let count = hi - lo + 1;
+    sel.select_range(lo, count, false);
 }

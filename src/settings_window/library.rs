@@ -8,6 +8,9 @@ pub struct LibraryWidgets {
     pub raw_full_decode_row: adw::SwitchRow,
     pub raw_cache_row: adw::SwitchRow,
     pub disk_cache_row: adw::SpinRow,
+    pub download_folder_row: adw::ActionRow,
+    pub download_change_btn: gtk::Button,
+    pub download_clear_btn: gtk::Button,
 }
 
 pub fn build_library_group(settings_page: &adw::PreferencesPage) -> LibraryWidgets {
@@ -52,6 +55,27 @@ pub fn build_library_group(settings_page: &adw::PreferencesPage) -> LibraryWidge
         .build();
     library_group.add(&disk_cache_row);
 
+    let download_folder_row = adw::ActionRow::builder()
+        .title("Download Folder")
+        .subtitle("Not set")
+        .subtitle_lines(1)
+        .build();
+    let download_change_btn = gtk::Button::builder()
+        .label("Change")
+        .valign(gtk::Align::Center)
+        .css_classes(["flat"])
+        .build();
+    let download_clear_btn = gtk::Button::builder()
+        .icon_name("edit-clear-symbolic")
+        .tooltip_text("Clear saved folder")
+        .valign(gtk::Align::Center)
+        .css_classes(["flat"])
+        .visible(false)
+        .build();
+    download_folder_row.add_suffix(&download_clear_btn);
+    download_folder_row.add_suffix(&download_change_btn);
+    library_group.add(&download_folder_row);
+
     LibraryWidgets {
         library_group,
         preview_full_row,
@@ -59,5 +83,8 @@ pub fn build_library_group(settings_page: &adw::PreferencesPage) -> LibraryWidge
         raw_full_decode_row,
         raw_cache_row,
         disk_cache_row,
+        download_folder_row,
+        download_change_btn,
+        download_clear_btn,
     }
 }

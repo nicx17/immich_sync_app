@@ -92,6 +92,8 @@ mod imp {
         pub activate_handler: RefCell<Option<ActivateHandler>>,
         pub context_menu_handler: RefCell<Option<AssetContextMenuHandler>>,
         pub select_mode_changer: RefCell<Option<SelectModeChanger>>,
+        /// Anchor position for Shift+Click range selection.
+        pub last_selected: Cell<Option<u32>>,
         pub permission_warned: Cell<bool>,
     }
 

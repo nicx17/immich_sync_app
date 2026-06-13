@@ -326,7 +326,7 @@ fn default_true() -> bool {
 }
 
 fn default_grid_quality() -> String {
-    "auto".to_string()
+    "thumbnail".to_string()
 }
 
 /// Helper to default parallel upload worker threads to 3.

@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added a `validate.sh` script to streamline local development checks (`cargo check`, `fmt`, `clippy`, and `audit`).
+- Shift+Click range selection in the library grid. Clicking an asset with Shift held selects the contiguous range from the last-clicked anchor to the current position. Ctrl+Shift adds the range to the existing selection without clearing it.
+- Download folder confirmation dialog. When no default download folder is saved, the folder picker now appears on every download. After choosing a folder, a prompt asks whether to save it as the default ("Always") or use it once ("Just Once").
+- Download Folder setting in the Library preferences group. Shows the current saved folder with Change and Clear buttons, so users can view and manage the default download location from Settings.
+- Batch download summary dialog. After a multi-select download completes, a dialog reports how many assets were downloaded, skipped, or failed, and names the destination folder.
+- Unified file conflict dialog for batch downloads. When existing files are found, a single dialog offers Skip, Rename (auto-suffix), or Overwrite, with an "Apply to all remaining conflicts" checkbox instead of spawning one dialog per file.
+- Added `cargo test --locked` to `validate.sh` to match CI and catch regressions locally.
 - Added detailed permission error dialogs across the Library, Explore, and Server Statistics views to clearly identify missing API scopes (e.g. `HTTP 401/403`) instead of treating them as generic network failures.
 - New masonry layout for the Photos view in Library. Images now keep their natural aspect ratios and pack into justified rows instead of a fixed tile grid.
 - New `Library Thumbnail Quality` setting with `Auto`, `Thumbnail`, `Preview`, and `Full Size` options. `Auto` chooses a size based on the rendered cell size, and `Full Size` falls back automatically when the server does not provide that image size.
@@ -22,9 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Thumbnail loading now uses separate concurrency limits for smaller thumbnails and larger preview/full-size requests to keep browsing responsive while larger images are still loading.
 - Library settings text was shortened and cleaned up to make common options easier to scan.
 - Removed the redundant "(Selected via Flatpak portal)" text globally (affects Settings, Diagnostics, Album views) since the app is exclusively distributed via Flatpak.
+- `validate.sh` now uses `set -euo pipefail`, passes `--locked` to clippy/test, `--deny warnings` to cargo audit, and fails fast when `cargo-audit` is missing instead of auto-installing it.
 
 ### Fixed
 
+- Fixed Shift+Click in the library grid having no effect. The click handler now checks `SHIFT_MASK` and selects the contiguous range between the anchor and clicked position.
+- Fixed library downloads silently persisting the chosen folder on first use and never prompting again. The folder picker now appears each time until the user explicitly opts into a default.
+- Fixed batch download showing "Download Complete" even when all assets were skipped. The heading now reads "No Assets Downloaded" or "Download Failed" as appropriate.
+- Fixed batch download spawning a separate overwrite dialog for every conflicting file simultaneously. Conflicts are now resolved sequentially with a unified dialog.
+- Fixed batch download summary showing the full sandbox path instead of just the folder name.
+- Selection mode now automatically exits after a batch download completes.
 - Fixed an issue where the footer statistics would remain permanently missing if the initial network connection failed at startup.
 - Fixed the Server Statistics missing permissions dialog text truncating on narrow screens (like 360px width) by allowing it to wrap.
 - Fixed `validate.sh` to automatically apply `cargo fmt` fixes instead of failing on formatting errors.
