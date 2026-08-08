@@ -430,7 +430,7 @@ Used by:
 --------------------------------------------------------------------------------
 Apache License 2.0 (Apache-2.0)
 Used by:
-  - blake3 1.8.5
+  - blake3 1.8.6
   - constant_time_eq 0.4.2
   - sync_wrapper 1.0.2
 --------------------------------------------------------------------------------
@@ -809,7 +809,7 @@ For these and/or other purposes and motivations, and without any expectation of 
 --------------------------------------------------------------------------------
 GNU General Public License v3.0 or later (GPL-3.0-or-later)
 Used by:
-  - mimick 9.8.0
+  - mimick 9.9.0
 --------------------------------------------------------------------------------
 
                     GNU GENERAL PUBLIC LICENSE
@@ -1515,7 +1515,7 @@ THIS SOFTWARE.
 --------------------------------------------------------------------------------
 ISC License (ISC)
 Used by:
-  - inotify 0.11.3
+  - inotify 0.11.4
 --------------------------------------------------------------------------------
 
 Copyright (c) Hanno Braun and contributors
@@ -1857,16 +1857,16 @@ DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 Used by:
   - cfg-if 1.0.4
-  - js-sys 0.3.103
+  - js-sys 0.3.104
   - openssl-probe 0.2.1
   - openssl-sys 0.9.117
-  - socket2 0.6.4
-  - wasm-bindgen-futures 0.4.76
-  - wasm-bindgen-macro-support 0.2.126
-  - wasm-bindgen-macro 0.2.126
-  - wasm-bindgen-shared 0.2.126
-  - wasm-bindgen 0.2.126
-  - web-sys 0.3.103
+  - socket2 0.6.5
+  - wasm-bindgen-futures 0.4.77
+  - wasm-bindgen-macro-support 0.2.127
+  - wasm-bindgen-macro 0.2.127
+  - wasm-bindgen-shared 0.2.127
+  - wasm-bindgen 0.2.127
+  - web-sys 0.3.104
 --------------------------------------------------------------------------------
 
 Copyright (c) 2014 Alex Crichton
@@ -1901,7 +1901,7 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - mio 1.2.1
+  - mio 1.2.2
 --------------------------------------------------------------------------------
 
 Copyright (c) 2014 Carl Lerche and other MIO contributors
@@ -1995,7 +1995,7 @@ THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - bitflags 2.13.0
+  - bitflags 2.13.1
   - log 0.4.33
   - num-bigint-dig 0.9.1
   - num-bigint 0.4.8
@@ -2005,9 +2005,9 @@ Used by:
   - num-rational 0.4.2
   - num-traits 0.2.19
   - num 0.4.3
-  - regex-automata 0.4.14
+  - regex-automata 0.4.18
   - regex-syntax 0.8.11
-  - regex 1.12.4
+  - regex 1.13.1
 --------------------------------------------------------------------------------
 
 Copyright (c) 2014 The Rust Project Developers
@@ -2042,7 +2042,7 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - uuid 1.23.4
+  - uuid 1.24.0
 --------------------------------------------------------------------------------
 
 Copyright (c) 2014 The Rust Project Developers
@@ -2173,7 +2173,7 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - hyper 1.10.1
+  - hyper 1.11.0
 --------------------------------------------------------------------------------
 
 Copyright (c) 2014-2026 Sean McArthur
@@ -2232,7 +2232,7 @@ THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - either 1.16.0
+  - either 1.17.0
 --------------------------------------------------------------------------------
 
 Copyright (c) 2015
@@ -2487,14 +2487,14 @@ THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - futures-channel 0.3.32
-  - futures-core 0.3.32
-  - futures-executor 0.3.32
-  - futures-io 0.3.32
-  - futures-macro 0.3.32
-  - futures-sink 0.3.32
-  - futures-task 0.3.32
-  - futures-util 0.3.32
+  - futures-channel 0.3.33
+  - futures-core 0.3.33
+  - futures-executor 0.3.33
+  - futures-io 0.3.33
+  - futures-macro 0.3.33
+  - futures-sink 0.3.33
+  - futures-task 0.3.33
+  - futures-util 0.3.33
 --------------------------------------------------------------------------------
 
 Copyright (c) 2016 Alex Crichton
@@ -2667,7 +2667,7 @@ SOFTWARE.
 MIT License (MIT)
 Used by:
   - kqueue-sys 1.1.2
-  - kqueue 1.2.0
+  - kqueue 1.2.1
 --------------------------------------------------------------------------------
 
 Copyright (c) 2016 William Orr <will@worrbase.com>
@@ -3170,6 +3170,41 @@ THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
+  - geo-types 0.7.20
+--------------------------------------------------------------------------------
+
+Copyright (c) 2017 The GeoRust Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+================================================================================
+
+--------------------------------------------------------------------------------
+MIT License (MIT)
+Used by:
   - foreign-types-shared 0.1.1
   - foreign-types 0.3.2
 --------------------------------------------------------------------------------
@@ -3235,7 +3270,7 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - http 1.4.2
+  - http 1.5.0
 --------------------------------------------------------------------------------
 
 Copyright (c) 2017 http-rs authors
@@ -3517,7 +3552,7 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - flexi_logger 0.31.9
+  - flexi_logger 0.31.10
 --------------------------------------------------------------------------------
 
 Copyright (c) 2018 The AUTHORS
@@ -4133,45 +4168,11 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - http-body 1.0.1
+  - http-body-util 0.1.4
+  - http-body 1.1.0
 --------------------------------------------------------------------------------
 
-Copyright (c) 2019-2024 Sean McArthur & Hyper Contributors
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
-================================================================================
-
---------------------------------------------------------------------------------
-MIT License (MIT)
-Used by:
-  - http-body-util 0.1.3
---------------------------------------------------------------------------------
-
-Copyright (c) 2019-2025 Sean McArthur & Hyper Contributors
+Copyright (c) 2019-2026 Sean McArthur & Hyper Contributors
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -4544,7 +4545,7 @@ THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - hybrid-array 0.4.13
+  - hybrid-array 0.4.14
 --------------------------------------------------------------------------------
 
 Copyright (c) 2022-2026 The RustCrypto Project Developers
@@ -4579,7 +4580,7 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - rustls-pki-types 1.15.0
+  - rustls-pki-types 1.15.1
 --------------------------------------------------------------------------------
 
 Copyright (c) 2023 Dirkjan Ochtman <dirkjan@ochtman.nl>
@@ -4678,11 +4679,11 @@ THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - zbus 5.17.0
-  - zbus_macros 5.17.0
-  - zbus_names 4.3.3
-  - zvariant 5.13.0
-  - zvariant_derive 5.13.0
+  - zbus 5.18.0
+  - zbus_macros 5.18.0
+  - zbus_names 4.3.4
+  - zvariant 5.13.1
+  - zvariant_derive 5.13.1
 --------------------------------------------------------------------------------
 
 Copyright (c) 2024 Zeeshan Ali Khan & zbus contributors
@@ -4718,8 +4719,8 @@ DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 Used by:
   - toml_datetime 1.1.1+spec-1.1.0
-  - toml_edit 0.25.12+spec-1.1.0
-  - toml_parser 1.1.2+spec-1.1.0
+  - toml_edit 0.25.13+spec-1.1.0
+  - toml_parser 1.1.3+spec-1.1.0
 --------------------------------------------------------------------------------
 
 Copyright (c) Individual contributors
@@ -4748,7 +4749,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - libc 0.2.186
+  - libc 0.2.189
 --------------------------------------------------------------------------------
 
 Copyright (c) The Rust Project Developers
@@ -4870,7 +4871,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - ipnet 2.12.0
+  - ipnet 2.12.1
 --------------------------------------------------------------------------------
 
 Copyright 2017 Juniper Networks, Inc.
@@ -4923,7 +4924,7 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - rand 0.9.4
+  - rand 0.9.5
   - rand_core 0.9.5
 --------------------------------------------------------------------------------
 
@@ -4960,7 +4961,7 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - turbojpeg 1.4.0
+  - turbojpeg 1.5.1
 --------------------------------------------------------------------------------
 
 Copyright 2023 Jan Špaček
@@ -4988,8 +4989,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - zerocopy-derive 0.8.53
-  - zerocopy 0.8.53
+  - zerocopy-derive 0.8.56
+  - zerocopy 0.8.56
 --------------------------------------------------------------------------------
 
 Copyright 2023 The Fuchsia Authors
@@ -5078,7 +5079,7 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - lru 0.18.0
+  - lru 0.18.2
 --------------------------------------------------------------------------------
 
 MIT License
@@ -5201,7 +5202,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - bytemuck 1.25.0
+  - bytemuck 1.25.2
 --------------------------------------------------------------------------------
 
 MIT License
@@ -5283,7 +5284,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - tokio-macros 2.7.0
+  - tokio-macros 2.7.2
 --------------------------------------------------------------------------------
 
 MIT License
@@ -5315,7 +5316,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - ashpd 0.13.12
+  - ashpd 0.13.13
 --------------------------------------------------------------------------------
 
 MIT License
@@ -5501,7 +5502,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - libredox 0.1.18
+  - libredox 0.1.19
 --------------------------------------------------------------------------------
 
 MIT License
@@ -5562,7 +5563,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - nom-exif 3.6.1
+  - nom-exif 3.6.2
 --------------------------------------------------------------------------------
 
 MIT License
@@ -5625,7 +5626,6 @@ MIT License (MIT)
 Used by:
   - brotli-decompressor 5.0.3
   - chrono 0.4.45
-  - geo-types 0.7.19
   - libm 0.2.16
   - libwebp-sys 0.9.6
   - r-efi 6.0.0
@@ -5674,8 +5674,8 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - tokio-util 0.7.18
-  - tokio 1.52.3
+  - tokio-util 0.7.19
+  - tokio 1.53.1
 --------------------------------------------------------------------------------
 
 MIT License
@@ -5706,7 +5706,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - simd-adler32 0.3.9
+  - simd-adler32 0.3.10
 --------------------------------------------------------------------------------
 
 MIT License
@@ -5737,7 +5737,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - zune-core 0.5.1
+  - zune-core 0.5.3
   - zune-jpeg 0.5.15
 --------------------------------------------------------------------------------
 
@@ -6002,16 +6002,15 @@ DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 Used by:
   - adler2 2.0.1
-  - anyhow 1.0.103
-  - async-trait 0.1.89
+  - anyhow 1.0.104
+  - async-trait 0.1.92
   - atomic-waker 1.1.2
-  - concurrent-queue 2.5.0
-  - displaydoc 0.2.6
+  - displaydoc 0.2.7
   - endi 1.1.1
   - enumn 0.1.14
   - event-listener-strategy 0.5.4
-  - event-listener 5.4.1
-  - fastrand 2.4.1
+  - event-listener 5.4.2
+  - fastrand 2.5.0
   - futures-lite 2.6.1
   - hermit-abi 0.5.2
   - itoa 1.0.18
@@ -6036,25 +6035,26 @@ Used by:
   - pastey 0.2.3
   - pin-project-lite 0.2.17
   - proc-macro-crate 3.5.0
-  - proc-macro2 1.0.106
-  - quote 1.0.46
+  - proc-macro2 1.0.107
+  - quote 1.0.47
   - rustix 1.1.4
-  - serde 1.0.228
+  - serde 1.0.229
   - serde_bytes 0.11.19
-  - serde_core 1.0.228
-  - serde_derive 1.0.228
-  - serde_json 1.0.150
-  - serde_repr 0.1.20
-  - syn 2.0.118
+  - serde_core 1.0.229
+  - serde_derive 1.0.229
+  - serde_json 1.0.151
+  - serde_repr 0.1.21
+  - syn 2.0.119
+  - syn 3.0.3
   - thiserror-impl 1.0.69
-  - thiserror-impl 2.0.18
+  - thiserror-impl 2.0.20
   - thiserror 1.0.69
-  - thiserror 2.0.18
+  - thiserror 2.0.20
   - unicode-ident 1.0.24
   - wasi 0.11.1+wasi-snapshot-preview1
   - wasm-streams 0.5.0
   - x11-dl 2.21.0
-  - zmij 1.0.21
+  - zmij 1.0.23
   - zvariant_utils 3.5.0
 --------------------------------------------------------------------------------
 
@@ -6121,7 +6121,7 @@ DEALINGS IN THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - winnow 1.0.3
+  - winnow 1.0.4
 --------------------------------------------------------------------------------
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -6203,7 +6203,7 @@ SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - tinyvec 1.11.0
+  - tinyvec 1.12.0
 --------------------------------------------------------------------------------
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -6218,7 +6218,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - android_system_properties 0.1.5
+  - android_system_properties 0.1.6
 --------------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -6343,7 +6343,7 @@ THE SOFTWARE.
 --------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  - aho-corasick 1.1.4
+  - aho-corasick 1.1.5
   - byteorder-lite 0.1.0
   - memchr 2.8.3
   - walkdir 2.5.0
@@ -7426,7 +7426,7 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 --------------------------------------------------------------------------------
 The Unlicense (Unlicense)
 Used by:
-  - ksni 0.3.5
+  - ksni 0.3.6
 --------------------------------------------------------------------------------
 
 This is free and unencumbered software released into the public domain.
