@@ -18,7 +18,7 @@ Full license texts are shipped alongside the application binary.
   moxcms 0.8.1 — Apache-2.0
   pxfm 0.1.30 — Apache-2.0
   openssl 0.10.81 — Apache-2.0
-  blake3 1.8.5 — Apache-2.0
+  blake3 1.8.6 — Apache-2.0
   constant_time_eq 0.4.2 — Apache-2.0
   sync_wrapper 1.0.2 — Apache-2.0
   openjpeg-sys 1.0.12 — BSD-2-Clause
@@ -30,9 +30,9 @@ Full license texts are shipped alongside the application binary.
   alloc-stdlib 0.2.4 — BSD-3-Clause
   encoding_rs 0.8.35 — BSD-3-Clause
   notify 8.2.0 — CC0-1.0
-  mimick 9.8.0 — GPL-3.0-or-later
+  mimick 9.9.0 — GPL-3.0-or-later
   inotify-sys 0.1.8 — ISC
-  inotify 0.11.3 — ISC
+  inotify 0.11.4 — ISC
   rustybuzz 0.20.1 — MIT
   uds_windows 1.2.1 — MIT
   turbojpeg-sys 1.2.0 — MIT
@@ -49,20 +49,20 @@ Full license texts are shipped alongside the application binary.
   percent-encoding 2.3.2 — MIT
   url 2.5.8 — MIT
   cfg-if 1.0.4 — MIT
-  js-sys 0.3.103 — MIT
+  js-sys 0.3.104 — MIT
   openssl-probe 0.2.1 — MIT
   openssl-sys 0.9.117 — MIT
-  socket2 0.6.4 — MIT
-  wasm-bindgen-futures 0.4.76 — MIT
-  wasm-bindgen-macro-support 0.2.126 — MIT
-  wasm-bindgen-macro 0.2.126 — MIT
-  wasm-bindgen-shared 0.2.126 — MIT
-  wasm-bindgen 0.2.126 — MIT
-  web-sys 0.3.103 — MIT
-  mio 1.2.1 — MIT
+  socket2 0.6.5 — MIT
+  wasm-bindgen-futures 0.4.77 — MIT
+  wasm-bindgen-macro-support 0.2.127 — MIT
+  wasm-bindgen-macro 0.2.127 — MIT
+  wasm-bindgen-shared 0.2.127 — MIT
+  wasm-bindgen 0.2.127 — MIT
+  web-sys 0.3.104 — MIT
+  mio 1.2.2 — MIT
   errno 0.3.14 — MIT
   mime 0.3.17 — MIT
-  bitflags 2.13.0 — MIT
+  bitflags 2.13.1 — MIT
   log 0.4.33 — MIT
   num-bigint-dig 0.9.1 — MIT
   num-bigint 0.4.8 — MIT
@@ -72,17 +72,17 @@ Full license texts are shipped alongside the application binary.
   num-rational 0.4.2 — MIT
   num-traits 0.2.19 — MIT
   num 0.4.3 — MIT
-  regex-automata 0.4.14 — MIT
+  regex-automata 0.4.18 — MIT
   regex-syntax 0.8.11 — MIT
-  regex 1.12.4 — MIT
-  uuid 1.23.4 — MIT
+  regex 1.13.1 — MIT
+  uuid 1.24.0 — MIT
   nom 7.1.3 — MIT
   nom 8.0.0 — MIT
   float-cmp 0.9.0 — MIT
   flate2 1.1.9 — MIT
-  hyper 1.10.1 — MIT
+  hyper 1.11.0 — MIT
   unicase 2.9.0 — MIT
-  either 1.16.0 — MIT
+  either 1.17.0 — MIT
   tempfile 3.27.0 — MIT
   heck 0.5.0 — MIT
   unicode-bidi 0.3.18 — MIT
@@ -93,14 +93,14 @@ Full license texts are shipped alongside the application binary.
   hkdf 0.12.4 — MIT
   httparse 1.10.1 — MIT
   num_cpus 1.17.0 — MIT
-  futures-channel 0.3.32 — MIT
-  futures-core 0.3.32 — MIT
-  futures-executor 0.3.32 — MIT
-  futures-io 0.3.32 — MIT
-  futures-macro 0.3.32 — MIT
-  futures-sink 0.3.32 — MIT
-  futures-task 0.3.32 — MIT
-  futures-util 0.3.32 — MIT
+  futures-channel 0.3.33 — MIT
+  futures-core 0.3.33 — MIT
+  futures-executor 0.3.33 — MIT
+  futures-io 0.3.33 — MIT
+  futures-macro 0.3.33 — MIT
+  futures-sink 0.3.33 — MIT
+  futures-task 0.3.33 — MIT
+  futures-util 0.3.33 — MIT
   hashbrown 0.17.1 — MIT
   gcd 2.3.0 — MIT
   lock_api 0.4.14 — MIT
@@ -108,7 +108,7 @@ Full license texts are shipped alongside the application binary.
   parking_lot_core 0.9.12 — MIT
   native-tls 0.2.18 — MIT
   kqueue-sys 1.1.2 — MIT
-  kqueue 1.2.0 — MIT
+  kqueue 1.2.1 — MIT
   indexmap 2.14.0 — MIT
   equivalent 1.0.2 — MIT
   scopeguard 1.2.0 — MIT
@@ -124,10 +124,11 @@ Full license texts are shipped alongside the application binary.
   redox_syscall 0.5.18 — MIT
   stable_deref_trait 1.2.1 — MIT
   hyper-tls 0.6.0 — MIT
+  geo-types 0.7.20 — MIT
   foreign-types-shared 0.1.1 — MIT
   foreign-types 0.3.2 — MIT
   h2 0.4.15 — MIT
-  http 1.4.2 — MIT
+  http 1.5.0 — MIT
   signal-hook-registry 1.4.8 — MIT
   enumflags2 0.7.12 — MIT
   digest 0.11.3 — MIT
@@ -136,7 +137,7 @@ Full license texts are shipped alongside the application binary.
   psd 0.3.5 — MIT
   kurbo 0.13.1 — MIT
   polycool 0.4.0 — MIT
-  flexi_logger 0.31.9 — MIT
+  flexi_logger 0.31.10 — MIT
   smallvec 1.15.2 — MIT
   svgtypes 0.16.1 — MIT
   ttf-parser 0.25.1 — MIT
@@ -162,8 +163,8 @@ Full license texts are shipped alongside the application binary.
   tower 0.5.3 — MIT
   pico-args 0.5.0 — MIT
   tower-http 0.6.11 — MIT
-  http-body 1.0.1 — MIT
-  http-body-util 0.1.3 — MIT
+  http-body-util 0.1.4 — MIT
+  http-body 1.1.0 — MIT
   zeroize_derive 1.5.0 — MIT
   iana-time-zone-haiku 0.1.2 — MIT
   iana-time-zone 0.1.65 — MIT
@@ -176,55 +177,54 @@ Full license texts are shipped alongside the application binary.
   openssl-macros 0.1.1 — MIT
   inout 0.1.4 — MIT
   strict-num 0.1.1 — MIT
-  hybrid-array 0.4.13 — MIT
-  rustls-pki-types 1.15.0 — MIT
+  hybrid-array 0.4.14 — MIT
+  rustls-pki-types 1.15.1 — MIT
   notify-types 2.1.0 — MIT
   hyper-util 0.1.20 — MIT
-  zbus 5.17.0 — MIT
-  zbus_macros 5.17.0 — MIT
-  zbus_names 4.3.3 — MIT
-  zvariant 5.13.0 — MIT
-  zvariant_derive 5.13.0 — MIT
+  zbus 5.18.0 — MIT
+  zbus_macros 5.18.0 — MIT
+  zbus_names 4.3.4 — MIT
+  zvariant 5.13.1 — MIT
+  zvariant_derive 5.13.1 — MIT
   toml_datetime 1.1.1+spec-1.1.0 — MIT
-  toml_edit 0.25.12+spec-1.1.0 — MIT
-  toml_parser 1.1.2+spec-1.1.0 — MIT
-  libc 0.2.186 — MIT
+  toml_edit 0.25.13+spec-1.1.0 — MIT
+  toml_parser 1.1.3+spec-1.1.0 — MIT
+  libc 0.2.189 — MIT
   idna_adapter 1.2.2 — MIT
   arrayvec 0.7.8 — MIT
   synstructure 0.13.2 — MIT
-  ipnet 2.12.0 — MIT
+  ipnet 2.12.1 — MIT
   resvg 0.47.0 — MIT
   usvg 0.47.0 — MIT
-  rand 0.9.4 — MIT
+  rand 0.9.5 — MIT
   rand_core 0.9.5 — MIT
-  turbojpeg 1.4.0 — MIT
-  zerocopy-derive 0.8.53 — MIT
-  zerocopy 0.8.53 — MIT
+  turbojpeg 1.5.1 — MIT
+  zerocopy-derive 0.8.56 — MIT
+  zerocopy 0.8.56 — MIT
   encoding_rs 0.8.35 — MIT
   utf8_iter 1.0.4 — MIT
   fax 0.2.7 — MIT
-  lru 0.18.0 — MIT
+  lru 0.18.2 — MIT
   field-offset 0.3.6 — MIT
   tiff 0.11.3 — MIT
   crc32fast 1.5.0 — MIT
-  bytemuck 1.25.0 — MIT
+  bytemuck 1.25.2 — MIT
   libheif-rs 2.7.0 — MIT
   libheif-sys 5.3.0+1.23.0 — MIT
   rgb 0.8.53 — MIT
-  tokio-macros 2.7.0 — MIT
-  ashpd 0.13.12 — MIT
+  tokio-macros 2.7.2 — MIT
+  ashpd 0.13.13 — MIT
   webp 0.3.1 — MIT
   libraw-rs-sys 0.0.4+libraw-0.20.1 — MIT
   tinyvec_macros 0.1.1 — MIT
   jpeg2k 0.10.1 — MIT
   oo7 0.6.0 — MIT
-  libredox 0.1.18 — MIT
+  libredox 0.1.19 — MIT
   iso6709parse 0.1.2 — MIT
-  nom-exif 3.6.1 — MIT
+  nom-exif 3.6.2 — MIT
   core_maths 0.1.1 — MIT
   brotli-decompressor 5.0.3 — MIT
   chrono 0.4.45 — MIT
-  geo-types 0.7.19 — MIT
   libm 0.2.16 — MIT
   libwebp-sys 0.9.6 — MIT
   r-efi 6.0.0 — MIT
@@ -246,10 +246,10 @@ Full license texts are shipped alongside the application binary.
   windows_x86_64_gnu 0.53.1 — MIT
   windows_x86_64_gnullvm 0.53.1 — MIT
   windows_x86_64_msvc 0.53.1 — MIT
-  tokio-util 0.7.18 — MIT
-  tokio 1.52.3 — MIT
-  simd-adler32 0.3.9 — MIT
-  zune-core 0.5.1 — MIT
+  tokio-util 0.7.19 — MIT
+  tokio 1.53.1 — MIT
+  simd-adler32 0.3.10 — MIT
+  zune-core 0.5.3 — MIT
   zune-jpeg 0.5.15 — MIT
   miniz_oxide 0.8.9 — MIT
   fdeflate 0.3.7 — MIT
@@ -261,16 +261,15 @@ Full license texts are shipped alongside the application binary.
   fontconfig-parser 0.5.8 — MIT
   async-recursion 1.1.1 — MIT
   adler2 2.0.1 — MIT
-  anyhow 1.0.103 — MIT
-  async-trait 0.1.89 — MIT
+  anyhow 1.0.104 — MIT
+  async-trait 0.1.92 — MIT
   atomic-waker 1.1.2 — MIT
-  concurrent-queue 2.5.0 — MIT
-  displaydoc 0.2.6 — MIT
+  displaydoc 0.2.7 — MIT
   endi 1.1.1 — MIT
   enumn 0.1.14 — MIT
   event-listener-strategy 0.5.4 — MIT
-  event-listener 5.4.1 — MIT
-  fastrand 2.4.1 — MIT
+  event-listener 5.4.2 — MIT
+  fastrand 2.5.0 — MIT
   futures-lite 2.6.1 — MIT
   hermit-abi 0.5.2 — MIT
   itoa 1.0.18 — MIT
@@ -295,28 +294,29 @@ Full license texts are shipped alongside the application binary.
   pastey 0.2.3 — MIT
   pin-project-lite 0.2.17 — MIT
   proc-macro-crate 3.5.0 — MIT
-  proc-macro2 1.0.106 — MIT
-  quote 1.0.46 — MIT
+  proc-macro2 1.0.107 — MIT
+  quote 1.0.47 — MIT
   rustix 1.1.4 — MIT
-  serde 1.0.228 — MIT
+  serde 1.0.229 — MIT
   serde_bytes 0.11.19 — MIT
-  serde_core 1.0.228 — MIT
-  serde_derive 1.0.228 — MIT
-  serde_json 1.0.150 — MIT
-  serde_repr 0.1.20 — MIT
-  syn 2.0.118 — MIT
+  serde_core 1.0.229 — MIT
+  serde_derive 1.0.229 — MIT
+  serde_json 1.0.151 — MIT
+  serde_repr 0.1.21 — MIT
+  syn 2.0.119 — MIT
+  syn 3.0.3 — MIT
   thiserror-impl 1.0.69 — MIT
-  thiserror-impl 2.0.18 — MIT
+  thiserror-impl 2.0.20 — MIT
   thiserror 1.0.69 — MIT
-  thiserror 2.0.18 — MIT
+  thiserror 2.0.20 — MIT
   unicode-ident 1.0.24 — MIT
   wasi 0.11.1+wasi-snapshot-preview1 — MIT
   wasm-streams 0.5.0 — MIT
   x11-dl 2.21.0 — MIT
-  zmij 1.0.21 — MIT
+  zmij 1.0.23 — MIT
   zvariant_utils 3.5.0 — MIT
   allocator-api2 0.2.21 — MIT
-  winnow 1.0.3 — MIT
+  winnow 1.0.4 — MIT
   cairo-rs 0.22.0 — MIT
   cairo-sys-rs 0.22.0 — MIT
   gdk-pixbuf-sys 0.22.0 — MIT
@@ -344,15 +344,15 @@ Full license texts are shipped alongside the application binary.
   libadwaita 0.9.2 — MIT
   pango-sys 0.22.0 — MIT
   pango 0.22.8 — MIT
-  tinyvec 1.11.0 — MIT
-  android_system_properties 0.1.5 — MIT
+  tinyvec 1.12.0 — MIT
+  android_system_properties 0.1.6 — MIT
   typenum 1.20.1 — MIT
   phf 0.13.1 — MIT
   phf_generator 0.13.1 — MIT
   phf_macros 0.13.1 — MIT
   phf_shared 0.13.1 — MIT
   base64 0.22.1 — MIT
-  aho-corasick 1.1.4 — MIT
+  aho-corasick 1.1.5 — MIT
   byteorder-lite 0.1.0 — MIT
   memchr 2.8.3 — MIT
   walkdir 2.5.0 — MIT
@@ -401,7 +401,7 @@ Full license texts are shipped alongside the application binary.
   zerotrie 0.2.4 — Unicode-3.0
   zerovec-derive 0.11.3 — Unicode-3.0
   zerovec 0.11.6 — Unicode-3.0
-  ksni 0.3.5 — Unlicense
+  ksni 0.3.6 — Unlicense
   slotmap 1.1.1 — Zlib
   foldhash 0.2.0 — Zlib
 

@@ -111,6 +111,17 @@
   </keywords>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="9.9.0" date="2026-08-08">
+      <description>
+        <ul>
+          <li>Drag and drop files into the app to upload them.</li>
+          <li>Drag files directly onto albums to upload them there.</li>
+          <li>Drag photos out of the app to save them to your computer.</li>
+          <li>New "Recently Added" section on the Explore page.</li>
+          <li>Explore page now loads places instantly after the first visit.</li>
+        </ul>
+      </description>
+    </release>
     <release version="9.8.0" date="2026-07-08">
       <description>
         <p>This release updates Mimick for the Immich v3 API. Immich v3.0.0 or later is now required.</p>
