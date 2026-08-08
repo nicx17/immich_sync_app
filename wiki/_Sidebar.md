@@ -8,6 +8,7 @@
 - [Sync Behavior](Sync-Behavior)
 - [Performance Tuning](Performance-Tuning)
 - [Flatpak and Permissions](Flatpak-and-Permissions)
+- [Keyring Setup](Keyring-Setup)
 - [Troubleshooting](Troubleshooting)
 - [Screenshots](Screenshots)
 

@@ -18,6 +18,7 @@ If you see this error:
 
 1. Make sure your desktop keyring daemon is running (GNOME Keyring, KWallet, etc.)
 2. If running inside Flatpak, check that the keyring file is not corrupted (see below)
+3. **On Hyprland, Sway, XFCE, i3, and other non-GNOME/KDE desktops**, the Secret portal is often not configured by default. See the [Keyring Setup](Keyring-Setup) guide for step-by-step instructions.
 
 ### "IncorrectSecret" or "PartiallyCorruptedKeyring"
 

@@ -783,15 +783,11 @@ pub fn build_settings_window_with_parent(
 
                         if include_connectivity
                             && !api_key.is_empty()
-                            && !new_config.set_api_key(&api_key)
+                            && let Err(detail) = new_config.set_api_key(&api_key)
                         {
                             apply_in_flight.set(false);
 
-                            show_alert(
-                                &window,
-                                "Could Not Save API Key",
-                                "Mimick could not store the API key in your desktop keyring.",
-                            );
+                            show_alert(&window, "Could Not Save API Key", &detail);
                             return;
                         }
 
