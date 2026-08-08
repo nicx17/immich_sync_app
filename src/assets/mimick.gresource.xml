@@ -19,5 +19,8 @@
     <file alias="scalable/actions/mimick-video-symbolic.svg"
           compressed="true"
           preprocess="xml-stripblanks">scalable/actions/mimick-video-symbolic.svg</file>
+    <file alias="scalable/actions/mimick-library-symbolic.svg"
+          compressed="true"
+          preprocess="xml-stripblanks">scalable/actions/mimick-library-symbolic.svg</file>
   </gresource>
 </gresources>

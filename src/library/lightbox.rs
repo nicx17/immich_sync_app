@@ -411,8 +411,19 @@ pub(super) fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
         .build();
     let toolbar = libadwaita::ToolbarView::builder().build();
     let header = libadwaita::HeaderBar::builder()
-        .show_back_button(true)
+        .show_back_button(false)
         .build();
+    let back_btn = gtk::Button::builder()
+        .icon_name("mimick-library-symbolic")
+        .tooltip_text("Back to library")
+        .build();
+    back_btn.connect_clicked(clone!(
+        #[strong]
+        ui,
+        move |_| {
+            ui.nav.pop();
+        }
+    ));
     let prev_btn = gtk::Button::builder()
         .icon_name("go-previous-symbolic")
         .tooltip_text("Previous (Left)")
@@ -426,6 +437,7 @@ pub(super) fn open_lightbox(ui: Rc<LibraryWindowUi>, position: u32) {
         .tooltip_text("Toggle details (I)")
         .active(false)
         .build();
+    header.pack_start(&back_btn);
     header.pack_start(&prev_btn);
     header.pack_start(&next_btn);
     header.pack_end(&details_btn);
