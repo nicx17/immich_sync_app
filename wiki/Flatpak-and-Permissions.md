@@ -19,6 +19,8 @@ Mimick uses the [oo7](https://github.com/linux-credentials/oo7) crate for secure
 - **Inside Flatpak**: Credentials are stored in an encrypted file within the sandbox (`~/.var/app/dev.nicx.mimick/data/keyrings/`). The encryption key is retrieved from the `org.freedesktop.portal.Secret` portal. This avoids exposing secrets to other sandboxed applications.
 - **Outside Flatpak (native)**: Credentials are stored in the desktop's Secret Service (GNOME Keyring, KWallet) via the `org.freedesktop.secrets` D-Bus interface.
 
+> **Note:** On desktops other than GNOME and KDE (Hyprland, Sway, XFCE, i3, etc.), the Secret portal may not be configured out of the box. If saving your API key fails, see the [Keyring Setup](Keyring-Setup) guide.
+
 ### D-Bus Permissions
 
 The Flatpak manifest grants the following D-Bus talk permissions:

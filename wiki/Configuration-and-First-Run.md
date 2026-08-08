@@ -56,7 +56,7 @@ The window follows your desktop appearance preference, so it can render in eithe
     * Click **New API Key**, give it a name (like "Linux Desktop"), and click Create.
     * Make sure the key includes **Asset (Read, View, Download, Upload, Update, Delete)**, **Album (Read, Create, Update)**, **User (Read)**, and **Person (Read)** permissions.
     * Copy the key and paste it into the API Key field in Mimick.
-    * *The key is stored securely using the `oo7` crate (encrypted portal file in Flatpak, or D-Bus Secret Service native).*
+    * *The key is stored securely using the `oo7` crate (encrypted portal file in Flatpak, or D-Bus Secret Service native). On non-GNOME/KDE desktops you may need to configure the Secret portal first -- see [Keyring Setup](Keyring-Setup).*
 
 **Test Connection**: Verifies connectivity by pinging the Immich `/api/server/ping` endpoint, confirming a valid `{"res": "pong"}` JSON response to ensure you are talking to an actual Immich server rather than a captive portal.
 

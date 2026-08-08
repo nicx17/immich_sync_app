@@ -414,10 +414,13 @@ impl Config {
     /// Automatically selects the correct backend:
     /// - Flatpak sandbox: encrypted file via the Secret portal
     /// - Native: D-Bus Secret Service (GNOME Keyring, KWallet)
+    ///
+    /// When the portal is unavailable (common on Hyprland, Sway, XFCE),
+    /// falls back to the D-Bus Secret Service before giving up.
     pub fn get_api_key(&self) -> Option<String> {
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let keyring = oo7::Keyring::new().await?;
+                let keyring = keyring_with_dbus_fallback().await?;
                 let account = crate::profile::keyring_account();
                 let attributes: Vec<(&str, &str)> =
                     vec![("service", "mimick"), ("account", account.as_str())];
@@ -441,18 +444,26 @@ impl Config {
                 key
             }
             Err(e) => {
-                log::debug!("oo7 keyring lookup failed: {:?}", e);
+                log::warn!(
+                    "Keyring lookup failed ({}): {:?}",
+                    keyring_error_hint(&e),
+                    e
+                );
                 None
             }
         }
     }
 
     /// Store the API key in the desktop keyring via oo7.
-    pub fn set_api_key(&self, key: &str) -> bool {
+    ///
+    /// Returns `Ok(())` on success. On failure, returns an error string
+    /// with user-facing guidance tailored to the specific keyring backend
+    /// that failed (portal misconfiguration, missing D-Bus service, etc.).
+    pub fn set_api_key(&self, key: &str) -> Result<(), String> {
         let secret = key.to_string();
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let keyring = oo7::Keyring::new().await?;
+                let keyring = keyring_with_dbus_fallback().await?;
                 let account = crate::profile::keyring_account();
                 let attributes: Vec<(&str, &str)> =
                     vec![("service", "mimick"), ("account", account.as_str())];
@@ -470,11 +481,15 @@ impl Config {
         match result {
             Ok(()) => {
                 log::info!("API key saved via oo7 keyring.");
-                true
+                Ok(())
             }
             Err(e) => {
                 log::error!("Failed to save API key via oo7 keyring: {:?}", e);
-                false
+                Err(format!(
+                    "{}\n\nTechnical detail: {}",
+                    keyring_error_message(&e),
+                    e
+                ))
             }
         }
     }
@@ -486,6 +501,58 @@ impl Config {
             .iter()
             .map(|e| e.path().to_string())
             .collect()
+    }
+}
+
+/// Try `oo7::Keyring::new()`, which auto-selects portal (Flatpak) or
+/// D-Bus (native). If the portal backend fails -- common on Hyprland,
+/// Sway, XFCE, and other non-GNOME/KDE desktops -- explicitly attempt
+/// the D-Bus Secret Service as a fallback before returning an error.
+async fn keyring_with_dbus_fallback() -> Result<oo7::Keyring, oo7::Error> {
+    match oo7::Keyring::new().await {
+        Ok(keyring) => Ok(keyring),
+        Err(oo7::Error::File(ref file_err)) => {
+            // Portal errors surface when xdg-desktop-portal doesn't
+            // expose org.freedesktop.portal.Secret -- try D-Bus.
+            log::info!(
+                "oo7 portal backend unavailable ({}), trying D-Bus Secret Service fallback",
+                file_err
+            );
+            let service = oo7::dbus::Service::new().await?;
+            let collection = service.default_collection().await?;
+            Ok(oo7::Keyring::DBus(collection))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Return a user-facing error message for a keyring failure, tailored
+/// to the specific backend that failed.
+fn keyring_error_message(e: &oo7::Error) -> &'static str {
+    match e {
+        oo7::Error::File(_) => {
+            "Your desktop's Secret portal is not configured.\n\
+             This typically happens on Hyprland, Sway, XFCE, and other \
+             non-GNOME/KDE desktops.\n\n\
+             To fix this, ensure gnome-keyring (or kwallet) is installed \
+             and add an entry for org.freedesktop.impl.portal.Secret in \
+             your portal configuration.\n\n\
+             See: https://github.com/nicx17/mimick/wiki/Keyring-Setup"
+        }
+        oo7::Error::DBus(_) => {
+            "The D-Bus Secret Service is not available.\n\
+             Ensure gnome-keyring-daemon or KWallet is installed \
+             and running.\n\n\
+             See: https://github.com/nicx17/mimick/wiki/Keyring-Setup"
+        }
+    }
+}
+
+/// Short diagnostic label for log messages.
+fn keyring_error_hint(e: &oo7::Error) -> &'static str {
+    match e {
+        oo7::Error::File(_) => "portal backend error",
+        oo7::Error::DBus(_) => "D-Bus Secret Service error",
     }
 }
 
