@@ -55,7 +55,7 @@ async fn request_background_portal(
     if enable {
         Ok(response.auto_start() && response.run_in_background())
     } else {
-        Ok(!response.auto_start())
+        Ok(response.auto_start())
     }
 }
 
