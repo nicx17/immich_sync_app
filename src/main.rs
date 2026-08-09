@@ -610,6 +610,20 @@ async fn main() {
             .unwrap_or(true);
         let secondary_activation = cmdline.is_remote();
 
+        let bg_sync = ctx_early
+            .as_ref()
+            .map(|c| c.config.read().data.background_sync_enabled)
+            .unwrap_or(false);
+
+        log::info!(
+            "command-line handler: argv={:?} remote={} setup_required={} bg_sync={} ctx_present={}",
+            argv,
+            secondary_activation,
+            setup_required,
+            bg_sync,
+            ctx_early.is_some(),
+        );
+
         let ctx_lookup = || {
             APP_CONTEXT
                 .get()
@@ -627,6 +641,10 @@ async fn main() {
             .collect();
 
         if !file_args.is_empty() && !setup_required {
+            log::info!(
+                "command-line: opening staging view for {} file(s)",
+                file_args.len()
+            );
             // Files were passed -- open the staging view.
             crate::library::staging_view::build_staging_window(
                 app,
@@ -635,8 +653,14 @@ async fn main() {
                 want_upload,
             );
         } else if want_settings || setup_required {
+            log::info!(
+                "command-line: opening settings (want_settings={} setup_required={})",
+                want_settings,
+                setup_required
+            );
             open_settings_window_now(app, ctx_lookup());
         } else if want_library {
+            log::info!("command-line: opening library (explicit --library flag)");
             open_library_window_now(app, ctx_lookup());
         } else if secondary_activation
             || !ctx_early
@@ -644,7 +668,14 @@ async fn main() {
                 .map(|c| c.config.read().data.background_sync_enabled)
                 .unwrap_or(false)
         {
+            log::info!(
+                "command-line: opening default window (secondary={} bg_sync={})",
+                secondary_activation,
+                bg_sync
+            );
             open_default_window(app, ctx_lookup());
+        } else {
+            log::info!("command-line: background mode, no window opened");
         }
 
         app.activate();
