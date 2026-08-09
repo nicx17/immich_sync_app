@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed duplicate back icon displaying in the lightbox view (#199).
+- Fixed disabling autostart in Flatpak environments not removing the background portal entry (#201).
+
 ## [9.9.0] - 2026-08-08
 
 ### Added

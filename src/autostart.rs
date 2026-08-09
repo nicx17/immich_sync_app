@@ -17,12 +17,10 @@ const AUTOSTART_REASON: &str = "Reason for requesting background access: Mimick 
 
 /// Configure or request autostart registration depending on container and integration style.
 pub async fn apply(window: &impl IsA<gtk::Window>, enable: bool) -> Result<bool, String> {
-    if enable {
-        if is_flatpak_sandbox() {
-            request_background_portal(window).await
-        } else {
-            install_desktop_entry().map(|_| true)
-        }
+    if is_flatpak_sandbox() {
+        request_background_portal(window, enable).await
+    } else if enable {
+        install_desktop_entry().map(|_| true)
     } else {
         remove_desktop_entry().map(|_| false)
     }
@@ -33,8 +31,11 @@ fn is_flatpak_sandbox() -> bool {
     Path::new("/.flatpak-info").exists()
 }
 
-/// Direct autostart portal request on supported Flatpak desktop backgrounds.
-async fn request_background_portal(window: &impl IsA<gtk::Window>) -> Result<bool, String> {
+/// Request autostart state change through the XDG Background portal.
+async fn request_background_portal(
+    window: &impl IsA<gtk::Window>,
+    enable: bool,
+) -> Result<bool, String> {
     let identifier = match window.as_ref().native() {
         Some(native) => WindowIdentifier::from_native(&native).await,
         None => None,
@@ -43,7 +44,7 @@ async fn request_background_portal(window: &impl IsA<gtk::Window>) -> Result<boo
     let response = Background::request()
         .identifier(identifier)
         .reason(AUTOSTART_REASON)
-        .auto_start(true)
+        .auto_start(enable)
         .dbus_activatable(false)
         .send()
         .await
@@ -51,7 +52,11 @@ async fn request_background_portal(window: &impl IsA<gtk::Window>) -> Result<boo
         .response()
         .map_err(|err| format!("The desktop rejected the autostart request: {err}"))?;
 
-    Ok(response.auto_start() && response.run_in_background())
+    if enable {
+        Ok(response.auto_start() && response.run_in_background())
+    } else {
+        Ok(response.auto_start())
+    }
 }
 
 /// Install autostart desktop shortcut entry in standard non-flatpak configurations.
