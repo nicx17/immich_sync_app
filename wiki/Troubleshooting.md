@@ -60,6 +60,23 @@ If you see multiple individual notifications instead of a single updating bar:
 - Some lightweight notification daemons do not support the `x-canonical-private-synchronous` hint, replacement, or progress hints well.
 - **Solution:** Install a full-featured notification daemon like `dunst` (configured appropriately) or use a desktop environment like GNOME or KDE Plasma.
 
+## Startup & Autostart Issues
+
+### App Opens a Window on Login Despite Background Sync (KDE)
+
+If you are using KDE Plasma and the app opens a window every time you log in, even when background sync is enabled, this is likely caused by KDE's session restore feature.
+
+KDE's "Restore previous session" feature re-launches the app independently of the standard autostart mechanism. When it does this, it bypasses the background sync setting and unconditionally opens a window.
+
+**Fix**: Set KDE to start with an empty session instead of restoring the previous one.
+1. Open KDE System Settings
+2. Go to **Session** → **Desktop Session**
+3. Under "On Login", select **Start with an empty session**
+
+### Two Tray Icons Appear (Flatpak on KDE)
+
+If you are running the Flatpak version on KDE and see two tray icons, this is a known interaction between the XDG Background portal, KDE's session restore, and the Flatpak sandbox. Following the fix above (starting with an empty session) will usually resolve the duplicate tray icon as well.
+
 ## Syncing & Upload Issues
 
 ### Files Are Not Syncing
