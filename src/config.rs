@@ -420,16 +420,16 @@ impl Config {
     pub fn get_api_key(&self) -> Option<String> {
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let keyring = keyring_with_dbus_fallback().await?;
+                let keyring = keyring_with_dbus_fallback().await.map_err(Box::new)?;
                 let account = crate::profile::keyring_account();
                 let attributes: Vec<(&str, &str)> =
                     vec![("service", "mimick"), ("account", account.as_str())];
-                let items = keyring.search_items(&attributes).await?;
+                let items = keyring.search_items(&attributes).await.map_err(Box::new)?;
                 if let Some(item) = items.first() {
-                    let secret = item.secret().await?;
+                    let secret = item.secret().await.map_err(Box::new)?;
                     let key = String::from_utf8_lossy(&secret).trim().to_string();
                     if !key.is_empty() {
-                        return Ok::<Option<String>, oo7::Error>(Some(key));
+                        return Ok::<Option<String>, Box<oo7::Error>>(Some(key));
                     }
                 }
                 Ok(None)
@@ -440,6 +440,11 @@ impl Config {
             Ok(key) => {
                 if key.is_some() {
                     log::debug!("API key retrieved via oo7 keyring.");
+                } else {
+                    log::warn!(
+                        "No API key found in keyring. \
+                         User must configure it in Settings."
+                    );
                 }
                 key
             }
@@ -463,7 +468,7 @@ impl Config {
         let secret = key.to_string();
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let keyring = keyring_with_dbus_fallback().await?;
+                let keyring = keyring_with_dbus_fallback().await.map_err(Box::new)?;
                 let account = crate::profile::keyring_account();
                 let attributes: Vec<(&str, &str)> =
                     vec![("service", "mimick"), ("account", account.as_str())];
@@ -473,8 +478,9 @@ impl Config {
                 };
                 keyring
                     .create_item(&label, &attributes, secret.as_bytes(), true)
-                    .await?;
-                Ok::<(), oo7::Error>(())
+                    .await
+                    .map_err(Box::new)?;
+                Ok::<(), Box<oo7::Error>>(())
             })
         });
 

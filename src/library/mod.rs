@@ -23,6 +23,7 @@ use crate::library::local_source::{
     LocalAsset, enumerate_local, enumerate_local_for_entry, filter_by_filename,
 };
 use crate::library::masonry::{GridViewParts, build_grid_view};
+use crate::library::search_view::{SearchViewParts, build_search_view};
 use crate::library::sidebar::{SidebarParts, build_sidebar};
 use crate::library::state::{LibraryLoadState, LibrarySource};
 use crate::state_manager::TransferDirection;
@@ -35,7 +36,6 @@ use self::controls::{
     refresh_library_after_mutation, sidebar_dispatch,
 };
 use self::download::format_rate;
-use self::filters::connect_filters_button;
 use self::lightbox::open_lightbox;
 
 pub(super) const LOCAL_ID_PREFIX: &str = "local::";
@@ -58,8 +58,8 @@ mod album_link;
 mod context_menu;
 mod controls;
 mod download;
-mod filters;
 mod lightbox;
+pub mod search_view;
 mod server_stats_dialog;
 pub mod staging_view;
 mod upload_picker;
@@ -104,13 +104,11 @@ struct LibraryWindowUi {
     transfer_progress: gtk::ProgressBar,
     transfer_icon: gtk::Image,
     transfer_label: gtk::Label,
-    search_entry: gtk::SearchEntry,
-    search_mode: gtk::DropDown,
+    search_view: SearchViewParts,
     sort_mode: gtk::DropDown,
     source_mode: gtk::DropDown,
     source_revealer: gtk::Revealer,
     upload_button: gtk::Button,
-    filters_button: gtk::Button,
     timeline_toggle: gtk::ToggleButton,
     timeline_banner: gtk::Label,
     source_mode_suppressed: Cell<bool>,
@@ -123,7 +121,6 @@ struct LibraryWindowUi {
     album_link_button: gtk::Button,
     album_sync_button: gtk::Button,
     last_seen_upload_batch: Cell<u64>,
-    narrow: Rc<Cell<bool>>,
     split: libadwaita::OverlaySplitView,
     drop_overlay: gtk::Revealer,
 }
@@ -197,32 +194,8 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .tooltip_text("Timeline view (all assets only)")
         .build();
 
-    // Three distinct search dimensions, each routed to a different Immich
-    // endpoint shape. Smart and OCR are *separate* fields on the Immich
-    // search DTOs (`query` vs `ocr` per the live OpenAPI spec), so we
-    // expose them independently rather than collapsing OCR into Smart.
-    let search_mode_model = gtk::StringList::new(&["Filename", "Smart Search", "OCR"]);
-    let search_mode = gtk::DropDown::builder()
-        .model(&search_mode_model)
-        .selected(0)
-        .tooltip_text(
-            "Filename: matches the file name and EXIF metadata.\n\
-             Smart: CLIP-based semantic search — natural-language queries against visual scenes \
-             (\"sunset beach\", \"birthday cake\", \"invoices\").\n\
-             OCR: matches text recognised inside images by Immich's ML pipeline. Faster than \
-             Smart since it skips CLIP inference.",
-        )
-        .build();
-    let search_entry = gtk::SearchEntry::builder()
-        .placeholder_text("Search filenames")
-        .hexpand(true)
-        .width_chars(6)
-        .max_width_chars(18)
-        .build();
-    let filters_button = gtk::Button::builder()
-        .icon_name("view-more-symbolic")
-        .tooltip_text("Advanced filters (date, location, camera, EXIF)")
-        .build();
+    let search_view = build_search_view();
+
     let sort_model = gtk::StringList::new(&["Newest", "Filename", "File Type"]);
     let sort_mode = gtk::DropDown::builder()
         .model(&sort_model)
@@ -251,15 +224,6 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     source_group.append(&source_revealer);
     source_group.append(&timeline_toggle);
 
-    let search_group = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(8)
-        .hexpand(true)
-        .build();
-    search_group.append(&search_mode);
-    search_group.append(&search_entry);
-    search_group.append(&filters_button);
-
     let sort_group = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(8)
@@ -276,7 +240,6 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .margin_end(8)
         .build();
     controls.append(&source_group);
-    controls.append(&search_group);
     controls.append(&sort_group);
 
     let timeline_banner = gtk::Label::builder()
@@ -417,6 +380,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .orientation(gtk::Orientation::Vertical)
         .build();
     content.append(&controls);
+    content.append(&search_view.root);
     content.append(&album_link_listbox);
     content.append(&timeline_banner);
     content.append(&content_stack);
@@ -533,13 +497,11 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         transfer_progress,
         transfer_icon,
         transfer_label,
-        search_entry,
-        search_mode,
+        search_view,
         sort_mode,
         source_mode,
         source_revealer,
         upload_button: upload_button.clone(),
-        filters_button: filters_button.clone(),
         timeline_toggle,
         timeline_banner,
         source_mode_suppressed: Cell::new(false),
@@ -552,7 +514,6 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         album_link_button: album_link_button.clone(),
         album_sync_button: album_sync_button.clone(),
         last_seen_upload_batch: Cell::new(0),
-        narrow: narrow_flag.clone(),
         split: split.clone(),
         drop_overlay: drop_overlay.clone(),
     });
@@ -572,7 +533,8 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     connect_sidebar_handlers(ui.clone());
     connect_controls(ui.clone());
     connect_grid_handlers(ui.clone());
-    connect_filters_button(ui.clone(), filters_button);
+    connect_search_view(ui.clone());
+    connect_lightweight_filters(ui.clone());
     connect_drop_target(ui.clone());
 
     let close_ctx = ui.ctx.clone();
@@ -652,6 +614,142 @@ fn build_drop_overlay(content: gtk::Box) -> (gtk::Overlay, gtk::Revealer) {
     overlay.add_overlay(&revealer);
 
     (overlay, revealer)
+}
+
+/// Wire the lightweight filter entries embedded in Albums and Explore views.
+fn connect_lightweight_filters(ui: Rc<LibraryWindowUi>) {
+    // Albums: live-filter tiles as the user types.
+    ui.albums.filter_entry.connect_search_changed(clone!(
+        #[strong]
+        ui,
+        move |entry| {
+            let query = entry.text().to_string();
+            albums_view::set_search_filter(&ui.albums, &query);
+        }
+    ));
+
+    // Explore: live-filter people tiles as the user types.
+    ui.explore.filter_entry.connect_search_changed(clone!(
+        #[strong]
+        ui,
+        move |entry| {
+            let query = entry.text().to_string();
+            explore_view::set_people_search(&ui.explore, &query);
+        }
+    ));
+}
+
+/// Wire the dedicated search view's interactive handlers.
+fn connect_search_view(ui: Rc<LibraryWindowUi>) {
+    // Clear button resets all fields.
+    ui.search_view.clear_button.connect_clicked(clone!(
+        #[strong]
+        ui,
+        move |_| {
+            search_view::clear_all_filters(&ui.search_view);
+        }
+    ));
+
+    // Search button (or Enter in the entry) dispatches the search.
+    let do_search = {
+        let ui = ui.clone();
+        move || {
+            dispatch_search_from_view(&ui);
+        }
+    };
+
+    let do_search_btn = do_search.clone();
+    ui.search_view.search_button.connect_clicked(clone!(
+        #[strong]
+        ui,
+        move |_| {
+            let _ = &ui;
+            do_search_btn();
+        }
+    ));
+
+    ui.search_view.search_entry.connect_activate(clone!(
+        #[strong]
+        ui,
+        move |_| {
+            let _ = &ui;
+            do_search();
+        }
+    ));
+}
+
+/// Read the search view widgets and dispatch the appropriate search source.
+fn dispatch_search_from_view(ui: &Rc<LibraryWindowUi>) {
+    let query = ui.search_view.search_entry.text().trim().to_string();
+    let filters = search_view::collect_filters(&ui.search_view);
+    let has_filters = filters != MetadataSearchFilters::default();
+    let mode = ui.search_view.search_mode.selected(); // 0=Smart, 1=Filename, 2=OCR
+
+    let source = build_search_source(mode, &query, has_filters, filters);
+    let Some(source) = source else {
+        return;
+    };
+
+    let request = ui.ctx.library_state.lock().navigate_to(source);
+    apply_timeline_ui_state(ui, &request.1);
+    // The search form revealer stays visible -- results load into the
+    // grid below it so the user can see and edit their query.
+    ui.content_stack.set_visible_child_name("loading");
+    load_source_page(ui.clone(), request, false);
+}
+
+/// Decide which `LibrarySource` variant to use based on mode, query, and filters.
+fn build_search_source(
+    mode: u32,
+    query: &str,
+    has_filters: bool,
+    filters: MetadataSearchFilters,
+) -> Option<LibrarySource> {
+    match mode {
+        // Smart Search
+        0 => {
+            if query.is_empty() && !has_filters {
+                return None;
+            }
+            if query.is_empty() {
+                // Filters only -> metadata search
+                Some(LibrarySource::AdvancedSearch {
+                    filters: Box::new(filters),
+                })
+            } else {
+                Some(LibrarySource::SmartSearch {
+                    query: query.to_string(),
+                })
+            }
+        }
+        // Filename
+        1 => {
+            if query.is_empty() && !has_filters {
+                return None;
+            }
+            let mut f = filters;
+            if !query.is_empty() {
+                f.original_file_name = Some(query.to_string());
+            }
+            Some(LibrarySource::AdvancedSearch {
+                filters: Box::new(f),
+            })
+        }
+        // OCR
+        2 => {
+            if query.is_empty() && !has_filters {
+                return None;
+            }
+            let mut f = filters;
+            if !query.is_empty() {
+                f.ocr = Some(query.to_string());
+            }
+            Some(LibrarySource::AdvancedSearch {
+                filters: Box::new(f),
+            })
+        }
+        _ => None,
+    }
 }
 
 /// Attach a `DropTarget` to the library window for drag-and-drop file uploads.
@@ -970,15 +1068,6 @@ fn apply_timeline_ui_state(ui: &LibraryWindowUi, source: &LibrarySource) {
             | LibrarySource::AlbumLocal { .. }
             | LibrarySource::AlbumUnified { .. }
     );
-    let remote_search_allowed = !is_local && !is_unified;
-    let is_narrow = ui.narrow.get();
-    ui.search_mode
-        .set_visible(remote_search_allowed && !is_narrow);
-    ui.filters_button
-        .set_visible(remote_search_allowed && !is_narrow);
-    if !remote_search_allowed {
-        ui.search_mode.set_selected(0);
-    }
 
     // Source-mode (Remote/Local/Unified) only relevant inside an album.
     ui.source_revealer.set_reveal_child(in_album);
@@ -1134,7 +1223,7 @@ fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
             }
             let people = people_res.unwrap_or_default();
             let click_ui = ui.clone();
-            explore_view::populate_people(&ui.explore, ctx.clone(), people, move |id, name| {
+            explore_view::populate_people(&ui.explore, ctx.clone(), people, move |id, _name| {
                 let filters = MetadataSearchFilters {
                     person_ids: Some(vec![id]),
                     ..Default::default()
@@ -1144,7 +1233,6 @@ fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
                         filters: Box::new(filters),
                     },
                 );
-                click_ui.search_entry.set_text(&name);
                 apply_timeline_ui_state(&click_ui, &request.1);
                 load_source_page(click_ui.clone(), request, false);
             });
@@ -1179,7 +1267,6 @@ fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
                             }),
                         };
                         let request = click_ui.ctx.library_state.lock().switch_source(next);
-                        click_ui.search_entry.set_text(&value);
                         apply_timeline_ui_state(&click_ui, &request.1);
                         load_source_page(click_ui.clone(), request, false);
                     },
@@ -1218,7 +1305,6 @@ fn load_explore_landing(ui: Rc<LibraryWindowUi>) {
                         query: value.clone(),
                     };
                     let request = click_ui.ctx.library_state.lock().switch_source(next);
-                    click_ui.search_entry.set_text(&value);
                     apply_timeline_ui_state(&click_ui, &request.1);
                     load_source_page(click_ui.clone(), request, false);
                 },

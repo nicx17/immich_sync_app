@@ -61,6 +61,12 @@ pub fn build_sidebar() -> SidebarParts {
         "photos",
     ));
     fixed_list.append(&action_row(
+        "Search",
+        "Find photos, videos, and text",
+        "system-search-symbolic",
+        "search",
+    ));
+    fixed_list.append(&action_row(
         "Explore",
         "People, places, and things",
         "view-grid-symbolic",

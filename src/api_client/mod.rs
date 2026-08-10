@@ -16,6 +16,7 @@ mod albums;
 mod errors;
 mod library;
 mod search;
+mod suggestions;
 mod upload;
 mod upload_helpers;
 
@@ -255,6 +256,48 @@ pub struct MetadataSearchFilters {
     /// Desired sorting order.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order: Option<SortOrder>,
+    /// Star rating (1-5).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rating: Option<u32>,
+    /// Restrict results to specific albums.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album_ids: Option<Vec<String>>,
+    /// True to only return encoded (transcoded) assets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_encoded: Option<bool>,
+    /// True to only return offline assets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_offline: Option<bool>,
+    /// Restrict to a specific external library.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub library_id: Option<String>,
+    /// ISO 8601 lower bound on asset creation timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_after: Option<String>,
+    /// ISO 8601 upper bound on asset creation timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_before: Option<String>,
+    /// ISO 8601 lower bound on asset update timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_after: Option<String>,
+    /// ISO 8601 upper bound on asset update timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_before: Option<String>,
+    /// ISO 8601 lower bound on trashed timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trashed_after: Option<String>,
+    /// ISO 8601 upper bound on trashed timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trashed_before: Option<String>,
+    /// Visibility filter: "archive", "timeline", "hidden", "locked".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<String>,
+    /// True to include person face data in results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub with_people: Option<bool>,
+    /// True to include stacked asset data in results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub with_stacked: Option<bool>,
 }
 
 /// Direction of sort results.
