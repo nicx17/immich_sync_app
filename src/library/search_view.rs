@@ -135,46 +135,33 @@ fn build_action_row() -> (gtk::Box, gtk::Image, gtk::Button, gtk::Button, gtk::B
     )
 }
 
-/// Build the search form widget tree.
-///
-/// Returns a `SearchViewParts` whose `root` is a `Revealer`.  The
-/// caller should insert `root` into the content pane above the
-/// `content_stack` so the form stays visible while results load into
-/// the grid.
-pub fn build_search_view() -> SearchViewParts {
-    // Height-capped scrolled window keeps the form from pushing results
-    // off-screen when filters are expanded.  hscrollbar_policy is set to
-    // Automatic (instead of Never) so the scrolled window's minimum width
-    // is decoupled from the child's ~434px AdwEntryRow minimum.  The
-    // horizontal scrollbar is hidden via CSS so it never appears visually.
-    let scrolled = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Automatic)
-        .propagate_natural_height(true)
-        .max_content_height(320)
-        .css_classes(["mimick-search-scroll"])
-        .build();
-
-    // Tight margins for narrow-width (360px) compatibility.
-    let inner = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(6)
-        .margin_top(8)
-        .margin_bottom(4)
-        .margin_start(8)
-        .margin_end(8)
-        .build();
-
-    // --- Search mode + entry (stacked vertically for narrow screens) ---
-    let (search_bar, search_mode, search_entry) = build_search_bar();
-    inner.append(&search_bar);
-
-    // --- Compact row: filters toggle + action buttons ---
-    let (action_row, toggle_icon, toggle_button, clear_button, search_button) = build_action_row();
-    inner.append(&action_row);
-
-    // --- Filter groups (inside revealer) ---
-    let filters_expanded = Rc::new(Cell::new(false));
-    let filters_revealer = gtk::Revealer::builder()
+/// Assemble all filter groups into a revealer.
+#[allow(clippy::type_complexity)]
+fn build_filter_panel() -> (
+    gtk::Revealer,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+    libadwaita::ComboRow,
+    libadwaita::SwitchRow,
+    libadwaita::SwitchRow,
+    libadwaita::SwitchRow,
+    libadwaita::SwitchRow,
+    libadwaita::SwitchRow,
+    libadwaita::ComboRow,
+    libadwaita::ComboRow,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+    libadwaita::EntryRow,
+) {
+    let revealer = gtk::Revealer::builder()
         .transition_type(gtk::RevealerTransitionType::SlideDown)
         .transition_duration(200)
         .reveal_child(false)
@@ -189,8 +176,100 @@ pub fn build_search_view() -> SearchViewParts {
     let (text_group, filename_row, description_row, ocr_row) = build_text_group();
     filter_box.append(&text_group);
 
+    let (flags_group, type_row, fav, archived, motion, not_album, deleted, vis, rating) =
+        build_flags_group();
+    filter_box.append(&flags_group);
+
+    let (date_group, taken_after, taken_before, created_after, created_before) = build_date_group();
+    filter_box.append(&date_group);
+
+    let (camera_group, make_row, model_row, lens_row) = build_camera_group();
+    filter_box.append(&camera_group);
+
+    let (loc_group, country, state, city) = build_location_group();
+    filter_box.append(&loc_group);
+
+    revealer.set_child(Some(&filter_box));
+
+    (
+        revealer,
+        filename_row,
+        description_row,
+        ocr_row,
+        type_row,
+        fav,
+        archived,
+        motion,
+        not_album,
+        deleted,
+        vis,
+        rating,
+        taken_after,
+        taken_before,
+        created_after,
+        created_before,
+        make_row,
+        model_row,
+        lens_row,
+        country,
+        state,
+        city,
+    )
+}
+
+/// Wire the toggle button to show/hide the filters revealer.
+fn connect_filter_toggle(
+    toggle_button: &gtk::Button,
+    toggle_icon: gtk::Image,
+    revealer: gtk::Revealer,
+) {
+    let expanded = Rc::new(Cell::new(false));
+    toggle_button.connect_clicked(move |_| {
+        let now = !expanded.get();
+        expanded.set(now);
+        revealer.set_reveal_child(now);
+        toggle_icon.set_icon_name(Some(if now {
+            "pan-down-symbolic"
+        } else {
+            "pan-end-symbolic"
+        }));
+    });
+}
+
+/// Build the search form widget tree.
+///
+/// Returns a `SearchViewParts` whose `root` is a `Revealer`.  The
+/// caller should insert `root` into the content pane above the
+/// `content_stack` so the form stays visible while results load into
+/// the grid.
+pub fn build_search_view() -> SearchViewParts {
+    let scrolled = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_height(true)
+        .max_content_height(320)
+        .css_classes(["mimick-search-scroll"])
+        .build();
+
+    let inner = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(6)
+        .margin_top(8)
+        .margin_bottom(4)
+        .margin_start(8)
+        .margin_end(8)
+        .build();
+
+    let (search_bar, search_mode, search_entry) = build_search_bar();
+    inner.append(&search_bar);
+
+    let (action_row, toggle_icon, toggle_button, clear_button, search_button) = build_action_row();
+    inner.append(&action_row);
+
     let (
-        flags_group,
+        filters_revealer,
+        filename_row,
+        description_row,
+        ocr_row,
         type_row,
         favorite_row,
         archived_row,
@@ -199,42 +278,22 @@ pub fn build_search_view() -> SearchViewParts {
         with_deleted_row,
         visibility_row,
         rating_row,
-    ) = build_flags_group();
-    filter_box.append(&flags_group);
-
-    let (date_group, taken_after_row, taken_before_row, created_after_row, created_before_row) =
-        build_date_group();
-    filter_box.append(&date_group);
-
-    let (camera_group, make_row, model_row, lens_row) = build_camera_group();
-    filter_box.append(&camera_group);
-
-    let (loc_group, country_row, state_row, city_row) = build_location_group();
-    filter_box.append(&loc_group);
-
-    filters_revealer.set_child(Some(&filter_box));
+        taken_after_row,
+        taken_before_row,
+        created_after_row,
+        created_before_row,
+        make_row,
+        model_row,
+        lens_row,
+        country_row,
+        state_row,
+        city_row,
+    ) = build_filter_panel();
     inner.append(&filters_revealer);
 
     scrolled.set_child(Some(&inner));
+    connect_filter_toggle(&toggle_button, toggle_icon, filters_revealer);
 
-    // Toggle filters visibility.
-    let toggle_icon_ref = toggle_icon.clone();
-    let revealer_ref = filters_revealer.clone();
-    let expanded_ref = filters_expanded;
-    toggle_button.connect_clicked(move |_| {
-        let now = !expanded_ref.get();
-        expanded_ref.set(now);
-        revealer_ref.set_reveal_child(now);
-        let icon = if now {
-            "pan-down-symbolic"
-        } else {
-            "pan-end-symbolic"
-        };
-        toggle_icon_ref.set_icon_name(Some(icon));
-    });
-
-    // Wrap everything in a revealer so it can be shown/hidden when the
-    // sidebar switches to/from search.
     let root = gtk::Revealer::builder()
         .transition_type(gtk::RevealerTransitionType::SlideDown)
         .transition_duration(200)
@@ -242,7 +301,6 @@ pub fn build_search_view() -> SearchViewParts {
         .child(&scrolled)
         .build();
 
-    // Update placeholder on mode change.
     search_mode.connect_selected_notify(clone!(
         #[weak]
         search_entry,
@@ -314,6 +372,13 @@ fn build_text_group() -> (
     (group, filename, desc, ocr)
 }
 
+fn combo_row(title: &str, items: &[&str]) -> libadwaita::ComboRow {
+    libadwaita::ComboRow::builder()
+        .title(title)
+        .model(&gtk::StringList::new(items))
+        .build()
+}
+
 #[allow(clippy::type_complexity)]
 fn build_flags_group() -> (
     libadwaita::PreferencesGroup,
@@ -326,49 +391,32 @@ fn build_flags_group() -> (
     libadwaita::ComboRow,
     libadwaita::ComboRow,
 ) {
-    let group = libadwaita::PreferencesGroup::builder()
-        .title("Type and flags")
-        .build();
-
-    let type_model = gtk::StringList::new(&["Any", "Image only", "Video only"]);
-    let type_row = libadwaita::ComboRow::builder()
-        .title("Asset type")
-        .model(&type_model)
-        .build();
-    let vis_model = gtk::StringList::new(&["Any", "Timeline", "Archive", "Hidden", "Locked"]);
-    let vis = libadwaita::ComboRow::builder()
-        .title("Visibility")
-        .model(&vis_model)
-        .build();
-    let rating_model = gtk::StringList::new(&["Any", "1+", "2+", "3+", "4+", "5"]);
-    let rating = libadwaita::ComboRow::builder()
-        .title("Minimum rating")
-        .model(&rating_model)
-        .build();
-
     fn switch(t: &str) -> libadwaita::SwitchRow {
         libadwaita::SwitchRow::builder().title(t).build()
     }
 
+    let group = libadwaita::PreferencesGroup::builder()
+        .title("Type and flags")
+        .build();
+    let type_row = combo_row("Asset type", &["Any", "Image only", "Video only"]);
     let fav = switch("Favourites only");
     let archived = switch("Archived only");
     let motion = switch("Motion photos only");
     let not_album = switch("Not in any album");
     let deleted = switch("Include deleted");
-
-    for r in [
-        &type_row.clone().upcast::<gtk::Widget>(),
-        &fav.clone().upcast(),
-        &archived.clone().upcast(),
-        &motion.clone().upcast(),
-        &not_album.clone().upcast(),
-        &deleted.clone().upcast(),
-        &vis.clone().upcast(),
-        &rating.clone().upcast(),
-    ] {
-        group.add(r);
-    }
-
+    let vis = combo_row(
+        "Visibility",
+        &["Any", "Timeline", "Archive", "Hidden", "Locked"],
+    );
+    let rating = combo_row("Minimum rating", &["Any", "1+", "2+", "3+", "4+", "5"]);
+    group.add(&type_row);
+    group.add(&fav);
+    group.add(&archived);
+    group.add(&motion);
+    group.add(&not_album);
+    group.add(&deleted);
+    group.add(&vis);
+    group.add(&rating);
     (
         group, type_row, fav, archived, motion, not_album, deleted, vis, rating,
     )
