@@ -420,7 +420,7 @@ impl Config {
     pub fn get_api_key(&self) -> Option<String> {
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let keyring = keyring_with_dbus_fallback().await.map_err(Box::new)?;
+                let keyring = keyring_with_dbus_fallback().await?;
                 let account = crate::profile::keyring_account();
                 let attributes: Vec<(&str, &str)> =
                     vec![("service", "mimick"), ("account", account.as_str())];
@@ -468,7 +468,7 @@ impl Config {
         let secret = key.to_string();
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let keyring = keyring_with_dbus_fallback().await.map_err(Box::new)?;
+                let keyring = keyring_with_dbus_fallback().await?;
                 let account = crate::profile::keyring_account();
                 let attributes: Vec<(&str, &str)> =
                     vec![("service", "mimick"), ("account", account.as_str())];
@@ -514,7 +514,7 @@ impl Config {
 /// D-Bus (native). If the portal backend fails -- common on Hyprland,
 /// Sway, XFCE, and other non-GNOME/KDE desktops -- explicitly attempt
 /// the D-Bus Secret Service as a fallback before returning an error.
-async fn keyring_with_dbus_fallback() -> Result<oo7::Keyring, oo7::Error> {
+async fn keyring_with_dbus_fallback() -> Result<oo7::Keyring, Box<oo7::Error>> {
     match oo7::Keyring::new().await {
         Ok(keyring) => Ok(keyring),
         Err(oo7::Error::File(ref file_err)) => {
@@ -524,11 +524,16 @@ async fn keyring_with_dbus_fallback() -> Result<oo7::Keyring, oo7::Error> {
                 "oo7 portal backend unavailable ({}), trying D-Bus Secret Service fallback",
                 file_err
             );
-            let service = oo7::dbus::Service::new().await?;
-            let collection = service.default_collection().await?;
+            let service = oo7::dbus::Service::new()
+                .await
+                .map_err(|e| Box::new(oo7::Error::from(e)))?;
+            let collection = service
+                .default_collection()
+                .await
+                .map_err(|e| Box::new(oo7::Error::from(e)))?;
             Ok(oo7::Keyring::DBus(collection))
         }
-        Err(e) => Err(e),
+        Err(e) => Err(Box::new(e)),
     }
 }
 

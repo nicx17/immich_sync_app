@@ -296,7 +296,6 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .hexpand(true)
         .wrap(true)
         .max_width_chars(24)
-        .width_chars(12)
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .css_classes(vec!["caption".to_string(), "dim-label".to_string()])
         .build();
@@ -394,8 +393,12 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         .sidebar(&sidebar.root)
         .content(&content_with_drop)
         .show_sidebar(true)
+        .collapsed(true)
         .enable_show_gesture(true)
         .enable_hide_gesture(true)
+        .min_sidebar_width(180.0)
+        .max_sidebar_width(260.0)
+        .sidebar_width_fraction(0.3)
         .build();
     split
         .bind_property("show-sidebar", &sidebar_toggle, "active")
@@ -414,27 +417,29 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     window.set_content(Some(&nav));
 
     let breakpoint = libadwaita::Breakpoint::new(
-        libadwaita::BreakpointCondition::parse("max-width: 600sp")
+        libadwaita::BreakpointCondition::parse("max-width: 600px")
             .expect("valid breakpoint condition"),
     );
-    breakpoint.add_setter(&split, "collapsed", Some(&true.to_value()));
     breakpoint.add_setter(&transfer_bar, "visible", Some(&false.to_value()));
+    breakpoint.add_setter(&back_button, "visible", Some(&false.to_value()));
     let narrow_apply = narrow_flag.clone();
     let canvas_for_apply = grid.canvas.clone();
     breakpoint.connect_apply(move |_| {
+        log::info!("NARROW breakpoint APPLIED: setting narrow=true");
         narrow_apply.set(true);
         canvas_for_apply.set_narrow(true);
     });
     let narrow_unapply = narrow_flag.clone();
     let canvas_for_unapply = grid.canvas.clone();
     breakpoint.connect_unapply(move |_| {
+        log::info!("NARROW breakpoint UNAPPLIED: setting narrow=false");
         narrow_unapply.set(false);
         canvas_for_unapply.set_narrow(false);
     });
     window.add_breakpoint(breakpoint);
 
     let desktop_bp = libadwaita::Breakpoint::new(
-        libadwaita::BreakpointCondition::parse("min-width: 600sp")
+        libadwaita::BreakpointCondition::parse("min-width: 600px")
             .expect("valid breakpoint condition"),
     );
     let window_for_desktop_apply = window.clone();
@@ -450,6 +455,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
         "orientation",
         Some(&gtk::Orientation::Horizontal.to_value()),
     );
+    desktop_bp.add_setter(&split, "collapsed", Some(&false.to_value()));
     desktop_bp.add_setter(&album_sync_button, "label", Some(&"Sync…".to_value()));
     desktop_bp.add_setter(
         &album_link_button,
@@ -458,13 +464,12 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     );
     window.add_breakpoint(desktop_bp);
 
-    // Tablet-width breakpoint: collapse sidebar to overlay before the inline
-    // sidebar + controls (~960 px natural) overflow a shrunk desktop window.
+    // Tablet-width breakpoint: hide transfer bar and tweak chrome when the
+    // window is narrower than a typical desktop width.
     let tablet_bp = libadwaita::Breakpoint::new(
-        libadwaita::BreakpointCondition::parse("max-width: 1000sp")
+        libadwaita::BreakpointCondition::parse("max-width: 1000px")
             .expect("valid breakpoint condition"),
     );
-    tablet_bp.add_setter(&split, "collapsed", Some(&true.to_value()));
     window.add_breakpoint(tablet_bp);
 
     let f9 = gtk::Shortcut::builder()
@@ -544,6 +549,7 @@ pub fn build_library_window(app: &libadwaita::Application, ctx: Arc<AppContext>)
     });
 
     bootstrap_window(ui);
+
     window.present();
 }
 

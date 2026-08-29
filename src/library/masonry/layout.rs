@@ -7,8 +7,10 @@
 const FALLBACK_W: f32 = 4.0;
 const FALLBACK_H: f32 = 3.0;
 
-pub(crate) const MIN_ROW_HEIGHT_NARROW: f32 = 120.0;
-pub(crate) const MAX_ROW_HEIGHT_NARROW: f32 = 240.0;
+pub(crate) const MIN_ROW_HEIGHT_COMPACT: f32 = 48.0;
+pub(crate) const MAX_ROW_HEIGHT_COMPACT: f32 = 80.0;
+pub(crate) const MIN_ROW_HEIGHT_NARROW: f32 = 60.0;
+pub(crate) const MAX_ROW_HEIGHT_NARROW: f32 = 120.0;
 pub(crate) const MIN_ROW_HEIGHT_WIDE: f32 = 180.0;
 pub(crate) const MAX_ROW_HEIGHT_WIDE: f32 = 360.0;
 
@@ -36,6 +38,15 @@ pub struct LayoutConfig {
 }
 
 impl LayoutConfig {
+    /// Compact: very small tiles for sub-400px widths (phone screens).
+    pub(crate) fn compact() -> Self {
+        Self {
+            min_row_height: MIN_ROW_HEIGHT_COMPACT,
+            max_row_height: MAX_ROW_HEIGHT_COMPACT,
+            gap: GAP,
+        }
+    }
+
     pub(crate) fn narrow() -> Self {
         Self {
             min_row_height: MIN_ROW_HEIGHT_NARROW,

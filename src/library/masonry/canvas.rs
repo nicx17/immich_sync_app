@@ -127,12 +127,12 @@ mod imp {
 
         fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
             match orientation {
-                gtk::Orientation::Horizontal => (200, 200, -1, -1),
+                gtk::Orientation::Horizontal => (120, 200, -1, -1),
                 _ => {
                     let width = if for_size > 0 {
                         for_size as f32
                     } else {
-                        self.cached_width.get().max(200.0)
+                        self.cached_width.get().max(120.0)
                     };
                     let h = self.layout_for_width(width);
                     let h_i = h.ceil() as i32;
@@ -173,10 +173,19 @@ mod imp {
         }
     }
 
+    /// Compact layout threshold: canvas widths below this use the
+    /// smallest tile tier for phone-sized screens.
+    const COMPACT_WIDTH_THRESHOLD: f32 = 400.0;
+
     impl MasonryCanvas {
         fn cfg(&self) -> LayoutConfig {
             if self.narrow.get() {
-                LayoutConfig::narrow()
+                let w = self.cached_width.get();
+                if w > 0.0 && w < COMPACT_WIDTH_THRESHOLD {
+                    LayoutConfig::compact()
+                } else {
+                    LayoutConfig::narrow()
+                }
             } else {
                 LayoutConfig::wide()
             }

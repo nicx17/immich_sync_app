@@ -55,7 +55,7 @@ pub fn build_albums_view() -> AlbumsViewParts {
         .build();
 
     let header_row = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
+        .orientation(gtk::Orientation::Vertical)
         .spacing(8)
         .build();
     let title = gtk::Label::builder()
@@ -73,9 +73,14 @@ pub fn build_albums_view() -> AlbumsViewParts {
         .hexpand(true)
         .max_width_chars(20)
         .build();
+    let filter_row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .build();
     header_row.append(&title);
-    header_row.append(&filter_entry);
-    header_row.append(&create_button);
+    filter_row.append(&filter_entry);
+    filter_row.append(&create_button);
+    header_row.append(&filter_row);
     outer.append(&header_row);
 
     let (recent_section, recent_grid) = build_section("Recent");

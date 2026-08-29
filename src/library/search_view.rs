@@ -66,11 +66,15 @@ pub struct SearchViewParts {
 /// the grid.
 pub fn build_search_view() -> SearchViewParts {
     // Height-capped scrolled window keeps the form from pushing results
-    // off-screen when filters are expanded.
+    // off-screen when filters are expanded.  hscrollbar_policy is set to
+    // Automatic (instead of Never) so the scrolled window's minimum width
+    // is decoupled from the child's ~434px AdwEntryRow minimum.  The
+    // horizontal scrollbar is hidden via CSS so it never appears visually.
     let scrolled = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Never)
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
         .propagate_natural_height(true)
         .max_content_height(320)
+        .css_classes(["mimick-search-scroll"])
         .build();
 
     // Tight margins for narrow-width (360px) compatibility.

@@ -25,7 +25,7 @@ pub fn build_sidebar() -> SidebarParts {
         .margin_bottom(12)
         .margin_start(12)
         .margin_end(12)
-        .width_request(260)
+        .width_request(200)
         .build();
 
     let fixed_list = gtk::ListBox::builder()
