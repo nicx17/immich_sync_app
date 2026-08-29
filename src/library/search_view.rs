@@ -14,7 +14,10 @@ use gtk::prelude::*;
 use libadwaita::prelude::*;
 
 use crate::api_client::MetadataSearchFilters;
-use crate::library::search_filters::*;
+use crate::library::search_filters::{
+    FilterWidgets, build_camera_group, build_date_group, build_flags_group, build_location_group,
+    build_text_group,
+};
 
 /// UI widgets for the dedicated search form.
 ///

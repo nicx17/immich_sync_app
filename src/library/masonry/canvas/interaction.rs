@@ -405,7 +405,7 @@ fn export_cache_path(remote_id: &str, filename: &str) -> Option<std::path::PathB
 fn try_link_from_preview(remote_id: &str, filename: &str, export_path: &std::path::Path) -> bool {
     let ext = std::path::Path::new(filename)
         .extension()
-        .and_then(|e| e.to_str())
+        .and_then(std::ffi::OsStr::to_str)
         .filter(|e| !e.is_empty())
         .unwrap_or("bin");
     let preview_dir = match crate::profile::cache_dir() {
