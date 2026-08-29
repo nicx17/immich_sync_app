@@ -711,12 +711,13 @@ fn build_search_source(
     has_filters: bool,
     filters: MetadataSearchFilters,
 ) -> Option<LibrarySource> {
+    if query.is_empty() && !has_filters {
+        return None;
+    }
+
     match mode {
         // Smart Search
         0 => {
-            if query.is_empty() && !has_filters {
-                return None;
-            }
             if query.is_empty() {
                 // Filters only -> metadata search
                 Some(LibrarySource::AdvancedSearch {
@@ -730,9 +731,6 @@ fn build_search_source(
         }
         // Filename
         1 => {
-            if query.is_empty() && !has_filters {
-                return None;
-            }
             let mut f = filters;
             if !query.is_empty() {
                 f.original_file_name = Some(query.to_string());
@@ -743,9 +741,6 @@ fn build_search_source(
         }
         // OCR
         2 => {
-            if query.is_empty() && !has_filters {
-                return None;
-            }
             let mut f = filters;
             if !query.is_empty() {
                 f.ocr = Some(query.to_string());

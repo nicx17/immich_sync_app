@@ -58,36 +58,7 @@ pub struct SearchViewParts {
     pub clear_button: gtk::Button,
 }
 
-/// Build the search form widget tree.
-///
-/// Returns a `SearchViewParts` whose `root` is a `Revealer`.  The
-/// caller should insert `root` into the content pane above the
-/// `content_stack` so the form stays visible while results load into
-/// the grid.
-pub fn build_search_view() -> SearchViewParts {
-    // Height-capped scrolled window keeps the form from pushing results
-    // off-screen when filters are expanded.  hscrollbar_policy is set to
-    // Automatic (instead of Never) so the scrolled window's minimum width
-    // is decoupled from the child's ~434px AdwEntryRow minimum.  The
-    // horizontal scrollbar is hidden via CSS so it never appears visually.
-    let scrolled = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Automatic)
-        .propagate_natural_height(true)
-        .max_content_height(320)
-        .css_classes(["mimick-search-scroll"])
-        .build();
-
-    // Tight margins for narrow-width (360px) compatibility.
-    let inner = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(6)
-        .margin_top(8)
-        .margin_bottom(4)
-        .margin_start(8)
-        .margin_end(8)
-        .build();
-
-    // --- Search mode + entry (stacked vertically for narrow screens) ---
+fn build_search_bar() -> (gtk::Box, gtk::DropDown, gtk::SearchEntry) {
     let mode_model = gtk::StringList::new(&["Smart Search", "Filename", "OCR"]);
     let search_mode = gtk::DropDown::builder()
         .model(&mode_model)
@@ -110,9 +81,11 @@ pub fn build_search_view() -> SearchViewParts {
         .build();
     search_bar.append(&search_mode);
     search_bar.append(&search_entry);
-    inner.append(&search_bar);
 
-    // --- Compact row: filters toggle + action buttons ---
+    (search_bar, search_mode, search_entry)
+}
+
+fn build_action_row() -> (gtk::Box, gtk::Image, gtk::Button, gtk::Button, gtk::Button) {
     let action_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
@@ -152,6 +125,51 @@ pub fn build_search_view() -> SearchViewParts {
     action_row.append(&gtk::Box::builder().hexpand(true).build());
     action_row.append(&clear_button);
     action_row.append(&search_button);
+
+    (
+        action_row,
+        toggle_icon,
+        toggle_button,
+        clear_button,
+        search_button,
+    )
+}
+
+/// Build the search form widget tree.
+///
+/// Returns a `SearchViewParts` whose `root` is a `Revealer`.  The
+/// caller should insert `root` into the content pane above the
+/// `content_stack` so the form stays visible while results load into
+/// the grid.
+pub fn build_search_view() -> SearchViewParts {
+    // Height-capped scrolled window keeps the form from pushing results
+    // off-screen when filters are expanded.  hscrollbar_policy is set to
+    // Automatic (instead of Never) so the scrolled window's minimum width
+    // is decoupled from the child's ~434px AdwEntryRow minimum.  The
+    // horizontal scrollbar is hidden via CSS so it never appears visually.
+    let scrolled = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_height(true)
+        .max_content_height(320)
+        .css_classes(["mimick-search-scroll"])
+        .build();
+
+    // Tight margins for narrow-width (360px) compatibility.
+    let inner = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(6)
+        .margin_top(8)
+        .margin_bottom(4)
+        .margin_start(8)
+        .margin_end(8)
+        .build();
+
+    // --- Search mode + entry (stacked vertically for narrow screens) ---
+    let (search_bar, search_mode, search_entry) = build_search_bar();
+    inner.append(&search_bar);
+
+    // --- Compact row: filters toggle + action buttons ---
+    let (action_row, toggle_icon, toggle_button, clear_button, search_button) = build_action_row();
     inner.append(&action_row);
 
     // --- Filter groups (inside revealer) ---
@@ -311,25 +329,11 @@ fn build_flags_group() -> (
     let group = libadwaita::PreferencesGroup::builder()
         .title("Type and flags")
         .build();
+
     let type_model = gtk::StringList::new(&["Any", "Image only", "Video only"]);
     let type_row = libadwaita::ComboRow::builder()
         .title("Asset type")
         .model(&type_model)
-        .build();
-    let fav = libadwaita::SwitchRow::builder()
-        .title("Favourites only")
-        .build();
-    let archived = libadwaita::SwitchRow::builder()
-        .title("Archived only")
-        .build();
-    let motion = libadwaita::SwitchRow::builder()
-        .title("Motion photos only")
-        .build();
-    let not_album = libadwaita::SwitchRow::builder()
-        .title("Not in any album")
-        .build();
-    let deleted = libadwaita::SwitchRow::builder()
-        .title("Include deleted")
         .build();
     let vis_model = gtk::StringList::new(&["Any", "Timeline", "Archive", "Hidden", "Locked"]);
     let vis = libadwaita::ComboRow::builder()
@@ -341,14 +345,30 @@ fn build_flags_group() -> (
         .title("Minimum rating")
         .model(&rating_model)
         .build();
-    group.add(&type_row);
-    group.add(&fav);
-    group.add(&archived);
-    group.add(&motion);
-    group.add(&not_album);
-    group.add(&deleted);
-    group.add(&vis);
-    group.add(&rating);
+
+    fn switch(t: &str) -> libadwaita::SwitchRow {
+        libadwaita::SwitchRow::builder().title(t).build()
+    }
+
+    let fav = switch("Favourites only");
+    let archived = switch("Archived only");
+    let motion = switch("Motion photos only");
+    let not_album = switch("Not in any album");
+    let deleted = switch("Include deleted");
+
+    for r in [
+        &type_row.clone().upcast::<gtk::Widget>(),
+        &fav.clone().upcast(),
+        &archived.clone().upcast(),
+        &motion.clone().upcast(),
+        &not_album.clone().upcast(),
+        &deleted.clone().upcast(),
+        &vis.clone().upcast(),
+        &rating.clone().upcast(),
+    ] {
+        group.add(r);
+    }
+
     (
         group, type_row, fav, archived, motion, not_album, deleted, vis, rating,
     )

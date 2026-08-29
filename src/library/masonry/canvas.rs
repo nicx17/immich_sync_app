@@ -1,13 +1,8 @@
 //! Justified-row masonry layout for the photos grid.
 
-use std::cell::{Cell, OnceCell, RefCell};
-use std::collections::HashSet;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use gtk::glib;
-use gtk::graphene::{Rect, Size};
-use gtk::gsk::RoundedRect;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use libadwaita::prelude::*;
@@ -35,7 +30,24 @@ use super::quality::{bucket_for_row_height, fallback_bucket};
 mod interaction;
 
 mod imp {
-    use super::*;
+    use std::cell::{Cell, OnceCell, RefCell};
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    use gtk::glib;
+    use gtk::graphene::{Rect, Size};
+    use gtk::gsk::RoundedRect;
+    use gtk::prelude::*;
+    use gtk::subclass::prelude::*;
+
+    use super::{
+        ActivateHandler, AssetContextMenuHandler, AssetObject, CORNER_RADIUS, GridQuality,
+        LaidItem, LaidRow, LayoutConfig, LibraryAssetModel, SelectModeChanger, ThumbnailCache,
+        ThumbnailSize, VIEWPORTS_AHEAD, VIEWPORTS_BEHIND, accent_bg_color, bucket_for_asset,
+        bucket_for_row_height, cached_texture, collect_dims, finish_masonry_load,
+        first_row_at_or_after, load_masonry_asset, load_target_for, pack_rows, placeholder_color,
+        resolve_symbolic_icon, resolve_video_icon,
+    };
 
     pub(super) enum PaintResult {
         Hit,
@@ -107,7 +119,7 @@ mod imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for MasonryCanvas {
-        const NAME: &'static str = "MimickMasonryCanvas";
+        const NAME: &str = "MimickMasonryCanvas";
         type Type = super::MasonryCanvas;
         type ParentType = gtk::Widget;
     }
@@ -488,12 +500,12 @@ mod imp {
             if pending.contains(&asset_id) {
                 return;
             }
-            pending.insert(asset_id.clone());
+            pending.insert(asset_id.to_string());
             let cell_center = row.y + row.h * 0.5;
             let priority = (cell_center - viewport_center).abs();
             to_load.push(LoadRequest {
                 priority,
-                asset_id,
+                asset_id: asset_id.to_string(),
                 bucket,
                 local_path,
                 is_local: is_local_only,

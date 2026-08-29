@@ -75,8 +75,8 @@ impl FolderRules {
         if !normalized.is_empty() {
             let ext = path
                 .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.to_ascii_lowercase());
+                .and_then(std::ffi::OsStr::to_str)
+                .map(str::to_ascii_lowercase);
             if ext
                 .as_deref()
                 .is_none_or(|ext| !normalized.iter().any(|allowed| allowed == ext))
@@ -373,9 +373,8 @@ impl Config {
                     self.data = data;
                     log::info!("Config loaded from: {}", self.config_file.display());
                     return true;
-                } else {
-                    log::warn!("Config parse failed: {}", self.config_file.display());
                 }
+                log::warn!("Config parse failed: {}", self.config_file.display());
             }
         } else {
             log::info!(
