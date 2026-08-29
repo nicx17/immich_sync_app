@@ -11,6 +11,8 @@ pub struct LibraryWidgets {
     pub download_folder_row: adw::ActionRow,
     pub download_change_btn: gtk::Button,
     pub download_clear_btn: gtk::Button,
+    pub border_width_row: adw::SpinRow,
+    pub border_color_btn: gtk::ColorDialogButton,
 }
 
 pub fn build_library_group(settings_page: &adw::PreferencesPage) -> LibraryWidgets {
@@ -76,6 +78,24 @@ pub fn build_library_group(settings_page: &adw::PreferencesPage) -> LibraryWidge
     download_folder_row.add_suffix(&download_change_btn);
     library_group.add(&download_folder_row);
 
+    let border_width_adj = gtk::Adjustment::new(0.0, 0.0, 50.0, 0.1, 1.0, 0.0);
+    let border_width_row = adw::SpinRow::builder()
+        .title("Grid Border Width")
+        .subtitle("Gap between grid tiles in pixels.")
+        .adjustment(&border_width_adj)
+        .digits(1)
+        .build();
+    library_group.add(&border_width_row);
+
+    let border_color_row = adw::ActionRow::builder().title("Grid Border Color").build();
+    let border_color_dialog = gtk::ColorDialog::builder().build();
+    let border_color_btn = gtk::ColorDialogButton::builder()
+        .dialog(&border_color_dialog)
+        .valign(gtk::Align::Center)
+        .build();
+    border_color_row.add_suffix(&border_color_btn);
+    library_group.add(&border_color_row);
+
     LibraryWidgets {
         library_group,
         preview_full_row,
@@ -86,5 +106,7 @@ pub fn build_library_group(settings_page: &adw::PreferencesPage) -> LibraryWidge
         download_folder_row,
         download_change_btn,
         download_clear_btn,
+        border_width_row,
+        border_color_btn,
     }
 }

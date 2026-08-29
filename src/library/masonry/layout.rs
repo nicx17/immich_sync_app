@@ -62,6 +62,12 @@ impl LayoutConfig {
             gap: GAP,
         }
     }
+
+    /// Override the gap for this config (used for configurable border width).
+    pub(crate) fn with_gap(mut self, gap: f32) -> Self {
+        self.gap = gap;
+        self
+    }
 }
 
 fn aspect(width: u32, height: u32) -> f32 {

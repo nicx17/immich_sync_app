@@ -59,6 +59,7 @@ mod context_menu;
 mod controls;
 mod download;
 mod lightbox;
+pub mod search_filters;
 pub mod search_view;
 mod server_stats_dialog;
 pub mod staging_view;

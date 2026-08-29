@@ -115,6 +115,10 @@ mod imp {
         pub uncheck_icon: OnceCell<gdk4::Paintable>,
         /// True while a drag-out operation is in progress; suppresses click-to-activate.
         pub drag_active: Cell<bool>,
+        /// Configurable gap between grid tiles, in pixels.
+        pub border_gap: Cell<f32>,
+        /// Color painted behind tiles so the gap appears as a border.
+        pub border_color: Cell<Option<gdk4::RGBA>>,
     }
 
     #[glib::object_subclass]
@@ -178,6 +182,25 @@ mod imp {
             };
 
             let viewport = self.snapshot_viewport();
+
+            // Fill the visible area with the border color so gaps between
+            // tiles appear as a coloured border.
+            let gap = self.border_gap.get();
+            if gap > 0.0 {
+                let bc = self
+                    .border_color
+                    .get()
+                    .unwrap_or_else(|| gdk4::RGBA::new(1.0, 1.0, 1.0, 1.0));
+                let canvas_h = self.layout_h.get();
+                let vis_rect = Rect::new(
+                    0.0,
+                    viewport.scroll_y.max(0.0),
+                    canvas_w,
+                    (viewport.bottom - viewport.scroll_y.max(0.0)).min(canvas_h),
+                );
+                snapshot.append_color(&bc, &vis_rect);
+            }
+
             let sctx = self.snapshot_ctx(model, cache);
             let (stats, mut to_load) = self.paint_snapshot_rows(snapshot, &sctx, &rows, &viewport);
             drop(rows);
@@ -191,15 +214,16 @@ mod imp {
 
     impl MasonryCanvas {
         fn cfg(&self) -> LayoutConfig {
+            let gap = self.border_gap.get();
             if self.narrow.get() {
                 let w = self.cached_width.get();
                 if w > 0.0 && w < COMPACT_WIDTH_THRESHOLD {
-                    LayoutConfig::compact()
+                    LayoutConfig::compact().with_gap(gap)
                 } else {
-                    LayoutConfig::narrow()
+                    LayoutConfig::narrow().with_gap(gap)
                 }
             } else {
-                LayoutConfig::wide()
+                LayoutConfig::wide().with_gap(gap)
             }
         }
 

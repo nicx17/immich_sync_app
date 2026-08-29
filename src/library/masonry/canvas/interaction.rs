@@ -55,6 +55,23 @@ impl MasonryCanvas {
         }
     }
 
+    pub fn set_border_gap(&self, gap: f32) {
+        let imp = self.imp();
+        if (imp.border_gap.get() - gap).abs() > f32::EPSILON {
+            imp.border_gap.set(gap);
+            imp.invalidate_layout();
+            self.queue_draw();
+        }
+    }
+
+    pub fn set_border_color(&self, color: gdk4::RGBA) {
+        let imp = self.imp();
+        imp.border_color.set(Some(color));
+        if imp.border_gap.get() > 0.0 {
+            self.queue_draw();
+        }
+    }
+
     pub fn set_activate_handler(&self, f: impl Fn(u32) + 'static) {
         *self.imp().activate_handler.borrow_mut() = Some(Rc::new(f));
     }

@@ -14,6 +14,7 @@ use gtk::prelude::*;
 use libadwaita::prelude::*;
 
 use crate::api_client::MetadataSearchFilters;
+use crate::library::search_filters::*;
 
 /// UI widgets for the dedicated search form.
 ///
@@ -27,35 +28,9 @@ pub struct SearchViewParts {
     pub root: gtk::Revealer,
     pub search_entry: gtk::SearchEntry,
     pub search_mode: gtk::DropDown,
-    // --- Text ---
-    pub filename_row: libadwaita::EntryRow,
-    pub description_row: libadwaita::EntryRow,
-    pub ocr_row: libadwaita::EntryRow,
-    // --- Type & flags ---
-    pub type_row: libadwaita::ComboRow,
-    pub favorite_row: libadwaita::SwitchRow,
-    pub archived_row: libadwaita::SwitchRow,
-    pub motion_row: libadwaita::SwitchRow,
-    pub not_in_album_row: libadwaita::SwitchRow,
-    pub with_deleted_row: libadwaita::SwitchRow,
-    pub visibility_row: libadwaita::ComboRow,
-    pub rating_row: libadwaita::ComboRow,
-    // --- Date range ---
-    pub taken_after_row: libadwaita::EntryRow,
-    pub taken_before_row: libadwaita::EntryRow,
-    pub created_after_row: libadwaita::EntryRow,
-    pub created_before_row: libadwaita::EntryRow,
-    // --- Camera ---
-    pub make_row: libadwaita::EntryRow,
-    pub model_row: libadwaita::EntryRow,
-    pub lens_row: libadwaita::EntryRow,
-    // --- Location ---
-    pub country_row: libadwaita::EntryRow,
-    pub state_row: libadwaita::EntryRow,
-    pub city_row: libadwaita::EntryRow,
-    // --- Action ---
     pub search_button: gtk::Button,
     pub clear_button: gtk::Button,
+    pub filters: FilterWidgets,
 }
 
 fn build_search_bar() -> (gtk::Box, gtk::DropDown, gtk::SearchEntry) {
@@ -137,84 +112,56 @@ fn build_action_row() -> (gtk::Box, gtk::Image, gtk::Button, gtk::Button, gtk::B
 
 /// Assemble all filter groups into a revealer.
 #[allow(clippy::type_complexity)]
-fn build_filter_panel() -> (
-    gtk::Revealer,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::ComboRow,
-    libadwaita::SwitchRow,
-    libadwaita::SwitchRow,
-    libadwaita::SwitchRow,
-    libadwaita::SwitchRow,
-    libadwaita::SwitchRow,
-    libadwaita::ComboRow,
-    libadwaita::ComboRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-) {
-    let revealer = gtk::Revealer::builder()
-        .transition_type(gtk::RevealerTransitionType::SlideDown)
-        .transition_duration(200)
-        .reveal_child(false)
-        .build();
+fn build_filter_panel() -> FilterWidgets {
+    let (text_group, filename_row, description_row, ocr_row) = build_text_group();
+    let (flags_group, type_row, fav, archived, motion, not_album, deleted, vis, rating) =
+        build_flags_group();
+    let (date_group, taken_after, taken_before, created_after, created_before) = build_date_group();
+    let (camera_group, make_row, model_row, lens_row) = build_camera_group();
+    let (loc_group, country, state, city) = build_location_group();
 
     let filter_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(6)
         .margin_top(4)
         .build();
-
-    let (text_group, filename_row, description_row, ocr_row) = build_text_group();
     filter_box.append(&text_group);
-
-    let (flags_group, type_row, fav, archived, motion, not_album, deleted, vis, rating) =
-        build_flags_group();
     filter_box.append(&flags_group);
-
-    let (date_group, taken_after, taken_before, created_after, created_before) = build_date_group();
     filter_box.append(&date_group);
-
-    let (camera_group, make_row, model_row, lens_row) = build_camera_group();
     filter_box.append(&camera_group);
-
-    let (loc_group, country, state, city) = build_location_group();
     filter_box.append(&loc_group);
 
-    revealer.set_child(Some(&filter_box));
+    let revealer = gtk::Revealer::builder()
+        .transition_type(gtk::RevealerTransitionType::SlideDown)
+        .transition_duration(200)
+        .reveal_child(false)
+        .child(&filter_box)
+        .build();
 
-    (
+    FilterWidgets {
         revealer,
         filename_row,
         description_row,
         ocr_row,
         type_row,
-        fav,
-        archived,
-        motion,
-        not_album,
-        deleted,
-        vis,
-        rating,
-        taken_after,
-        taken_before,
-        created_after,
-        created_before,
+        favorite_row: fav,
+        archived_row: archived,
+        motion_row: motion,
+        not_in_album_row: not_album,
+        with_deleted_row: deleted,
+        visibility_row: vis,
+        rating_row: rating,
+        taken_after_row: taken_after,
+        taken_before_row: taken_before,
+        created_after_row: created_after,
+        created_before_row: created_before,
         make_row,
         model_row,
         lens_row,
-        country,
-        state,
-        city,
-    )
+        country_row: country,
+        state_row: state,
+        city_row: city,
+    }
 }
 
 /// Wire the toggle button to show/hide the filters revealer.
@@ -243,13 +190,6 @@ fn connect_filter_toggle(
 /// `content_stack` so the form stays visible while results load into
 /// the grid.
 pub fn build_search_view() -> SearchViewParts {
-    let scrolled = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Automatic)
-        .propagate_natural_height(true)
-        .max_content_height(320)
-        .css_classes(["mimick-search-scroll"])
-        .build();
-
     let inner = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(6)
@@ -265,41 +205,11 @@ pub fn build_search_view() -> SearchViewParts {
     let (action_row, toggle_icon, toggle_button, clear_button, search_button) = build_action_row();
     inner.append(&action_row);
 
-    let (
-        filters_revealer,
-        filename_row,
-        description_row,
-        ocr_row,
-        type_row,
-        favorite_row,
-        archived_row,
-        motion_row,
-        not_in_album_row,
-        with_deleted_row,
-        visibility_row,
-        rating_row,
-        taken_after_row,
-        taken_before_row,
-        created_after_row,
-        created_before_row,
-        make_row,
-        model_row,
-        lens_row,
-        country_row,
-        state_row,
-        city_row,
-    ) = build_filter_panel();
-    inner.append(&filters_revealer);
+    let filters = build_filter_panel();
+    inner.append(&filters.revealer);
 
-    scrolled.set_child(Some(&inner));
-    connect_filter_toggle(&toggle_button, toggle_icon, filters_revealer);
-
-    let root = gtk::Revealer::builder()
-        .transition_type(gtk::RevealerTransitionType::SlideDown)
-        .transition_duration(200)
-        .reveal_child(false)
-        .child(&scrolled)
-        .build();
+    let root = wrap_in_scrolled_revealer(&inner);
+    connect_filter_toggle(&toggle_button, toggle_icon, filters.revealer.clone());
 
     search_mode.connect_selected_notify(clone!(
         #[weak]
@@ -318,180 +228,27 @@ pub fn build_search_view() -> SearchViewParts {
         root,
         search_entry,
         search_mode,
-        filename_row,
-        description_row,
-        ocr_row,
-        type_row,
-        favorite_row,
-        archived_row,
-        motion_row,
-        not_in_album_row,
-        with_deleted_row,
-        visibility_row,
-        rating_row,
-        taken_after_row,
-        taken_before_row,
-        created_after_row,
-        created_before_row,
-        make_row,
-        model_row,
-        lens_row,
-        country_row,
-        state_row,
-        city_row,
         search_button,
         clear_button,
+        filters,
     }
 }
 
-// ---------------------------------------------------------------------------
-// Filter group builders (kept small to stay under cognitive-complexity limit)
-// ---------------------------------------------------------------------------
+fn wrap_in_scrolled_revealer(inner: &gtk::Box) -> gtk::Revealer {
+    let scrolled = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_height(true)
+        .max_content_height(320)
+        .css_classes(["mimick-search-scroll"])
+        .child(inner)
+        .build();
 
-fn build_text_group() -> (
-    libadwaita::PreferencesGroup,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-) {
-    let group = libadwaita::PreferencesGroup::builder()
-        .title("Text")
-        .build();
-    let filename = libadwaita::EntryRow::builder()
-        .title("Filename contains")
-        .build();
-    let desc = libadwaita::EntryRow::builder()
-        .title("Description contains")
-        .build();
-    let ocr = libadwaita::EntryRow::builder()
-        .title("OCR text contains")
-        .build();
-    group.add(&filename);
-    group.add(&desc);
-    group.add(&ocr);
-    (group, filename, desc, ocr)
-}
-
-fn combo_row(title: &str, items: &[&str]) -> libadwaita::ComboRow {
-    libadwaita::ComboRow::builder()
-        .title(title)
-        .model(&gtk::StringList::new(items))
+    gtk::Revealer::builder()
+        .transition_type(gtk::RevealerTransitionType::SlideDown)
+        .transition_duration(200)
+        .reveal_child(false)
+        .child(&scrolled)
         .build()
-}
-
-#[allow(clippy::type_complexity)]
-fn build_flags_group() -> (
-    libadwaita::PreferencesGroup,
-    libadwaita::ComboRow,
-    libadwaita::SwitchRow,
-    libadwaita::SwitchRow,
-    libadwaita::SwitchRow,
-    libadwaita::SwitchRow,
-    libadwaita::SwitchRow,
-    libadwaita::ComboRow,
-    libadwaita::ComboRow,
-) {
-    fn switch(t: &str) -> libadwaita::SwitchRow {
-        libadwaita::SwitchRow::builder().title(t).build()
-    }
-
-    let group = libadwaita::PreferencesGroup::builder()
-        .title("Type and flags")
-        .build();
-    let type_row = combo_row("Asset type", &["Any", "Image only", "Video only"]);
-    let fav = switch("Favourites only");
-    let archived = switch("Archived only");
-    let motion = switch("Motion photos only");
-    let not_album = switch("Not in any album");
-    let deleted = switch("Include deleted");
-    let vis = combo_row(
-        "Visibility",
-        &["Any", "Timeline", "Archive", "Hidden", "Locked"],
-    );
-    let rating = combo_row("Minimum rating", &["Any", "1+", "2+", "3+", "4+", "5"]);
-    group.add(&type_row);
-    group.add(&fav);
-    group.add(&archived);
-    group.add(&motion);
-    group.add(&not_album);
-    group.add(&deleted);
-    group.add(&vis);
-    group.add(&rating);
-    (
-        group, type_row, fav, archived, motion, not_album, deleted, vis, rating,
-    )
-}
-
-fn build_date_group() -> (
-    libadwaita::PreferencesGroup,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-) {
-    let group = libadwaita::PreferencesGroup::builder()
-        .title("Date range")
-        .description("e.g. 2024-01-15")
-        .build();
-    let taken_after = libadwaita::EntryRow::builder().title("Taken after").build();
-    let taken_before = libadwaita::EntryRow::builder()
-        .title("Taken before")
-        .build();
-    let created_after = libadwaita::EntryRow::builder()
-        .title("Created after")
-        .build();
-    let created_before = libadwaita::EntryRow::builder()
-        .title("Created before")
-        .build();
-    group.add(&taken_after);
-    group.add(&taken_before);
-    group.add(&created_after);
-    group.add(&created_before);
-    (
-        group,
-        taken_after,
-        taken_before,
-        created_after,
-        created_before,
-    )
-}
-
-fn build_camera_group() -> (
-    libadwaita::PreferencesGroup,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-) {
-    let group = libadwaita::PreferencesGroup::builder()
-        .title("Camera")
-        .build();
-    let make = libadwaita::EntryRow::builder().title("Make").build();
-    let model = libadwaita::EntryRow::builder().title("Model").build();
-    let lens = libadwaita::EntryRow::builder().title("Lens model").build();
-    group.add(&make);
-    group.add(&model);
-    group.add(&lens);
-    (group, make, model, lens)
-}
-
-fn build_location_group() -> (
-    libadwaita::PreferencesGroup,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-    libadwaita::EntryRow,
-) {
-    let group = libadwaita::PreferencesGroup::builder()
-        .title("Location")
-        .build();
-    let country = libadwaita::EntryRow::builder().title("Country").build();
-    let state = libadwaita::EntryRow::builder()
-        .title("State / region")
-        .build();
-    let city = libadwaita::EntryRow::builder().title("City").build();
-    group.add(&country);
-    group.add(&state);
-    group.add(&city);
-    (group, country, state, city)
 }
 
 // ---------------------------------------------------------------------------
@@ -501,37 +258,37 @@ fn build_location_group() -> (
 /// Collect all filter widget values into a `MetadataSearchFilters`.
 pub fn collect_filters(view: &SearchViewParts) -> MetadataSearchFilters {
     MetadataSearchFilters {
-        original_file_name: opt_string(&view.filename_row.text()),
-        description: opt_string(&view.description_row.text()),
-        ocr: opt_string(&view.ocr_row.text()),
-        asset_type: match view.type_row.selected() {
+        original_file_name: opt_string(&view.filters.filename_row.text()),
+        description: opt_string(&view.filters.description_row.text()),
+        ocr: opt_string(&view.filters.ocr_row.text()),
+        asset_type: match view.filters.type_row.selected() {
             1 => Some("IMAGE".into()),
             2 => Some("VIDEO".into()),
             _ => None,
         },
-        taken_after: normalise_iso_date(&view.taken_after_row.text()),
-        taken_before: normalise_iso_date(&view.taken_before_row.text()),
-        created_after: normalise_iso_date(&view.created_after_row.text()),
-        created_before: normalise_iso_date(&view.created_before_row.text()),
-        make: opt_string(&view.make_row.text()),
-        model: opt_string(&view.model_row.text()),
-        lens_model: opt_string(&view.lens_row.text()),
-        country: opt_string(&view.country_row.text()),
-        state: opt_string(&view.state_row.text()),
-        city: opt_string(&view.city_row.text()),
-        is_favorite: opt_true(view.favorite_row.is_active()),
-        is_archived: opt_true(view.archived_row.is_active()),
-        is_motion: opt_true(view.motion_row.is_active()),
-        is_not_in_album: opt_true(view.not_in_album_row.is_active()),
-        with_deleted: opt_true(view.with_deleted_row.is_active()),
-        visibility: match view.visibility_row.selected() {
+        taken_after: normalise_iso_date(&view.filters.taken_after_row.text()),
+        taken_before: normalise_iso_date(&view.filters.taken_before_row.text()),
+        created_after: normalise_iso_date(&view.filters.created_after_row.text()),
+        created_before: normalise_iso_date(&view.filters.created_before_row.text()),
+        make: opt_string(&view.filters.make_row.text()),
+        model: opt_string(&view.filters.model_row.text()),
+        lens_model: opt_string(&view.filters.lens_row.text()),
+        country: opt_string(&view.filters.country_row.text()),
+        state: opt_string(&view.filters.state_row.text()),
+        city: opt_string(&view.filters.city_row.text()),
+        is_favorite: opt_true(view.filters.favorite_row.is_active()),
+        is_archived: opt_true(view.filters.archived_row.is_active()),
+        is_motion: opt_true(view.filters.motion_row.is_active()),
+        is_not_in_album: opt_true(view.filters.not_in_album_row.is_active()),
+        with_deleted: opt_true(view.filters.with_deleted_row.is_active()),
+        visibility: match view.filters.visibility_row.selected() {
             1 => Some("timeline".into()),
             2 => Some("archive".into()),
             3 => Some("hidden".into()),
             4 => Some("locked".into()),
             _ => None,
         },
-        rating: match view.rating_row.selected() {
+        rating: match view.filters.rating_row.selected() {
             1 => Some(1),
             2 => Some(2),
             3 => Some(3),
@@ -546,27 +303,27 @@ pub fn collect_filters(view: &SearchViewParts) -> MetadataSearchFilters {
 /// Reset all filter widgets to their default (empty) state.
 pub fn clear_all_filters(view: &SearchViewParts) {
     view.search_entry.set_text("");
-    view.filename_row.set_text("");
-    view.description_row.set_text("");
-    view.ocr_row.set_text("");
-    view.type_row.set_selected(0);
-    view.favorite_row.set_active(false);
-    view.archived_row.set_active(false);
-    view.motion_row.set_active(false);
-    view.not_in_album_row.set_active(false);
-    view.with_deleted_row.set_active(false);
-    view.visibility_row.set_selected(0);
-    view.rating_row.set_selected(0);
-    view.taken_after_row.set_text("");
-    view.taken_before_row.set_text("");
-    view.created_after_row.set_text("");
-    view.created_before_row.set_text("");
-    view.make_row.set_text("");
-    view.model_row.set_text("");
-    view.lens_row.set_text("");
-    view.country_row.set_text("");
-    view.state_row.set_text("");
-    view.city_row.set_text("");
+    view.filters.filename_row.set_text("");
+    view.filters.description_row.set_text("");
+    view.filters.ocr_row.set_text("");
+    view.filters.type_row.set_selected(0);
+    view.filters.favorite_row.set_active(false);
+    view.filters.archived_row.set_active(false);
+    view.filters.motion_row.set_active(false);
+    view.filters.not_in_album_row.set_active(false);
+    view.filters.with_deleted_row.set_active(false);
+    view.filters.visibility_row.set_selected(0);
+    view.filters.rating_row.set_selected(0);
+    view.filters.taken_after_row.set_text("");
+    view.filters.taken_before_row.set_text("");
+    view.filters.created_after_row.set_text("");
+    view.filters.created_before_row.set_text("");
+    view.filters.make_row.set_text("");
+    view.filters.model_row.set_text("");
+    view.filters.lens_row.set_text("");
+    view.filters.country_row.set_text("");
+    view.filters.state_row.set_text("");
+    view.filters.city_row.set_text("");
 }
 
 /// Convert a non-empty trimmed string to `Some`, otherwise `None`.

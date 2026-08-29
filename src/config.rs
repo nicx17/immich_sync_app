@@ -287,6 +287,12 @@ pub struct ConfigData {
     /// rules can override this global default.
     #[serde(default = "default_true")]
     pub upload_xmp_sidecars: bool,
+    /// Border width between grid tiles in pixels (0.0 = edge-to-edge, max 10.0).
+    #[serde(default)]
+    pub grid_border_width: f32,
+    /// Border color as a CSS hex string (e.g. "#ffffff"). Defaults to white.
+    #[serde(default = "default_grid_border_color")]
+    pub grid_border_color: String,
 }
 
 impl Default for ConfigData {
@@ -316,6 +322,8 @@ impl Default for ConfigData {
             show_unnamed_faces: true,
             show_hidden_faces: false,
             upload_xmp_sidecars: true,
+            grid_border_width: 0.0,
+            grid_border_color: default_grid_border_color(),
         }
     }
 }
@@ -337,6 +345,10 @@ fn default_upload_concurrency() -> u8 {
 /// Default total on-disk cache cap in MB.
 fn default_cache_disk_cap_mb() -> u32 {
     2000
+}
+
+fn default_grid_border_color() -> String {
+    "#ffffff".to_string()
 }
 
 /// Persistent config container wrapping loaded schema and file source info.
