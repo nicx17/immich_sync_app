@@ -7,8 +7,10 @@
 const FALLBACK_W: f32 = 4.0;
 const FALLBACK_H: f32 = 3.0;
 
-pub(crate) const MIN_ROW_HEIGHT_NARROW: f32 = 120.0;
-pub(crate) const MAX_ROW_HEIGHT_NARROW: f32 = 240.0;
+pub(crate) const MIN_ROW_HEIGHT_COMPACT: f32 = 48.0;
+pub(crate) const MAX_ROW_HEIGHT_COMPACT: f32 = 80.0;
+pub(crate) const MIN_ROW_HEIGHT_NARROW: f32 = 60.0;
+pub(crate) const MAX_ROW_HEIGHT_NARROW: f32 = 120.0;
 pub(crate) const MIN_ROW_HEIGHT_WIDE: f32 = 180.0;
 pub(crate) const MAX_ROW_HEIGHT_WIDE: f32 = 360.0;
 
@@ -36,6 +38,15 @@ pub struct LayoutConfig {
 }
 
 impl LayoutConfig {
+    /// Compact: very small tiles for sub-400px widths (phone screens).
+    pub(crate) fn compact() -> Self {
+        Self {
+            min_row_height: MIN_ROW_HEIGHT_COMPACT,
+            max_row_height: MAX_ROW_HEIGHT_COMPACT,
+            gap: GAP,
+        }
+    }
+
     pub(crate) fn narrow() -> Self {
         Self {
             min_row_height: MIN_ROW_HEIGHT_NARROW,
@@ -50,6 +61,12 @@ impl LayoutConfig {
             max_row_height: MAX_ROW_HEIGHT_WIDE,
             gap: GAP,
         }
+    }
+
+    /// Override the gap for this config (used for configurable border width).
+    pub(crate) fn with_gap(mut self, gap: f32) -> Self {
+        self.gap = gap;
+        self
     }
 }
 
@@ -71,21 +88,34 @@ pub(crate) fn pack_rows(
         return (Vec::new(), 0.0);
     }
 
+    // When a border gap is configured, inset the content area so the same
+    // gap appears between tiles AND between tiles and the window edges.
+    let edge = cfg.gap;
+    let inner_w = (canvas_w - 2.0 * edge).max(1.0);
+
     let mut rows: Vec<LaidRow> = Vec::new();
-    let mut y_cursor = 0.0_f32;
+    let mut y_cursor = edge;
     let mut i = 0_usize;
 
     while i < dims.len() {
-        let (indices, next_i) = collect_row_indices(dims, i, canvas_w, cfg);
+        let (indices, next_i) = collect_row_indices(dims, i, inner_w, cfg);
         i = next_i;
 
         let last_row = i >= dims.len();
-        let row = build_row(dims, indices, canvas_w, y_cursor, last_row, cfg);
+        let mut row = build_row(dims, indices, inner_w, y_cursor, last_row, cfg);
+
+        // Offset each item's x position by the edge inset.
+        if edge > 0.0 {
+            for item in &mut row.items {
+                item.x += edge;
+            }
+        }
+
         y_cursor += row.h + cfg.gap;
         rows.push(row);
     }
 
-    let total_height = (y_cursor - cfg.gap).max(0.0);
+    let total_height = (y_cursor - cfg.gap + edge).max(0.0);
     (rows, total_height)
 }
 
@@ -325,8 +355,8 @@ mod tests {
     #[test]
     fn gap_increases_total_layout_height() {
         let dims = &[(100, 100), (100, 100), (100, 100), (100, 100)];
-        let (_, h0) = pack_rows(dims, 200.0, LayoutConfig { gap: 0.0, ..cfg() });
-        let (_, h1) = pack_rows(dims, 200.0, LayoutConfig { gap: 10.0, ..cfg() });
+        let (_, h0) = pack_rows(dims, 1200.0, LayoutConfig { gap: 0.0, ..cfg() });
+        let (_, h1) = pack_rows(dims, 1200.0, LayoutConfig { gap: 10.0, ..cfg() });
         assert!(h1 > h0);
     }
 

@@ -38,6 +38,7 @@ pub struct AlbumsViewParts {
     cached_albums: Rc<RefCell<Vec<LibraryAlbum>>>,
     cached_click: Rc<RefCell<Option<AlbumClick>>>,
     pub search_query: Rc<RefCell<String>>,
+    pub filter_entry: gtk::SearchEntry,
     pub sort_mode: Rc<Cell<AlbumsSort>>,
     cached_ctx: Rc<RefCell<Option<Arc<AppContext>>>>,
 }
@@ -54,7 +55,7 @@ pub fn build_albums_view() -> AlbumsViewParts {
         .build();
 
     let header_row = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
+        .orientation(gtk::Orientation::Vertical)
         .spacing(8)
         .build();
     let title = gtk::Label::builder()
@@ -67,8 +68,19 @@ pub fn build_albums_view() -> AlbumsViewParts {
         .label("Create album")
         .css_classes(vec!["suggested-action".to_string()])
         .build();
+    let filter_entry = gtk::SearchEntry::builder()
+        .placeholder_text("Filter albums")
+        .hexpand(true)
+        .max_width_chars(20)
+        .build();
+    let filter_row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .build();
     header_row.append(&title);
-    header_row.append(&create_button);
+    filter_row.append(&filter_entry);
+    filter_row.append(&create_button);
+    header_row.append(&filter_row);
     outer.append(&header_row);
 
     let (recent_section, recent_grid) = build_section("Recent");
@@ -97,6 +109,7 @@ pub fn build_albums_view() -> AlbumsViewParts {
         cached_albums: Rc::new(RefCell::new(Vec::new())),
         cached_click: Rc::new(RefCell::new(None)),
         search_query: Rc::new(RefCell::new(String::new())),
+        filter_entry,
         sort_mode: Rc::new(Cell::new(AlbumsSort::default())),
         cached_ctx: Rc::new(RefCell::new(None)),
     }

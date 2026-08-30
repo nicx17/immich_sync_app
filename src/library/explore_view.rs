@@ -43,6 +43,7 @@ pub struct ExploreViewParts {
     cached_places: Rc<RefCell<Vec<PlaceItem>>>,
     cached_places_click: Rc<RefCell<Option<ExploreClick>>>,
     pub search_query: Rc<RefCell<String>>,
+    pub filter_entry: gtk::SearchEntry,
     cached_ctx: Rc<RefCell<Option<Arc<AppContext>>>>,
 }
 
@@ -61,6 +62,13 @@ pub fn build_explore_view() -> ExploreViewParts {
     let (recents_section, recents_grid, recents_spinner) = build_tile_section("Recently Added");
     let (places_section, places_grid, places_spinner) = build_tile_section("Places");
     let (things_section, things_grid, things_spinner) = build_tile_section("Things");
+
+    let filter_entry = gtk::SearchEntry::builder()
+        .placeholder_text("Filter people and places")
+        .hexpand(true)
+        .max_width_chars(20)
+        .build();
+    outer.append(&filter_entry);
 
     outer.append(&people_section);
     outer.append(&places_section);
@@ -95,6 +103,7 @@ pub fn build_explore_view() -> ExploreViewParts {
         cached_places: Rc::new(RefCell::new(Vec::new())),
         cached_places_click: Rc::new(RefCell::new(None)),
         search_query: Rc::new(RefCell::new(String::new())),
+        filter_entry,
         cached_ctx: Rc::new(RefCell::new(None)),
     }
 }
@@ -233,7 +242,40 @@ pub fn set_people_search(parts: &ExploreViewParts, query: &str) {
     let Some(ctx) = parts.cached_ctx.borrow().clone() else {
         return;
     };
-    render_people(parts, ctx);
+    render_people(parts, ctx.clone());
+    render_places_filtered(parts, ctx);
+}
+
+/// Re-render the places section applying the current search query.
+fn render_places_filtered(parts: &ExploreViewParts, ctx: Arc<AppContext>) {
+    while let Some(child) = parts.places_grid.first_child() {
+        parts.places_grid.remove(&child);
+    }
+    let places = parts.cached_places.borrow();
+    let query = parts.search_query.borrow().to_ascii_lowercase();
+    let filtered: Vec<&PlaceItem> = if query.is_empty() {
+        places.iter().collect()
+    } else {
+        places
+            .iter()
+            .filter(|p| p.city.to_ascii_lowercase().contains(&query))
+            .collect()
+    };
+    parts.places_section.set_visible(!filtered.is_empty());
+    let on_click = match parts.cached_places_click.borrow().clone() {
+        Some(cb) => cb,
+        None => return,
+    };
+    for place in filtered.into_iter().take(INITIAL_TILE_COUNT) {
+        let tile = explore_tile(
+            ctx.clone(),
+            "place",
+            &place.city,
+            &place.asset_id,
+            on_click.clone(),
+        );
+        parts.places_grid.append(&tile);
+    }
 }
 
 fn render_people(parts: &ExploreViewParts, ctx: Arc<AppContext>) {
@@ -367,6 +409,7 @@ fn clone_parts_handles(parts: &ExploreViewParts) -> ExploreViewParts {
         cached_places: parts.cached_places.clone(),
         cached_places_click: parts.cached_places_click.clone(),
         search_query: parts.search_query.clone(),
+        filter_entry: parts.filter_entry.clone(),
         cached_ctx: parts.cached_ctx.clone(),
     }
 }

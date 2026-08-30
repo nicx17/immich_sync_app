@@ -142,9 +142,18 @@ box.mimick-version-badge {
     background-color: @view_bg_color;
 }
 
+/* Hide the horizontal scrollbar on the search form.  hscrollbar_policy
+   is Automatic (not Never) so the scrolled window's minimum width is
+   decoupled from the wide AdwEntryRow children (~434px).  The scrollbar
+   itself is never needed visually. */
+scrolledwindow.mimick-search-scroll scrollbar.horizontal {
+    min-height: 0;
+    opacity: 0;
+}
+
 picture.mimick-grid-thumb {
-    min-width: 114px;
-    min-height: 85px;
+    min-width: 80px;
+    min-height: 60px;
 }
 
 window.mimick-wide picture.mimick-grid-thumb {
@@ -170,7 +179,7 @@ box.mimick-transfer-shell.active {
 }
 
 progressbar.mimick-transfer-progress {
-    min-width: 180px;
+    min-width: 100px;
     min-height: 18px;
 }
 

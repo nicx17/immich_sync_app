@@ -137,27 +137,18 @@ pub(super) fn connect_controls(ui: Rc<LibraryWindowUi>) {
                     let model = gtk::StringList::new(&["Newest", "Name", "Most assets"]);
                     ui.sort_mode.set_model(Some(&model));
                     ui.sort_mode.set_selected(0);
-                    // search_entry is shared across views; clear stale text from
-                    // the previous context before applying it as the album filter.
-                    ui.search_entry.set_placeholder_text(Some("Filter albums"));
-                    ui.search_entry.set_text("");
                     super::albums_view::set_search_filter(&ui.albums, "");
                 }
                 Some("explore") => {
                     let model = gtk::StringList::new(&["Default"]);
                     ui.sort_mode.set_model(Some(&model));
                     ui.sort_mode.set_selected(0);
-                    ui.search_entry.set_placeholder_text(Some("Filter people"));
-                    ui.search_entry.set_text("");
                     super::explore_view::set_people_search(&ui.explore, "");
                 }
                 _ => {
                     let model = gtk::StringList::new(&["Newest", "Filename", "File Type"]);
                     ui.sort_mode.set_model(Some(&model));
                     ui.sort_mode.set_selected(0);
-                    ui.search_entry
-                        .set_placeholder_text(Some("Search filenames"));
-                    // Clear list-view filters when leaving Albums/Explore.
                     super::albums_view::set_search_filter(&ui.albums, "");
                     super::explore_view::set_people_search(&ui.explore, "");
                 }
@@ -192,9 +183,7 @@ pub(super) fn connect_controls(ui: Rc<LibraryWindowUi>) {
                     }
                 }
             };
-            // Searching while switching sources would require thread-safe
-            // re-routing of the search field; clear it on source change.
-            ui.search_entry.set_text("");
+
             let request = ui.ctx.library_state.lock().navigate_to(source);
             apply_timeline_ui_state(&ui, &request.1);
             load_source_page(ui.clone(), request, false);
@@ -217,7 +206,6 @@ pub(super) fn connect_controls(ui: Rc<LibraryWindowUi>) {
             if matches!(current, LibrarySource::Timeline) == toggle.is_active() {
                 return;
             }
-            ui.search_entry.set_text("");
             let next_source = if toggle.is_active() {
                 LibrarySource::Timeline
             } else {
@@ -227,94 +215,6 @@ pub(super) fn connect_controls(ui: Rc<LibraryWindowUi>) {
             apply_timeline_ui_state(&ui, &request.1);
             load_source_page(ui.clone(), request, false);
             update_back_button(&ui);
-        }
-    ));
-
-    ui.search_entry.connect_activate(clone!(
-        #[strong]
-        ui,
-        move |entry| {
-            let query = entry.text().trim().to_string();
-            // On Albums and Explore pages the search entry filters the
-            // in-memory list rather than hitting the asset-search endpoints.
-            let view = ui.content_stack.visible_child_name();
-            match view.as_deref() {
-                Some("albums") => {
-                    super::albums_view::set_search_filter(&ui.albums, &query);
-                    return;
-                }
-                Some("explore") => {
-                    super::explore_view::set_people_search(&ui.explore, &query);
-                    return;
-                }
-                _ => {}
-            }
-            if query.is_empty() {
-                return;
-            }
-
-            let source = match ui.source_mode.selected() {
-                1 => LibrarySource::LocalSearch { query },
-                2 => LibrarySource::UnifiedSearch { query },
-                _ => match ui.search_mode.selected() {
-                    1 => LibrarySource::SmartSearch { query },
-                    2 => LibrarySource::OcrSearch { query },
-                    _ => LibrarySource::MetadataSearch { query },
-                },
-            };
-            let request = ui.ctx.library_state.lock().navigate_to(source);
-            apply_timeline_ui_state(&ui, &request.1);
-            load_source_page(ui.clone(), request, false);
-            update_back_button(&ui);
-        }
-    ));
-
-    // Live-filter list views as the user types, without round-tripping the server.
-    ui.search_entry.connect_search_changed(clone!(
-        #[strong]
-        ui,
-        move |entry| {
-            let view = ui.content_stack.visible_child_name();
-            let query = entry.text().to_string();
-            match view.as_deref() {
-                Some("albums") => {
-                    super::albums_view::set_search_filter(&ui.albums, &query);
-                }
-                Some("explore") => {
-                    super::explore_view::set_people_search(&ui.explore, &query);
-                }
-                _ => {}
-            }
-        }
-    ));
-
-    ui.search_mode.connect_selected_notify(clone!(
-        #[strong]
-        ui,
-        move |dropdown| {
-            let placeholder = match dropdown.selected() {
-                1 => "Describe what you're looking for\u{2026}",
-                2 => "Find words shown inside images",
-                _ => "Search filenames",
-            };
-            ui.search_entry.set_placeholder_text(Some(placeholder));
-        }
-    ));
-
-    ui.search_entry.connect_stop_search(clone!(
-        #[strong]
-        ui,
-        move |entry| {
-            entry.set_text("");
-            let request = ui
-                .ctx
-                .library_state
-                .lock()
-                .clear_search_restore_previous_source();
-            if let Some(request) = request {
-                apply_timeline_ui_state(&ui, &request.1);
-                load_source_page(ui.clone(), request, false);
-            }
         }
     ));
 
@@ -390,19 +290,24 @@ pub(super) fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
             };
             let key = row.tooltip_text().unwrap_or_default();
             ui.sidebar.albums_list.unselect_all();
+            let is_search = key.as_str() == "search";
+            // Show/hide the search form revealer.
+            ui.search_view.root.set_reveal_child(is_search);
             match key.as_str() {
                 "photos" => sidebar_dispatch(ui.clone(), LibrarySource::Timeline),
+                "search" => {
+                    // Show the empty state so the grid area isn't blank.
+                    // Once the user submits a search, results replace this.
+                    ui.content_stack.set_visible_child_name("empty");
+                    // Focus the search entry for immediate typing.
+                    ui.search_view.search_entry.grab_focus();
+                }
                 "explore" => sidebar_dispatch(ui.clone(), LibrarySource::Explore),
                 "albums" => {
                     ui.album_link_row.set_visible(false);
                     if let Some(parent) = ui.album_link_row.parent() {
                         parent.set_visible(false);
                     }
-                    // Skip the refetch when the grid is already populated:
-                    // revisits should be instant. The sidebar/grid are kept
-                    // fresh by `load_albums` (mutations, F5) on their own
-                    // schedule. Force refresh still works through the
-                    // window-level refresh action.
                     if ui.albums.populated.get() {
                         ui.content_stack.set_visible_child_name("albums");
                     } else {
@@ -433,6 +338,7 @@ pub(super) fn connect_sidebar_handlers(ui: Rc<LibraryWindowUi>) {
             let id = parts.next().unwrap_or_default().to_string();
             let name = parts.next().unwrap_or("Album").to_string();
             ui.sidebar.fixed_list.unselect_all();
+            ui.search_view.root.set_reveal_child(false);
             sidebar_dispatch(ui.clone(), LibrarySource::Album { id, name });
             auto_hide_sidebar(&ui);
         }
@@ -453,7 +359,6 @@ pub(super) fn update_back_button(ui: &Rc<LibraryWindowUi>) {
 /// Pop the navigation history and switch to the previous source. Returns
 /// true if a back-step was taken, false when the history was empty.
 pub(super) fn navigate_back(ui: Rc<LibraryWindowUi>) -> bool {
-    ui.search_entry.set_text("");
     let request = ui.ctx.library_state.lock().navigate_back();
     if let Some(request) = request {
         apply_timeline_ui_state(&ui, &request.1);

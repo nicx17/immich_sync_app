@@ -355,7 +355,6 @@ pub fn build_settings_window_with_parent(
         }
     ));
 
-    // --- LIBRARY GROUP ---
     let library::LibraryWidgets {
         library_group,
         preview_full_row,
@@ -366,6 +365,8 @@ pub fn build_settings_window_with_parent(
         download_folder_row,
         download_change_btn,
         download_clear_btn,
+        border_width_row,
+        border_color_btn,
     } = library::build_library_group(&settings_page);
 
     let ctx_for_library = ctx.clone();
@@ -564,6 +565,10 @@ pub fn build_settings_window_with_parent(
         background_sync_row,
         #[weak]
         xmp_sidecar_row,
+        #[weak]
+        border_width_row,
+        #[weak]
+        border_color_btn,
         #[strong]
         tracked_rows,
         #[strong]
@@ -650,6 +655,8 @@ pub fn build_settings_window_with_parent(
             let quiet_hours_end = quiet_hours_enabled.then(|| quiet_end_row.value() as u8);
             let background_sync_enabled = background_sync_row.is_active();
             let upload_xmp_sidecars = xmp_sidecar_row.is_active();
+            let grid_border_width = border_width_row.value() as f32;
+            let grid_border_color = border_color_btn.rgba().to_string();
             let catchup_mode = match catchup_row.selected() {
                 1 => StartupCatchupMode::RecentOnly,
                 2 => StartupCatchupMode::NewFilesOnly,
@@ -780,6 +787,8 @@ pub fn build_settings_window_with_parent(
                         new_config.data.quiet_hours_start = quiet_hours_start;
                         new_config.data.quiet_hours_end = quiet_hours_end;
                         new_config.data.upload_xmp_sidecars = upload_xmp_sidecars;
+                        new_config.data.grid_border_width = grid_border_width;
+                        new_config.data.grid_border_color = grid_border_color.clone();
 
                         if include_connectivity
                             && !api_key.is_empty()
@@ -1159,6 +1168,10 @@ pub fn build_settings_window_with_parent(
     }
     concurrency_row.set_value(config.data.upload_concurrency as f64);
     xmp_sidecar_row.set_active(config.data.upload_xmp_sidecars);
+    border_width_row.set_value(config.data.grid_border_width as f64);
+    if let Ok(color) = config.data.grid_border_color.parse::<gdk4::RGBA>() {
+        border_color_btn.set_rgba(&color);
+    }
     let qh_enabled = config.data.quiet_hours_start.is_some();
     quiet_hours_row.set_active(qh_enabled);
     quiet_start_row.set_value(config.data.quiet_hours_start.unwrap_or(22) as f64);
@@ -1289,6 +1302,22 @@ pub fn build_settings_window_with_parent(
     ));
 
     background_sync_row.connect_active_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
+    border_width_row.connect_value_notify(clone!(
+        #[strong]
+        auto_apply_settings,
+        move |_| {
+            (auto_apply_settings)();
+        }
+    ));
+
+    border_color_btn.connect_rgba_notify(clone!(
         #[strong]
         auto_apply_settings,
         move |_| {
