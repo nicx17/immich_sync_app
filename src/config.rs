@@ -75,8 +75,8 @@ impl FolderRules {
         if !normalized.is_empty() {
             let ext = path
                 .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.to_ascii_lowercase());
+                .and_then(std::ffi::OsStr::to_str)
+                .map(str::to_ascii_lowercase);
             if ext
                 .as_deref()
                 .is_none_or(|ext| !normalized.iter().any(|allowed| allowed == ext))
@@ -287,6 +287,12 @@ pub struct ConfigData {
     /// rules can override this global default.
     #[serde(default = "default_true")]
     pub upload_xmp_sidecars: bool,
+    /// Border width between grid tiles in pixels (0.0 = edge-to-edge, max 10.0).
+    #[serde(default)]
+    pub grid_border_width: f32,
+    /// Border color as a CSS hex string (e.g. "#ffffff"). Defaults to white.
+    #[serde(default = "default_grid_border_color")]
+    pub grid_border_color: String,
 }
 
 impl Default for ConfigData {
@@ -316,6 +322,8 @@ impl Default for ConfigData {
             show_unnamed_faces: true,
             show_hidden_faces: false,
             upload_xmp_sidecars: true,
+            grid_border_width: 0.0,
+            grid_border_color: default_grid_border_color(),
         }
     }
 }
@@ -337,6 +345,10 @@ fn default_upload_concurrency() -> u8 {
 /// Default total on-disk cache cap in MB.
 fn default_cache_disk_cap_mb() -> u32 {
     2000
+}
+
+fn default_grid_border_color() -> String {
+    "#ffffff".to_string()
 }
 
 /// Persistent config container wrapping loaded schema and file source info.
@@ -373,9 +385,8 @@ impl Config {
                     self.data = data;
                     log::info!("Config loaded from: {}", self.config_file.display());
                     return true;
-                } else {
-                    log::warn!("Config parse failed: {}", self.config_file.display());
                 }
+                log::warn!("Config parse failed: {}", self.config_file.display());
             }
         } else {
             log::info!(
@@ -424,12 +435,12 @@ impl Config {
                 let account = crate::profile::keyring_account();
                 let attributes: Vec<(&str, &str)> =
                     vec![("service", "mimick"), ("account", account.as_str())];
-                let items = keyring.search_items(&attributes).await?;
+                let items = keyring.search_items(&attributes).await.map_err(Box::new)?;
                 if let Some(item) = items.first() {
-                    let secret = item.secret().await?;
+                    let secret = item.secret().await.map_err(Box::new)?;
                     let key = String::from_utf8_lossy(&secret).trim().to_string();
                     if !key.is_empty() {
-                        return Ok::<Option<String>, oo7::Error>(Some(key));
+                        return Ok::<Option<String>, Box<oo7::Error>>(Some(key));
                     }
                 }
                 Ok(None)
@@ -440,6 +451,11 @@ impl Config {
             Ok(key) => {
                 if key.is_some() {
                     log::debug!("API key retrieved via oo7 keyring.");
+                } else {
+                    log::warn!(
+                        "No API key found in keyring. \
+                         User must configure it in Settings."
+                    );
                 }
                 key
             }
@@ -473,8 +489,9 @@ impl Config {
                 };
                 keyring
                     .create_item(&label, &attributes, secret.as_bytes(), true)
-                    .await?;
-                Ok::<(), oo7::Error>(())
+                    .await
+                    .map_err(Box::new)?;
+                Ok::<(), Box<oo7::Error>>(())
             })
         });
 
@@ -508,7 +525,7 @@ impl Config {
 /// D-Bus (native). If the portal backend fails -- common on Hyprland,
 /// Sway, XFCE, and other non-GNOME/KDE desktops -- explicitly attempt
 /// the D-Bus Secret Service as a fallback before returning an error.
-async fn keyring_with_dbus_fallback() -> Result<oo7::Keyring, oo7::Error> {
+async fn keyring_with_dbus_fallback() -> Result<oo7::Keyring, Box<oo7::Error>> {
     match oo7::Keyring::new().await {
         Ok(keyring) => Ok(keyring),
         Err(oo7::Error::File(ref file_err)) => {
@@ -518,11 +535,16 @@ async fn keyring_with_dbus_fallback() -> Result<oo7::Keyring, oo7::Error> {
                 "oo7 portal backend unavailable ({}), trying D-Bus Secret Service fallback",
                 file_err
             );
-            let service = oo7::dbus::Service::new().await?;
-            let collection = service.default_collection().await?;
+            let service = oo7::dbus::Service::new()
+                .await
+                .map_err(|e| Box::new(oo7::Error::from(e)))?;
+            let collection = service
+                .default_collection()
+                .await
+                .map_err(|e| Box::new(oo7::Error::from(e)))?;
             Ok(oo7::Keyring::DBus(collection))
         }
-        Err(e) => Err(e),
+        Err(e) => Err(Box::new(e)),
     }
 }
 

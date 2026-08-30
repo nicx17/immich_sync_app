@@ -55,6 +55,23 @@ impl MasonryCanvas {
         }
     }
 
+    pub fn set_border_gap(&self, gap: f32) {
+        let imp = self.imp();
+        if (imp.border_gap.get() - gap).abs() > f32::EPSILON {
+            imp.border_gap.set(gap);
+            imp.invalidate_layout();
+            self.queue_draw();
+        }
+    }
+
+    pub fn set_border_color(&self, color: gdk4::RGBA) {
+        let imp = self.imp();
+        imp.border_color.set(Some(color));
+        if imp.border_gap.get() > 0.0 {
+            self.queue_draw();
+        }
+    }
+
     pub fn set_activate_handler(&self, f: impl Fn(u32) + 'static) {
         *self.imp().activate_handler.borrow_mut() = Some(Rc::new(f));
     }
@@ -388,7 +405,7 @@ fn export_cache_path(remote_id: &str, filename: &str) -> Option<std::path::PathB
 fn try_link_from_preview(remote_id: &str, filename: &str, export_path: &std::path::Path) -> bool {
     let ext = std::path::Path::new(filename)
         .extension()
-        .and_then(|e| e.to_str())
+        .and_then(std::ffi::OsStr::to_str)
         .filter(|e| !e.is_empty())
         .unwrap_or("bin");
     let preview_dir = match crate::profile::cache_dir() {

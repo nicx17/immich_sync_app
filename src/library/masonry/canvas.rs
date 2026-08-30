@@ -1,13 +1,8 @@
 //! Justified-row masonry layout for the photos grid.
 
-use std::cell::{Cell, OnceCell, RefCell};
-use std::collections::HashSet;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use gtk::glib;
-use gtk::graphene::{Rect, Size};
-use gtk::gsk::RoundedRect;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use libadwaita::prelude::*;
@@ -35,7 +30,24 @@ use super::quality::{bucket_for_row_height, fallback_bucket};
 mod interaction;
 
 mod imp {
-    use super::*;
+    use std::cell::{Cell, OnceCell, RefCell};
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    use gtk::glib;
+    use gtk::graphene::{Rect, Size};
+    use gtk::gsk::RoundedRect;
+    use gtk::prelude::*;
+    use gtk::subclass::prelude::*;
+
+    use super::{
+        ActivateHandler, AssetContextMenuHandler, AssetObject, CORNER_RADIUS, GridQuality,
+        LaidItem, LaidRow, LayoutConfig, LibraryAssetModel, SelectModeChanger, ThumbnailCache,
+        ThumbnailSize, VIEWPORTS_AHEAD, VIEWPORTS_BEHIND, accent_bg_color, bucket_for_asset,
+        bucket_for_row_height, cached_texture, collect_dims, finish_masonry_load,
+        first_row_at_or_after, load_masonry_asset, load_target_for, pack_rows, placeholder_color,
+        resolve_symbolic_icon, resolve_video_icon,
+    };
 
     pub(super) enum PaintResult {
         Hit,
@@ -103,11 +115,15 @@ mod imp {
         pub uncheck_icon: OnceCell<gdk4::Paintable>,
         /// True while a drag-out operation is in progress; suppresses click-to-activate.
         pub drag_active: Cell<bool>,
+        /// Configurable gap between grid tiles, in pixels.
+        pub border_gap: Cell<f32>,
+        /// Color painted behind tiles so the gap appears as a border.
+        pub border_color: Cell<Option<gdk4::RGBA>>,
     }
 
     #[glib::object_subclass]
     impl ObjectSubclass for MasonryCanvas {
-        const NAME: &'static str = "MimickMasonryCanvas";
+        const NAME: &str = "MimickMasonryCanvas";
         type Type = super::MasonryCanvas;
         type ParentType = gtk::Widget;
     }
@@ -127,12 +143,12 @@ mod imp {
 
         fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
             match orientation {
-                gtk::Orientation::Horizontal => (200, 200, -1, -1),
+                gtk::Orientation::Horizontal => (120, 200, -1, -1),
                 _ => {
                     let width = if for_size > 0 {
                         for_size as f32
                     } else {
-                        self.cached_width.get().max(200.0)
+                        self.cached_width.get().max(120.0)
                     };
                     let h = self.layout_for_width(width);
                     let h_i = h.ceil() as i32;
@@ -166,6 +182,25 @@ mod imp {
             };
 
             let viewport = self.snapshot_viewport();
+
+            // Fill the visible area with the border color so gaps between
+            // tiles appear as a coloured border.
+            let gap = self.border_gap.get();
+            if gap > 0.0 {
+                let bc = self
+                    .border_color
+                    .get()
+                    .unwrap_or_else(|| gdk4::RGBA::new(1.0, 1.0, 1.0, 1.0));
+                let canvas_h = self.layout_h.get();
+                let vis_rect = Rect::new(
+                    0.0,
+                    viewport.scroll_y.max(0.0),
+                    canvas_w,
+                    (viewport.bottom - viewport.scroll_y.max(0.0)).min(canvas_h),
+                );
+                snapshot.append_color(&bc, &vis_rect);
+            }
+
             let sctx = self.snapshot_ctx(model, cache);
             let (stats, mut to_load) = self.paint_snapshot_rows(snapshot, &sctx, &rows, &viewport);
             drop(rows);
@@ -173,12 +208,22 @@ mod imp {
         }
     }
 
+    /// Compact layout threshold: canvas widths below this use the
+    /// smallest tile tier for phone-sized screens.
+    const COMPACT_WIDTH_THRESHOLD: f32 = 400.0;
+
     impl MasonryCanvas {
         fn cfg(&self) -> LayoutConfig {
+            let gap = self.border_gap.get();
             if self.narrow.get() {
-                LayoutConfig::narrow()
+                let w = self.cached_width.get();
+                if w > 0.0 && w < COMPACT_WIDTH_THRESHOLD {
+                    LayoutConfig::compact().with_gap(gap)
+                } else {
+                    LayoutConfig::narrow().with_gap(gap)
+                }
             } else {
-                LayoutConfig::wide()
+                LayoutConfig::wide().with_gap(gap)
             }
         }
 
@@ -479,12 +524,12 @@ mod imp {
             if pending.contains(&asset_id) {
                 return;
             }
-            pending.insert(asset_id.clone());
+            pending.insert(asset_id.to_string());
             let cell_center = row.y + row.h * 0.5;
             let priority = (cell_center - viewport_center).abs();
             to_load.push(LoadRequest {
                 priority,
-                asset_id,
+                asset_id: asset_id.to_string(),
                 bucket,
                 local_path,
                 is_local: is_local_only,

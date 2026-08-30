@@ -25,7 +25,7 @@ pub fn build_sidebar() -> SidebarParts {
         .margin_bottom(12)
         .margin_start(12)
         .margin_end(12)
-        .width_request(260)
+        .width_request(200)
         .build();
 
     let fixed_list = gtk::ListBox::builder()
@@ -59,6 +59,12 @@ pub fn build_sidebar() -> SidebarParts {
         "Timeline of every photo and video",
         "image-x-generic-symbolic",
         "photos",
+    ));
+    fixed_list.append(&action_row(
+        "Search",
+        "Find photos, videos, and text",
+        "system-search-symbolic",
+        "search",
     ));
     fixed_list.append(&action_row(
         "Explore",

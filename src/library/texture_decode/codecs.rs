@@ -184,7 +184,7 @@ fn expand_gray_to_rgb(data: Vec<u8>, pixel_count: usize) -> Option<Vec<u8>> {
 
 fn expand_gray_alpha_to_rgba(data: Vec<u8>, pixel_count: usize) -> Option<Vec<u8>> {
     let mut rgba = Vec::with_capacity(pixel_count.checked_mul(4)?);
-    for chunk in data.chunks_exact(2) {
+    for chunk in data.as_chunks::<2>().0 {
         rgba.extend_from_slice(&[chunk[0], chunk[0], chunk[0], chunk[1]]);
     }
     Some(rgba)

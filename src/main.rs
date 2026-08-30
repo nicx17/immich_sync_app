@@ -194,6 +194,14 @@ async fn main() {
         } else {
             String::new()
         };
+        if api_key.is_empty()
+            && (!runtime_internal_url.is_empty() || !runtime_external_url.is_empty())
+        {
+            log::warn!(
+                "Server URL is configured but no API key was found. \
+                 Library data will not load until an API key is set in Settings."
+            );
+        }
 
         let api_client = Arc::new(ImmichApiClient::new(
             runtime_internal_url,

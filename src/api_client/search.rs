@@ -199,6 +199,37 @@ impl ImmichApiClient {
         .await
     }
 
+    /// CLIP-based smart search combined with metadata filters.
+    ///
+    /// The Immich `SmartSearchDto` supports the same filter dimensions as
+    /// `MetadataSearchDto` (location, date, type, etc.) alongside the CLIP
+    /// `query` field. This method serialises the filters and injects the
+    /// CLIP query on top.
+    pub async fn search_smart_filtered(
+        &self,
+        query: &str,
+        filters: &MetadataSearchFilters,
+        page: u32,
+        size: u32,
+    ) -> Result<(Vec<LibraryAsset>, bool), String> {
+        let mut body = serde_json::to_value(filters).map_err(|e| e.to_string())?;
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("query".into(), serde_json::json!(query));
+            obj.insert("page".into(), serde_json::json!(page));
+            obj.insert("size".into(), serde_json::json!(size.max(1)));
+            // SmartSearchDto does not accept these metadata-only fields.
+            obj.remove("originalFileName");
+            obj.remove("description");
+        }
+        self.fetch_search_assets(
+            "/api/search/smart",
+            body,
+            RequestContext::SmartSearch,
+            Some(query),
+        )
+        .await
+    }
+
     /// Perform an OCR-based search to match recognized text inside library images.
     pub async fn search_ocr(
         &self,
