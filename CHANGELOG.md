@@ -11,11 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added support for 360px minimum window width with a new compact masonry tier and reduced CSS minimums.
 - Added a Places filter on the Explore page.
-- Added configurable masonry grid border width (up to 50px) and custom border color with auto-saving settings.
+- Added configurable masonry grid border width (0-50px) and custom border color with uniform edges (top, bottom, left, right and between tiles), auto-saved on change.
 
 ### Changed
 
-- Made the search form persistent in the sidebar instead of a temporary popover.
+- Made the search view persistent in the sidebar instead of a temporary popover.
 - Addressed multiple SonarCloud and Clippy warnings for code complexity and quality.
 
 ### Fixed
