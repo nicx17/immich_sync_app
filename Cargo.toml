@@ -60,7 +60,7 @@ image = { version = "0.25.10", default-features = false, features = [
     "tiff",
     "webp",
 ] }
-libheif-rs = { version = "2.7.0", default-features = false, features = [
+libheif-rs = { version = "3.0.0", default-features = false, features = [
     "v1_20",
 ] }
 jxl-oxide = "0.12.5"
