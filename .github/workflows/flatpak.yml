@@ -79,7 +79,7 @@ jobs:
 
       - name: Build Flatpak
         if: matrix.manifest == 'dev.nicx.mimick.local.yml' || steps.check_version.outputs.version_changed == 'true'
-        uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb # v6.7
+        uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
         with:
           bundle: mimick.flatpak
           manifest-path: ${{ matrix.manifest }}
